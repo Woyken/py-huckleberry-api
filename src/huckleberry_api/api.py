@@ -55,6 +55,7 @@ class HuckleberryAPI:
         self.token_expires_at: float | None = None
         self._firestore_client: firestore.Client | None = None
         self._listeners: dict = {}  # Store active listeners
+        self._listener_callbacks: dict = {}  # Store callbacks to recreate listeners
 
     def authenticate(self) -> None:
         """Authenticate with Firebase."""
@@ -111,11 +112,40 @@ class HuckleberryAPI:
         self.id_token = data["id_token"]
         self.refresh_token = data["refresh_token"]
         self.token_expires_at = datetime.now().timestamp() + int(data["expires_in"])
-        
+
+        # Stop existing listeners (they use the old token)
+        for key, watch in self._listeners.items():
+            try:
+                if hasattr(watch, "unsubscribe") and callable(getattr(watch, "unsubscribe")):
+                    watch.unsubscribe()
+                elif hasattr(watch, "close") and callable(getattr(watch, "close")):
+                    watch.close()
+                _LOGGER.debug("Stopped listener %s before token refresh", key)
+            except Exception as err:
+                _LOGGER.error("Error stopping listener %s before refresh: %s", key, err)
+        self._listeners.clear()
+
         # Invalidate the Firestore client so it gets recreated with new token
         self._firestore_client = None
 
         _LOGGER.debug("Successfully refreshed authentication token")
+
+        # Recreate all listeners with new token
+        _LOGGER.info("Recreating %d listeners with refreshed token", len(self._listener_callbacks))
+        callbacks_copy = dict(self._listener_callbacks)  # Copy to avoid modification during iteration
+        for key, (listener_type, child_uid, callback) in callbacks_copy.items():
+            try:
+                if listener_type == "sleep":
+                    self.setup_realtime_listener(child_uid, callback)
+                elif listener_type == "feed":
+                    self.setup_feed_listener(child_uid, callback)
+                elif listener_type == "health":
+                    self.setup_health_listener(child_uid, callback)
+                elif listener_type == "diaper":
+                    self.setup_diaper_listener(child_uid, callback)
+                _LOGGER.debug("Recreated %s listener for child %s", listener_type, child_uid)
+            except Exception as err:
+                _LOGGER.error("Error recreating %s listener for child %s: %s", listener_type, child_uid, err)
 
     def _ensure_authenticated(self) -> None:
         """Ensure we have a valid authentication token."""
@@ -804,7 +834,10 @@ class HuckleberryAPI:
 
         # Start listening and store the unsubscribe function
         unsubscribe = sleep_ref.on_snapshot(on_snapshot)
-        self._listeners[f"sleep_{child_uid}"] = unsubscribe
+        listener_key = f"sleep_{child_uid}"
+        self._listeners[listener_key] = unsubscribe
+        # Store callback for recreation after token refresh
+        self._listener_callbacks[listener_key] = ("sleep", child_uid, callback)
 
         _LOGGER.info("Real-time listener active for child %s", child_uid)
 
@@ -827,7 +860,10 @@ class HuckleberryAPI:
 
         # Start listening and store the unsubscribe function
         unsubscribe = feed_ref.on_snapshot(on_snapshot)
-        self._listeners[f"feed_{child_uid}"] = unsubscribe
+        listener_key = f"feed_{child_uid}"
+        self._listeners[listener_key] = unsubscribe
+        # Store callback for recreation after token refresh
+        self._listener_callbacks[listener_key] = ("feed", child_uid, callback)
 
         _LOGGER.info("Real-time feed listener active for child %s", child_uid)
 
@@ -850,7 +886,10 @@ class HuckleberryAPI:
 
         # Start listening and store the unsubscribe function
         unsubscribe = health_ref.on_snapshot(on_snapshot)
-        self._listeners[f"health_{child_uid}"] = unsubscribe
+        listener_key = f"health_{child_uid}"
+        self._listeners[listener_key] = unsubscribe
+        # Store callback for recreation after token refresh
+        self._listener_callbacks[listener_key] = ("health", child_uid, callback)
 
         _LOGGER.info("Real-time health listener active for child %s", child_uid)
 
@@ -873,7 +912,10 @@ class HuckleberryAPI:
 
         # Start listening and store the unsubscribe function
         unsubscribe = diaper_ref.on_snapshot(on_snapshot)
-        self._listeners[f"diaper_{child_uid}"] = unsubscribe
+        listener_key = f"diaper_{child_uid}"
+        self._listeners[listener_key] = unsubscribe
+        # Store callback for recreation after token refresh
+        self._listener_callbacks[listener_key] = ("diaper", child_uid, callback)
 
         _LOGGER.info("Real-time diaper listener active for child %s", child_uid)
 
@@ -892,6 +934,7 @@ class HuckleberryAPI:
             except Exception as err:
                 _LOGGER.error("Error stopping listener %s: %s", key, err)
         self._listeners.clear()
+        self._listener_callbacks.clear()
 
     def log_diaper(self, child_uid: str, mode: str,
                    pee_amount: str | None = None, poo_amount: str | None = None,
