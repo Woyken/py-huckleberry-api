@@ -271,10 +271,13 @@ class HuckleberryAPI:
         client = self._get_firestore_client()
         sleep_ref = client.collection("sleep").document(child_uid)
         now = time.time()
-        # Preserve existing timer fields by updating only subfields
+        timer_end_time_ms = now * 1000  # Convert to milliseconds
+        
+        # Add timerEndTime field that app uses to show end time when paused
         sleep_ref.update({
             "timer.paused": True,
             "timer.active": True,
+            "timer.timerEndTime": timer_end_time_ms,
             "timer.timestamp": {"seconds": now},
             "timer.local_timestamp": now,
         })
@@ -887,7 +890,7 @@ class HuckleberryAPI:
                 _LOGGER.error("Error stopping listener %s: %s", key, err)
         self._listeners.clear()
 
-    def log_diaper(self, child_uid: str, mode: str, 
+    def log_diaper(self, child_uid: str, mode: str,
                    pee_amount: str | None = None, poo_amount: str | None = None,
                    color: str | None = None, consistency: str | None = None,
                    diaper_rash: bool = False, notes: str | None = None) -> None:
