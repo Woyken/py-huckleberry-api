@@ -887,18 +887,22 @@ class HuckleberryAPI:
                 _LOGGER.error("Error stopping listener %s: %s", key, err)
         self._listeners.clear()
 
-    def log_diaper(self, child_uid: str, mode: str, pee: bool = False, poo: bool = False,
-                   color: str | None = None, consistency: str | None = None) -> None:
+    def log_diaper(self, child_uid: str, mode: str, 
+                   pee_amount: str | None = None, poo_amount: str | None = None,
+                   color: str | None = None, consistency: str | None = None,
+                   diaper_rash: bool = False, notes: str | None = None) -> None:
         """
         Log a diaper change.
 
         Args:
             child_uid: Child unique identifier
             mode: One of 'pee', 'poo', 'both', 'dry'
-            pee: Whether diaper had pee (for 'both' mode)
-            poo: Whether diaper had poo (for 'both' mode)
+            pee_amount: Pee amount - 'little' (0), 'medium' (50), 'big' (100), or None (no quantity)
+            poo_amount: Poo amount - 'little' (0), 'medium' (50), 'big' (100), or None (no quantity)
             color: Poo color - 'yellow', 'green', 'brown', 'black', 'red'
             consistency: Poo consistency - 'runny', 'soft', 'solid', 'hard'
+            diaper_rash: Whether baby has diaper rash
+            notes: Optional notes about this diaper change
         """
         _LOGGER.info("Logging diaper change for child %s: mode=%s", child_uid, mode)
 
@@ -911,7 +915,7 @@ class HuckleberryAPI:
         interval_timestamp_ms = int(current_time * 1000)
         interval_id = f"{interval_timestamp_ms}-{uuid.uuid4().hex[:20]}"
 
-        # Build interval data
+        # Build interval data (matching app behavior - minimal fields by default)
         interval_data = {
             "start": current_time,
             "lastUpdated": current_time,
@@ -919,25 +923,27 @@ class HuckleberryAPI:
             "offset": -120.0,  # Timezone offset (adjust as needed)
         }
 
-        # Add quantity based on mode
-        if mode == "pee":
-            interval_data["quantity"] = {"pee": 50.0}
-        elif mode == "poo":
-            interval_data["quantity"] = {"poo": 100.0}
-            if color:
-                interval_data["color"] = color
-            if consistency:
-                interval_data["consistency"] = consistency
-        elif mode == "both":
-            interval_data["quantity"] = {
-                "pee": 50.0 if pee else 0.0,
-                "poo": 100.0 if poo else 0.0,
-            }
-            if color:
-                interval_data["color"] = color
-            if consistency:
-                interval_data["consistency"] = consistency
-        # mode == "dry" has no quantity
+        # Add quantity field if amounts are specified
+        # App uses: 0.0 = "little", 50.0 = "medium", 100.0 = "big"
+        # Other values are treated as no quantity indicator
+        amount_map = {"little": 0.0, "medium": 50.0, "big": 100.0}
+        quantity = {}
+        if pee_amount and pee_amount in amount_map:
+            quantity["pee"] = amount_map[pee_amount]
+        if poo_amount and poo_amount in amount_map:
+            quantity["poo"] = amount_map[poo_amount]
+        if quantity:
+            interval_data["quantity"] = quantity
+
+        # Add optional fields if provided
+        if color:
+            interval_data["color"] = color
+        if consistency:
+            interval_data["consistency"] = consistency
+        if diaper_rash:
+            interval_data["diaperRash"] = True
+        if notes:
+            interval_data["notes"] = notes
 
         # Create interval document in subcollection
         try:
