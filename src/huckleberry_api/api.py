@@ -5,7 +5,7 @@ import logging
 import time
 import uuid
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Literal, TypeVar
 
 import requests
 from google.auth.credentials import Credentials
@@ -20,6 +20,19 @@ from .types import (
     HealthDocumentData,
     SleepDocumentData,
 )
+
+# Type aliases for known string values
+CollectionName = Literal["sleep", "feed", "health", "diaper"]
+FeedSide = Literal["left", "right"]
+DiaperMode = Literal["pee", "poo", "both", "dry"]
+DiaperAmount = Literal["little", "medium", "big"]
+PooColor = Literal["yellow", "green", "brown", "black", "red"]
+PooConsistency = Literal["runny", "soft", "solid", "hard"]
+MeasurementUnits = Literal["metric", "imperial"]
+
+# Union type for all document data types used in listeners
+DocumentData = SleepDocumentData | FeedDocumentData | HealthDocumentData | DiaperDocumentData
+TDocumentData = TypeVar('TDocumentData', SleepDocumentData, FeedDocumentData, HealthDocumentData, DiaperDocumentData)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -397,7 +410,15 @@ class HuckleberryAPI:
                 return
 
         now_ms = time.time() * 1000
-        duration_sec = int((now_ms - float(timer_start_ms)) / 1000)
+
+        # If sleep is paused, use timerEndTime as the end time (not current time)
+        if timer.get("paused", False) and "timerEndTime" in timer:
+            end_ms = timer["timerEndTime"]
+            _LOGGER.info("Sleep is paused, using timerEndTime for completion")
+        else:
+            end_ms = now_ms
+
+        duration_sec = int((end_ms - float(timer_start_ms)) / 1000)
         start_sec = int(float(timer_start_ms) / 1000)
 
         intervals_ref = sleep_ref.collection("intervals")
@@ -435,88 +456,7 @@ class HuckleberryAPI:
 
         _LOGGER.info("Sleep completed for child %s (duration %ss)", child_uid, duration_sec)
 
-    def stop_sleep(self, child_uid: str) -> None:
-        """Stop sleep tracking for a child."""
-        _LOGGER.info("Stopping sleep tracking for child %s", child_uid)
-
-        client = self._get_firestore_client()
-        sleep_ref = client.collection("sleep").document(child_uid)
-
-        # Get current sleep data to calculate duration
-        sleep_doc = sleep_ref.get(timeout=10.0)
-        if not sleep_doc.exists:
-            _LOGGER.error("Sleep document not found for child %s", child_uid)
-            return
-
-        sleep_data = sleep_doc.to_dict()
-        if not sleep_data:
-            _LOGGER.error("Sleep document has no data for child %s", child_uid)
-            return
-
-        timer = sleep_data.get("timer", {})
-
-        if not timer.get("active"):
-            _LOGGER.warning("Sleep timer not active for child %s", child_uid)
-            return
-
-        # Calculate duration from the original start time
-        # timerStartTime is in milliseconds, timestamp.seconds is in seconds
-        timer_start_ms = timer.get("timerStartTime")
-        if timer_start_ms:
-            start_time = timer_start_ms / 1000  # Convert milliseconds to seconds
-        else:
-            # Fallback to timestamp if timerStartTime is missing
-            start_time = timer.get("timestamp", {}).get("seconds", time.time())
-
-        session_uuid = timer.get("uuid", uuid.uuid4().hex[:16])
-        current_time = time.time()
-        duration = current_time - start_time
-
-        _LOGGER.info("Sleep duration: %.1f seconds (%.1f minutes)", duration, duration / 60)
-
-        # Create interval ID (timestamp in ms + random suffix like the app does)
-        interval_timestamp_ms = int(current_time * 1000)
-        interval_id = f"{interval_timestamp_ms}-{uuid.uuid4().hex[:20]}"
-
-        # Create interval document for history (sleep/{child_uid}/intervals)
-        sleep_intervals_ref = sleep_ref.collection("intervals").document(interval_id)
-
-        try:
-            sleep_intervals_ref.set({
-                "_id": interval_id,
-                "start": start_time,
-                "duration": duration,
-                "offset": -120.0,  # Timezone offset (adjust as needed)
-                "end_offset": -120.0,
-                "details": {},
-                "lastUpdated": current_time,
-            })
-            _LOGGER.info("Created interval entry: %s", interval_id)
-        except Exception as err:
-            _LOGGER.error("Failed to create interval entry: %s", err)
-
-        # Update timer to inactive and save to lastSleep
-        sleep_ref.update({
-            "timer": {
-                "active": False,
-                "paused": False,
-                "timestamp": {"seconds": current_time},
-                "timerStartTime": None,
-                "uuid": session_uuid,
-                "local_timestamp": current_time,
-            },
-            "prefs.lastSleep": {
-                "start": start_time,
-                "duration": duration,
-                "offset": -120.0,
-            },
-            "prefs.timestamp": {"seconds": current_time},
-            "prefs.local_timestamp": current_time,
-        })
-
-        _LOGGER.info("Sleep tracking stopped successfully (duration: %.1f minutes)", duration / 60)
-
-    def start_feeding(self, child_uid: str, side: str = "left") -> None:
+    def start_feeding(self, child_uid: str, side: FeedSide = "left") -> None:
         """Start feeding tracking."""
         _LOGGER.info("Starting feeding for child %s on %s side", child_uid, side)
 
@@ -594,7 +534,7 @@ class HuckleberryAPI:
 
         _LOGGER.info("Feeding paused (L:%ss R:%ss)", left_duration, right_duration)
 
-    def resume_feeding(self, child_uid: str, side: str | None = None) -> None:
+    def resume_feeding(self, child_uid: str, side: FeedSide | None = None) -> None:
         """Resume paused feeding session."""
         _LOGGER.info("Resuming feeding for child %s", child_uid)
 
@@ -815,109 +755,63 @@ class HuckleberryAPI:
 
         _LOGGER.info("Feeding completed (total duration %ss, L:%ss R:%ss)", total_duration, left_duration, right_duration)
 
-    def setup_realtime_listener(
-        self, child_uid: str, callback: Callable[[SleepDocumentData], None]
+    def _setup_listener(
+        self, collection_name: CollectionName, child_uid: str, callback: Callable[[TDocumentData], None]
     ) -> None:
-        """Set up real-time listener for sleep document changes."""
-        _LOGGER.info("Setting up real-time listener for child %s", child_uid)
+        """Set up real-time listener for a Firestore document.
+
+        Generic listener setup method that works for any collection type.
+
+        Args:
+            collection_name: Name of the Firestore collection (e.g., 'sleep', 'feed', 'health', 'diaper')
+            child_uid: Child unique identifier
+            callback: Function to call when document changes, receives document data of the appropriate type
+        """
+        _LOGGER.info("Setting up real-time listener for %s/%s", collection_name, child_uid)
 
         client = self._get_firestore_client()
-        sleep_ref = client.collection("sleep").document(child_uid)
+        doc_ref = client.collection(collection_name).document(child_uid)
 
         # Create snapshot listener
         def on_snapshot(doc_snapshot, changes, read_time):
             """Handle snapshot updates."""
             for doc in doc_snapshot:
                 if doc.exists:
-                    _LOGGER.debug("Real-time update received for child %s", child_uid)
+                    _LOGGER.debug("Real-time %s update received for child %s", collection_name, child_uid)
                     callback(doc.to_dict())
 
         # Start listening and store the unsubscribe function
-        unsubscribe = sleep_ref.on_snapshot(on_snapshot)
-        listener_key = f"sleep_{child_uid}"
+        unsubscribe = doc_ref.on_snapshot(on_snapshot)
+        listener_key = f"{collection_name}_{child_uid}"
         self._listeners[listener_key] = unsubscribe
         # Store callback for recreation after token refresh
-        self._listener_callbacks[listener_key] = ("sleep", child_uid, callback)
+        self._listener_callbacks[listener_key] = (collection_name, child_uid, callback)
 
-        _LOGGER.info("Real-time listener active for child %s", child_uid)
+        _LOGGER.info("Real-time %s listener active for child %s", collection_name, child_uid)
+
+    def setup_realtime_listener(
+        self, child_uid: str, callback: Callable[[SleepDocumentData], None]
+    ) -> None:
+        """Set up real-time listener for sleep document changes."""
+        self._setup_listener("sleep", child_uid, callback)
 
     def setup_feed_listener(
         self, child_uid: str, callback: Callable[[FeedDocumentData], None]
     ) -> None:
         """Set up real-time listener for feed document changes."""
-        _LOGGER.info("Setting up real-time listener for feed %s", child_uid)
-
-        client = self._get_firestore_client()
-        feed_ref = client.collection("feed").document(child_uid)
-
-        # Create snapshot listener
-        def on_snapshot(doc_snapshot, changes, read_time):
-            """Handle snapshot updates."""
-            for doc in doc_snapshot:
-                if doc.exists:
-                    _LOGGER.debug("Real-time feed update received for child %s", child_uid)
-                    callback(doc.to_dict())
-
-        # Start listening and store the unsubscribe function
-        unsubscribe = feed_ref.on_snapshot(on_snapshot)
-        listener_key = f"feed_{child_uid}"
-        self._listeners[listener_key] = unsubscribe
-        # Store callback for recreation after token refresh
-        self._listener_callbacks[listener_key] = ("feed", child_uid, callback)
-
-        _LOGGER.info("Real-time feed listener active for child %s", child_uid)
+        self._setup_listener("feed", child_uid, callback)
 
     def setup_health_listener(
         self, child_uid: str, callback: Callable[[HealthDocumentData], None]
     ) -> None:
         """Set up real-time listener for health document changes."""
-        _LOGGER.info("Setting up real-time listener for health %s", child_uid)
-
-        client = self._get_firestore_client()
-        health_ref = client.collection("health").document(child_uid)
-
-        # Create snapshot listener
-        def on_snapshot(doc_snapshot, changes, read_time):
-            """Handle snapshot updates."""
-            for doc in doc_snapshot:
-                if doc.exists:
-                    _LOGGER.debug("Real-time health update received for child %s", child_uid)
-                    callback(doc.to_dict())
-
-        # Start listening and store the unsubscribe function
-        unsubscribe = health_ref.on_snapshot(on_snapshot)
-        listener_key = f"health_{child_uid}"
-        self._listeners[listener_key] = unsubscribe
-        # Store callback for recreation after token refresh
-        self._listener_callbacks[listener_key] = ("health", child_uid, callback)
-
-        _LOGGER.info("Real-time health listener active for child %s", child_uid)
+        self._setup_listener("health", child_uid, callback)
 
     def setup_diaper_listener(
         self, child_uid: str, callback: Callable[[DiaperDocumentData], None]
     ) -> None:
         """Set up real-time listener for diaper document changes."""
-        _LOGGER.info("Setting up real-time listener for diaper %s", child_uid)
-
-        client = self._get_firestore_client()
-        diaper_ref = client.collection("diaper").document(child_uid)
-
-        # Create snapshot listener
-        def on_snapshot(doc_snapshot, changes, read_time):
-            """Handle snapshot updates."""
-            for doc in doc_snapshot:
-                if doc.exists:
-                    _LOGGER.debug("Real-time diaper update received for child %s", child_uid)
-                    callback(doc.to_dict())
-
-        # Start listening and store the unsubscribe function
-        unsubscribe = diaper_ref.on_snapshot(on_snapshot)
-        listener_key = f"diaper_{child_uid}"
-        self._listeners[listener_key] = unsubscribe
-        # Store callback for recreation after token refresh
-        self._listener_callbacks[listener_key] = ("diaper", child_uid, callback)
-
-        _LOGGER.info("Real-time diaper listener active for child %s", child_uid)
+        self._setup_listener("diaper", child_uid, callback)
 
     def stop_all_listeners(self) -> None:
         """Stop all active real-time listeners."""
@@ -936,9 +830,9 @@ class HuckleberryAPI:
         self._listeners.clear()
         self._listener_callbacks.clear()
 
-    def log_diaper(self, child_uid: str, mode: str,
-                   pee_amount: str | None = None, poo_amount: str | None = None,
-                   color: str | None = None, consistency: str | None = None,
+    def log_diaper(self, child_uid: str, mode: DiaperMode,
+                   pee_amount: DiaperAmount | None = None, poo_amount: DiaperAmount | None = None,
+                   color: PooColor | None = None, consistency: PooConsistency | None = None,
                    diaper_rash: bool = False, notes: str | None = None) -> None:
         """
         Log a diaper change.
@@ -946,8 +840,8 @@ class HuckleberryAPI:
         Args:
             child_uid: Child unique identifier
             mode: One of 'pee', 'poo', 'both', 'dry'
-            pee_amount: Pee amount - 'little' (0), 'medium' (50), 'big' (100), or None (no quantity)
-            poo_amount: Poo amount - 'little' (0), 'medium' (50), 'big' (100), or None (no quantity)
+            pee_amount: Pee amount - 'little', 'medium', 'big', or None (no quantity)
+            poo_amount: Poo amount - 'little', 'medium', 'big', or None (no quantity)
             color: Poo color - 'yellow', 'green', 'brown', 'black', 'red'
             consistency: Poo consistency - 'runny', 'soft', 'solid', 'hard'
             diaper_rash: Whether baby has diaper rash
@@ -1021,7 +915,7 @@ class HuckleberryAPI:
         _LOGGER.info("Diaper change logged successfully")
 
     def log_growth(self, child_uid: str, weight: float | None = None, height: float | None = None,
-                   head: float | None = None, units: str = "metric") -> None:
+                   head: float | None = None, units: MeasurementUnits = "metric") -> None:
         """
         Log growth measurements (weight, height, head circumference).
 

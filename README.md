@@ -97,7 +97,7 @@ api.stop_all_listeners()
 - `resume_sleep(child_uid)` - Resume paused session
 - `cancel_sleep(child_uid)` - Cancel without saving
 - `complete_sleep(child_uid)` - Complete and save to history
-- `stop_sleep(child_uid)` - Stop and save to history
+- `complete_sleep(child_uid)` - Complete and save to history
 
 ### Feeding Tracking
 - `start_feeding(child_uid, side)` - Start feeding session

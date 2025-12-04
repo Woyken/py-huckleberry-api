@@ -376,7 +376,7 @@ src/huckleberry_api/
 **`HuckleberryAPI`** (`api.py`):
 - Core Firebase operations
 - Authentication with token refresh
-- Sleep methods: `start_sleep`, `pause_sleep`, `resume_sleep`, `cancel_sleep`, `complete_sleep`, `stop_sleep`
+- Sleep methods: `start_sleep`, `pause_sleep`, `resume_sleep`, `cancel_sleep`, `complete_sleep`
 - Feeding methods: `start_feeding`, `pause_feeding`, `resume_feeding`, `switch_feeding_side`, `cancel_feeding`, `complete_feeding`
 - Diaper methods: `log_diaper` (supports pee, poo, both, dry modes)
 - Growth methods: `log_growth`, `get_growth_data`
@@ -908,7 +908,34 @@ uv version --bump major   # 0.1.0 -> 1.0.0
 
 ---
 
-**Last Updated**: December 2, 2025
-**Library Version**: 0.1.1
+**Last Updated**: December 4, 2025
+**Library Version**: 0.1.2
 **Status**: Stable, feature-complete for sleep, feeding, diaper, and growth tracking
 **Test Coverage**: Manual validation with live Huckleberry account
+
+## Recent Changes
+
+### v0.1.2 (December 4, 2025)
+- **REFACTOR**: Consolidated listener setup methods into generic implementation
+  - Removed ~100 lines of duplicated code across 4 listener methods
+  - New private `_setup_listener()` method handles all collection types
+  - Public methods (`setup_realtime_listener`, `setup_feed_listener`, etc.) now delegate to generic implementation
+  - Maintains type-safe public API while eliminating code duplication
+  - Token refresh recreation logic simplified
+  - Test script: `test_listener_refactor.py`
+- **BREAKING CHANGE**: Removed redundant `stop_sleep()` method
+  - Use `complete_sleep()` instead - it's the better implementation
+  - `complete_sleep()` preserves sleep details and uses proper interval ID format
+  - All code and documentation updated to use `complete_sleep()`
+- **CRITICAL FIX**: `complete_sleep()` now respects paused state
+  - When sleep is paused, `timerEndTime` is set to mark the pause time
+  - Completing a paused sleep now uses `timerEndTime` as end time (not current time)
+  - Duration calculation now correctly excludes time after pause
+  - Sleep end time in history now shows actual pause time, not when complete button was clicked
+  - Added Pitfall 6 to AGENTS.md documenting this behavior
+  - Test script: `test_pause_stop_fix.py`
+
+### v0.1.1 (December 2, 2025)
+- Added growth tracking support
+- Fixed health tracker subcollection (uses `data` not `intervals`)
+- Added comprehensive type definitions
