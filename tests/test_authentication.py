@@ -1,4 +1,5 @@
 """Authentication tests for Huckleberry API."""
+import time
 import pytest
 
 from huckleberry_api import HuckleberryAPI
@@ -23,6 +24,8 @@ class TestAuthentication:
 
     def test_token_refresh(self, api: HuckleberryAPI) -> None:
         """Test token refresh functionality."""
+        # Wait 1 second to ensure we get a new token (Firebase may return same token if too fresh)
+        time.sleep(1)
         original_token = api.id_token
         api.refresh_auth_token()
         assert api.id_token is not None
