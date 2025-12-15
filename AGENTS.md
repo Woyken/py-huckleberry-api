@@ -6,6 +6,11 @@ This is a **Python API client library** for the Huckleberry baby tracking app. I
 
 **Critical Context**: Huckleberry does NOT use REST APIs. It uses the Firebase Android SDK with gRPC over HTTP/2 and Protocol Buffers. This was the key discovery that enabled this project.
 
+## Related Documentation
+
+- **[Project Overview](../AGENTS.md)** - High-level context, history, decompiled source analysis
+- **[Home Assistant Integration](../huckleberry-homeassistant/AGENTS.md)** - How this API is used in Home Assistant
+
 ## Project Purpose
 
 This standalone package provides:
@@ -968,8 +973,8 @@ gh release create v0.1.10 --notes "## Added
 
 ---
 
-**Last Updated**: December 4, 2025
-**Library Version**: 0.1.10
+**Last Updated**: December 15, 2025
+**Library Version**: 0.1.14
 **Status**: Stable, feature-complete for sleep, feeding, diaper, and growth tracking
 **Test Coverage**: 23 integration tests, CI/CD enabled, ~75 second runtime
 
