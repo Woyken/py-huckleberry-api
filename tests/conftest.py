@@ -14,11 +14,12 @@ def api() -> HuckleberryAPI:
     """Create API instance with credentials from environment."""
     email = os.getenv("HUCKLEBERRY_EMAIL")
     password = os.getenv("HUCKLEBERRY_PASSWORD")
+    timezone = os.getenv("HUCKLEBERRY_TIMEZONE")
 
-    if not email or not password:
-        pytest.skip("HUCKLEBERRY_EMAIL and HUCKLEBERRY_PASSWORD environment variables required")
+    if not email or not password or not timezone:
+        pytest.skip("HUCKLEBERRY_EMAIL, HUCKLEBERRY_PASSWORD, and HUCKLEBERRY_TIMEZONE environment variables required")
 
-    api_instance = HuckleberryAPI(email=email, password=password)
+    api_instance = HuckleberryAPI(email=email, password=password, timezone=timezone)
     api_instance.authenticate()
 
     yield api_instance
