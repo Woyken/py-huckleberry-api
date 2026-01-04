@@ -228,43 +228,50 @@ class HuckleberryAPI:
                 _LOGGER.error("User document has no data")
                 return []
 
-            child_id = user_data.get("lastChild")
-
-            if not child_id:
-                _LOGGER.warning("No lastChild found in user document")
+            child_list = user_data.get("childList")
+            if not child_list:
+                _LOGGER.error("No childList found in user document")
                 return []
 
-            # Get child document
-            child_ref = db.collection("childs").document(child_id)
-            child_doc = child_ref.get()
+            children = []
+            for child in user_data.get("childList"):
+                child_id = child.get("cid")
 
-            if not child_doc.exists:
-                _LOGGER.error("Child document not found: %s", child_id)
-                return []
+                if not child_id:
+                    _LOGGER.warning("Child id not found in childList")
+                    return []
 
-            child_data = child_doc.to_dict()
-            if not child_data:
-                _LOGGER.error("Child document has no data: %s", child_id)
-                return []
+                # Get child document
+                child_ref = db.collection("childs").document(child_id)
+                child_doc = child_ref.get()
 
-            # Name may appear as 'childsName' in some documents
-            display_name = child_data.get("name") or child_data.get("childsName") or "Unknown"
+                if not child_doc.exists:
+                    _LOGGER.error("Child document not found: %s", child_id)
+                    return []
 
-            child: ChildData = {
-                "uid": child_id,
-                "name": display_name,
-                "birthday": child_data.get("birthdate"),
-                "picture": child_data.get("picture"),
-                "gender": child_data.get("gender"),
-                "color": child_data.get("color"),
-                "created_at": child_data.get("createdAt"),
-                "night_start_min": child_data.get("nightStart"),
-                "morning_cutoff_min": child_data.get("morningCutoff"),
-                "expected_naps": child_data.get("naps"),
-                "categories": child_data.get("categories"),
-            }
+                child_data = child_doc.to_dict()
+                if not child_data:
+                    _LOGGER.error("Child document has no data: %s", child_id)
+                    return []
 
-            children = [child]
+                # Name may appear as 'childsName' in some documents
+                display_name = child_data.get("name") or child_data.get("childsName") or "Unknown"
+
+                child: ChildData = {
+                    "uid": child_id,
+                    "name": display_name,
+                    "birthday": child_data.get("birthdate"),
+                    "picture": child_data.get("picture"),
+                    "gender": child_data.get("gender"),
+                    "color": child_data.get("color"),
+                    "created_at": child_data.get("createdAt"),
+                    "night_start_min": child_data.get("nightStart"),
+                    "morning_cutoff_min": child_data.get("morningCutoff"),
+                    "expected_naps": child_data.get("naps"),
+                    "categories": child_data.get("categories"),
+                }
+
+                children.append(child)
 
             _LOGGER.info("Found %d children", len(children))
             return children
