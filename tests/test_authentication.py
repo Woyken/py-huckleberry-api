@@ -69,12 +69,15 @@ class TestChildrenRetrieval:
         assert isinstance(children, list)
         assert len(children) > 0
 
+        child_ids = [child["uid"] for child in children]
+        assert len(child_ids) == len(set(child_ids))
+
         # Verify child data structure
-        child = children[0]
-        assert "uid" in child
-        assert "name" in child
-        # Note: Field is 'birthday' not 'birthdate' in actual response
-        assert "birthday" in child
+        for child in children:
+            assert "uid" in child
+            assert "name" in child
+            # Note: Field is 'birthday' not 'birthdate' in actual response
+            assert "birthday" in child
 
 
 class TestErrorHandling:
