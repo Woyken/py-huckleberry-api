@@ -11,6 +11,7 @@ requires-python = ">=3.9"
 dependencies = [
     "google-cloud-firestore>=2.11.0",
     "requests>=2.31.0",
+    "tzdata>=2024.1",
 ]
 keywords = ["huckleberry", "baby", "tracking", "firebase", "api"]
 classifiers = [
