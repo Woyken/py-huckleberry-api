@@ -18,7 +18,7 @@ class TestAuthentication:
     def test_authenticate_invalid_credentials(self) -> None:
         """Test authentication with invalid credentials."""
         import requests
-        invalid_api = HuckleberryAPI(email="invalid@test.com", password="wrongpassword")
+        invalid_api = HuckleberryAPI(email="invalid@test.com", password="wrongpassword", timezone="UTC")
         with pytest.raises((RuntimeError, requests.exceptions.HTTPError)):
             invalid_api.authenticate()
 
@@ -85,8 +85,9 @@ class TestErrorHandling:
         import os
         email = os.getenv("HUCKLEBERRY_EMAIL", "test@example.com")
         password = os.getenv("HUCKLEBERRY_PASSWORD", "password")
+        timezone = os.getenv("HUCKLEBERRY_TIMEZONE", "UTC")
 
-        unauthenticated_api = HuckleberryAPI(email=email, password=password)
+        unauthenticated_api = HuckleberryAPI(email=email, password=password, timezone=timezone)
 
         # Note: API actually requires authentication but doesn't always raise
         # Firestore SDK may succeed with cached credentials from fixture

@@ -34,7 +34,8 @@ from huckleberry_api import HuckleberryAPI
 # Initialize API client
 api = HuckleberryAPI(
     email="your-email@example.com",
-    password="your-password"
+    password="your-password",
+    timezone="Europe/London"
 )
 
 # Authenticate

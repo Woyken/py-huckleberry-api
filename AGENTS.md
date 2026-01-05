@@ -734,7 +734,7 @@ Create test scripts to validate:
 ```python
 from huckleberry_api import HuckleberryAPI
 
-api = HuckleberryAPI(email="test@example.com", password="password")
+api = HuckleberryAPI(email="test@example.com", password="password", timezone="Europe/London")
 api.authenticate()
 children = api.get_children()
 child_uid = children[0]["uid"]
@@ -762,7 +762,7 @@ Validate bidirectional sync with Huckleberry app:
 **Authentication Failures**:
 ```python
 # Check credentials
-api = HuckleberryAPI(email="test@example.com", password="password")
+api = HuckleberryAPI(email="test@example.com", password="password", timezone="Europe/London")
 try:
     api.authenticate()
     print("Authentication successful")
@@ -796,7 +796,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("huckleberry_api")
 
 # API will log operations
-api = HuckleberryAPI(email="...", password="...")
+api = HuckleberryAPI(email="...", password="...", timezone="Europe/London")
 api.authenticate()
 ```
 
