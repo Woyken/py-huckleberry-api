@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **NEW API METHOD**: `log_bottle_feeding()` for logging bottle feedings as instant events
+  - Supports bottle types: "Breast Milk", "Formula", "Mixed"
+  - Records amount and units (ml or oz)
+  - Creates interval documents in `feed/{child_uid}/intervals` with mode="bottle"
+  - Updates `prefs.lastBottle` and document-level bottle preferences
+- **TYPE SYSTEM**: Added bottle-specific type definitions
+  - `BottleType` literal type for bottle contents
+  - `VolumeUnits` literal type for measurement units
+  - `LastBottleData` TypedDict for bottle preference structure
+  - `FirebaseBottleInterval` TypedDict for raw Firebase structure
+  - Refactored `FeedIntervalData` into union type (`BreastFeedIntervalData | BottleFeedIntervalData | SolidsFeedIntervalData`)
+- **TESTS**: 6 new integration tests for bottle feeding functionality
+- **DOCUMENTATION**: Updated DATA_STRUCTURE.md with bottle feeding interval examples
+
 ## [0.1.17] - 2025-12-16
 
 ### Fixed
@@ -23,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **NEW API METHODS**: Added calendar/interval fetching methods for date range queries
   - `get_sleep_intervals(child_uid, start_timestamp, end_timestamp)` - Fetch sleep intervals
-  - `get_feed_intervals(child_uid, start_timestamp, end_timestamp)` - Fetch feeding intervals  
+  - `get_feed_intervals(child_uid, start_timestamp, end_timestamp)` - Fetch feeding intervals
   - `get_diaper_intervals(child_uid, start_timestamp, end_timestamp)` - Fetch diaper intervals
   - `get_health_entries(child_uid, start_timestamp, end_timestamp)` - Fetch growth/health entries
   - `get_calendar_events(child_uid, start_timestamp, end_timestamp)` - Fetch all event types at once

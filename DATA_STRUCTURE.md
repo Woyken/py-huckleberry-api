@@ -104,6 +104,47 @@ if data.get("timer", {}).get("active") and not data.get("timer", {}).get("paused
     right_duration = data["timer"]["rightDuration"]
 ```
 
+**Intervals Subcollection**: `feed/{child_uid}/intervals`
+
+Feeding history is stored in the intervals subcollection with mode-specific fields:
+
+**Breastfeeding Intervals**:
+```javascript
+{
+  "mode": "breast",
+  "start": 1763541213.0,
+  "lastSide": "right",
+  "lastUpdated": 1763542436.0,
+  "leftDuration": 1223.0,          // Seconds
+  "rightDuration": 0.0,            // Seconds
+  "offset": -120.0,
+  "end_offset": -120.0
+}
+```
+
+**Bottle Feeding Intervals** ⚠️ **CRITICAL Field Name Inconsistency**:
+```javascript
+{
+  "mode": "bottle",
+  "start": 1768170690.723,
+  "lastUpdated": 1768170723.983,
+  "bottleType": "Formula",         // "Breast Milk", "Formula", or "Mixed"
+  "amount": 515.0,                 // ⚠️ "amount" in intervals (NOT "bottleAmount")
+  "units": "ml",                   // ⚠️ "units" in intervals (NOT "bottleUnits")
+  "offset": -120.0,
+  "end_offset": -120.0,
+  "notes": "Optional note"         // Optional field
+}
+```
+
+**CRITICAL NOTE - Field Name Inconsistency**:
+- **Intervals** (`feed/{child_uid}/intervals`) use: `amount` and `units`
+- **Prefs** (`prefs.lastBottle`) use: `bottleAmount` and `bottleUnits`
+- Both use: `bottleType` (consistent naming)
+- This inconsistency exists in the Firebase schema and must be handled in API implementations
+
+**Document ID Format**: `{timestamp_ms}-{random_20_chars}` (e.g., `1768170723983-4158d678382fa5976c10`)
+
 ### 3. `sleep/{child_id}` - Sleep Tracking
 **Purpose**: Active sleep timer and sleep history
 

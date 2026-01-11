@@ -51,14 +51,17 @@ api.start_sleep(child_uid)
 # Complete sleep session
 api.complete_sleep(child_uid)
 
-# Start feeding
+# Start breastfeeding
 api.start_feeding(child_uid, side="left")
 
 # Switch sides
 api.switch_feeding_side(child_uid)
 
-# Complete feeding
+# Complete breastfeeding
 api.complete_feeding(child_uid)
+
+# Log bottle feeding
+api.log_bottle_feeding(child_uid, amount=120.0, bottle_type="Formula", units="ml")
 
 # Log diaper change
 api.log_diaper(child_uid, mode="both", pee=True, poo=True,
@@ -103,12 +106,16 @@ api.stop_all_listeners()
 - `complete_sleep(child_uid)` - Complete and save to history
 
 ### Feeding Tracking
-- `start_feeding(child_uid, side)` - Start feeding session
+- `start_feeding(child_uid, side)` - Start breastfeeding session
 - `pause_feeding(child_uid)` - Pause active session
 - `resume_feeding(child_uid, side)` - Resume paused session
 - `switch_feeding_side(child_uid)` - Switch left/right
 - `cancel_feeding(child_uid)` - Cancel without saving
 - `complete_feeding(child_uid)` - Complete and save to history
+- `log_bottle_feeding(child_uid, amount, bottle_type, units)` - Log bottle feeding
+  - `bottle_type`: "Breast Milk", "Formula", or "Mixed"
+  - `amount`: Volume fed (e.g., 120.0)
+  - `units`: "ml" or "oz"
 
 ### Diaper Tracking
 - `log_diaper(child_uid, mode, pee, poo, color, consistency)` - Log diaper change

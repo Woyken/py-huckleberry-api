@@ -285,6 +285,34 @@ When completing feeding, create document in `feed/{child_uid}/intervals`:
 
 **Document ID Format**: `{timestamp_ms}-{random_20_chars}` (e.g., `1764528069548-a04ff18de85c4a98a451`)
 
+### Bottle Feeding Interval Structure
+
+Bottle feedings are logged as instant events (no timer) in `feed/{child_uid}/intervals`:
+
+```javascript
+{
+  "mode": "bottle",
+  "start": 1768170690.723,
+  "lastUpdated": 1768170723.983,
+  "bottleType": "Formula",        // "Breast Milk", "Formula", or "Mixed"
+  "amount": 120.0,                // Volume in specified units
+  "units": "ml",                  // "ml" or "oz"
+  "offset": -120.0,               // timezone minutes
+  "end_offset": -120.0,
+  "notes": "Optional note"        // Optional field
+}
+```
+
+**Document ID Format**: Same as other intervals - `{timestamp_ms}-{random_20_chars}`
+
+**CRITICAL NOTE - Field Name Inconsistency**:
+- **Intervals** (`feed/{child_uid}/intervals`) use: `amount` and `units`
+- **Prefs** (`prefs.lastBottle`) use: `bottleAmount` and `bottleUnits`
+- Both use: `bottleType` (consistent naming)
+- This inconsistency exists in the Firebase schema and must be handled in API implementations
+
+**Note**: Unlike breastfeeding, bottle feedings are instant events with no active/paused state. The `prefs.lastBottle` field stores the most recent bottle feeding.
+
 ### Diaper Interval Structure
 
 Diaper changes are logged as instant events (no timer) in `diaper/{child_uid}/intervals`:
@@ -382,7 +410,7 @@ src/huckleberry_api/
 - Core Firebase operations
 - Authentication with token refresh
 - Sleep methods: `start_sleep`, `pause_sleep`, `resume_sleep`, `cancel_sleep`, `complete_sleep`
-- Feeding methods: `start_feeding`, `pause_feeding`, `resume_feeding`, `switch_feeding_side`, `cancel_feeding`, `complete_feeding`
+- Feeding methods: `start_feeding`, `pause_feeding`, `resume_feeding`, `switch_feeding_side`, `cancel_feeding`, `complete_feeding`, `log_bottle_feeding`
 - Diaper methods: `log_diaper` (supports pee, poo, both, dry modes)
 - Growth methods: `log_growth`, `get_growth_data`
 - Real-time listeners: `setup_realtime_listener`, `setup_feed_listener`, `setup_health_listener`, `stop_all_listeners`
@@ -400,6 +428,9 @@ src/huckleberry_api/
 - `FeedDocumentData` / `FeedTimerData` - Feeding tracking
 - `HealthDocumentData` - Health tracking
 - `GrowthData` - Growth measurements
+- `BottleType` / `VolumeUnits` - Bottle feeding type aliases
+- `LastBottleData` - Bottle feeding preference structure
+- `BreastFeedIntervalData` / `BottleFeedIntervalData` / `SolidsFeedIntervalData` - Feed interval union types
 
 ## Critical Implementation Rules
 
@@ -697,6 +728,7 @@ except Exception as err:
 - `tests/test_authentication.py` - Auth, token refresh, children, error handling (6 tests)
 - `tests/test_sleep.py` - Sleep tracking and interval creation (3 tests)
 - `tests/test_feeding.py` - Feeding tracking, side switching, intervals (4 tests)
+- `tests/test_bottle_feeding.py` - Bottle feeding logging (6 tests)
 - `tests/test_diaper.py` - Diaper logging (pee, poo, both, dry) (4 tests)
 - `tests/test_growth.py` - Growth measurements (metric, imperial) (3 tests)
 - `tests/test_listeners.py` - Real-time listeners and token refresh (3 tests)
@@ -973,10 +1005,10 @@ gh release create v0.1.10 --notes "## Added
 
 ---
 
-**Last Updated**: December 15, 2025
-**Library Version**: 0.1.14
-**Status**: Stable, feature-complete for sleep, feeding, diaper, and growth tracking
-**Test Coverage**: 23 integration tests, CI/CD enabled, ~75 second runtime
+**Last Updated**: January 12, 2026
+**Library Version**: 0.1.17 (Unreleased)
+**Status**: Stable, feature-complete for sleep, feeding (breastfeeding + bottle), diaper, and growth tracking
+**Test Coverage**: 29 integration tests, CI/CD enabled
 
 ## Recent Changes
 

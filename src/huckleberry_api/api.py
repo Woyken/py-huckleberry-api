@@ -14,20 +14,24 @@ from google.cloud import firestore
 
 from .const import AUTH_URL, FIREBASE_API_KEY, REFRESH_URL
 from .types import (
+    BottleType,
     ChildData,
     DiaperDocumentData,
     FeedDocumentData,
+    FirebaseBottleInterval,
     FirebaseDiaperInterval,
     FirebaseFeedDocument,
     FirebaseGrowthData,
     FirebaseSleepDocument,
     GrowthData,
     HealthDocumentData,
+    LastBottleData,
     LastDiaperData,
     LastNursingData,
     LastSideData,
     LastSleepData,
     SleepDocumentData,
+    VolumeUnits,
 )
 
 # Type aliases for known string values
@@ -869,6 +873,80 @@ class HuckleberryAPI:
 
         _LOGGER.info("Feeding completed (total duration %ss, L:%ss R:%ss)", total_duration, left_duration,
                      right_duration)
+
+    def log_bottle_feeding(
+        self,
+        child_uid: str,
+        amount: float,
+        bottle_type: BottleType = "Formula",
+        units: VolumeUnits = "ml",
+    ) -> None:
+        """Log bottle feeding as instant event.
+
+        Args:
+            child_uid: Child unique identifier
+            bottle_type: Type of bottle contents ("Breast Milk", "Formula", or "Mixed")
+            amount: Amount fed in specified units
+            units: Volume units ("ml" or "oz")
+        """
+        _LOGGER.info(
+            "Logging bottle feeding for child %s: %s %s of %s",
+            child_uid, amount, units, bottle_type
+        )
+
+        client = self._get_firestore_client()
+        feed_ref = client.collection("feed").document(child_uid)
+
+        now_time = time.time()
+        interval_id = f"{int(now_time * 1000)}-{uuid.uuid4().hex[:20]}"
+
+        # Create interval document for bottle feeding
+        bottle_entry: FirebaseBottleInterval = {
+            "mode": "bottle",
+            "start": now_time,
+            "lastUpdated": now_time,
+            "bottleType": bottle_type,
+            "amount": amount,
+            "units": units,
+            "offset": self._get_timezone_offset_minutes(),
+            "end_offset": self._get_timezone_offset_minutes(),
+        }
+
+        # Create interval document
+        feed_intervals_ref = feed_ref.collection("intervals").document(interval_id)
+
+        try:
+            feed_intervals_ref.set(cast(dict, bottle_entry))
+            _LOGGER.info("Created bottle feeding interval entry: %s", interval_id)
+        except Exception as err:
+            _LOGGER.error("Failed to create bottle feeding interval entry: %s", err)
+            raise RuntimeError(f"Failed to log bottle feeding: {err}") from err
+
+        # Update prefs.lastBottle and document-level bottle preferences
+        last_bottle_data: LastBottleData = {
+            "mode": "bottle",
+            "start": now_time,
+            "bottleType": bottle_type,
+            "bottleAmount": amount,
+            "bottleUnits": units,
+            "offset": self._get_timezone_offset_minutes(),
+        }
+
+        feed_ref.set({
+            "prefs": {
+                "lastBottle": last_bottle_data,
+                "bottleType": bottle_type,  # Update defaults
+                "bottleAmount": amount,
+                "bottleUnits": units,
+                "timestamp": {"seconds": now_time},
+                "local_timestamp": now_time,
+            }
+        }, merge=True)
+
+        _LOGGER.info(
+            "Bottle feeding logged: %s %s of %s",
+            amount, units, bottle_type
+        )
 
     def _setup_listener(
         self, collection_name: CollectionName, child_uid: str, callback: Callable[[TDocumentData], None]

@@ -9,6 +9,8 @@ PooColor = Literal["yellow", "brown", "black", "green", "red", "gray"]
 PooConsistency = Literal["solid", "loose", "runny", "mucousy", "hard", "pebbles", "diarrhea"]
 FeedMode = Literal["breast", "bottle", "solids"]
 FeedSide = Literal["left", "right", "none"]
+BottleType = Literal["Breast Milk", "Formula", "Mixed"]
+VolumeUnits = Literal["ml", "oz"]
 GenderType = Literal["boy", "girl", "other"]
 UnitsSystem = Literal["metric", "imperial"]
 WeightUnits = Literal["kg", "lbs"]
@@ -137,6 +139,16 @@ class LastSideData(TypedDict):
     """Data for prefs.lastSide."""
     start: float
     lastSide: FeedSide
+
+
+class LastBottleData(TypedDict):
+    """Data for prefs.lastBottle."""
+    mode: Literal["bottle"]
+    start: float
+    bottleType: BottleType
+    bottleAmount: float
+    bottleUnits: VolumeUnits
+    offset: float
 
 
 class FeedPrefs(TypedDict):
@@ -304,16 +316,14 @@ class SleepIntervalData(TypedDict):
     last_updated_sec: NotRequired[float]
 
 
-class FeedIntervalData(TypedDict):
-    """Feed interval entry data structure.
+class BreastFeedIntervalData(TypedDict):
+    """Breast feeding interval data structure.
 
     Collection: feed/{child_uid}/intervals/{interval_id}
-
-    Document ID format: {timestamp_ms}-{random_20_chars}
-    Example: "1764528069548-a04ff18de85c4a98a451"
+    Mode: "breast"
 
     Firebase Field Mapping (camelCase → snake_case):
-    - mode → mode ("breast", "bottle", "solids")
+    - mode → mode ("breast")
     - start → start_sec (timestamp seconds)
     - lastSide → last_side ("left", "right", "none")
     - lastUpdated → last_updated_sec (timestamp seconds)
@@ -322,14 +332,59 @@ class FeedIntervalData(TypedDict):
     - offset → offset_min (timezone minutes)
     - end_offset → end_offset_min (timezone minutes)
     """
-    mode: FeedMode
+    mode: Literal["breast"]
     start_sec: float
     last_side: FeedSide
     last_updated_sec: float
-    left_duration_sec: NotRequired[float]
-    right_duration_sec: NotRequired[float]
+    left_duration_sec: float
+    right_duration_sec: float
     offset_min: float
     end_offset_min: NotRequired[float]
+
+
+class BottleFeedIntervalData(TypedDict):
+    """Bottle feeding interval data structure.
+
+    Collection: feed/{child_uid}/intervals/{interval_id}
+    Mode: "bottle"
+
+    Firebase Field Mapping (camelCase → snake_case):
+    - mode → mode ("bottle")
+    - start → start_sec (timestamp seconds)
+    - lastUpdated → last_updated_sec (timestamp seconds)
+    - bottleType → bottle_type ("Breast Milk", "Formula", "Mixed")
+    - amount → amount (volume)
+    - units → units ("ml", "oz")
+    - offset → offset_min (timezone minutes)
+    - end_offset → end_offset_min (timezone minutes)
+    """
+    mode: Literal["bottle"]
+    start_sec: float
+    last_updated_sec: float
+    bottle_type: BottleType
+    amount: float
+    units: VolumeUnits
+    offset_min: float
+    end_offset_min: NotRequired[float]
+
+
+class SolidsFeedIntervalData(TypedDict):
+    """Solid food feeding interval data structure.
+
+    Collection: feed/{child_uid}/intervals/{interval_id}
+    Mode: "solids"
+
+    Note: Solids structure not yet fully implemented.
+    """
+    mode: Literal["solids"]
+    start_sec: float
+    last_updated_sec: float
+    offset_min: float
+    end_offset_min: NotRequired[float]
+
+
+# Union type for all feed interval types
+FeedIntervalData = BreastFeedIntervalData | BottleFeedIntervalData | SolidsFeedIntervalData
 
 
 # --- Firebase Raw Types (camelCase) ---
@@ -420,6 +475,18 @@ class FirebaseDiaperInterval(TypedDict):
     quantity: NotRequired[dict[str, float]]
     color: NotRequired[PooColor]
     consistency: NotRequired[PooConsistency]
+
+
+class FirebaseBottleInterval(TypedDict):
+    """Raw bottle feeding interval structure (camelCase)."""
+    mode: Literal["bottle"]
+    start: float
+    lastUpdated: float
+    bottleType: BottleType
+    amount: float
+    units: VolumeUnits
+    offset: float
+    end_offset: NotRequired[float]
 
 
 class FirebaseGrowthData(TypedDict):
