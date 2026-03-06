@@ -1093,6 +1093,7 @@ class HuckleberryAPI:
             consistency: Poo consistency - 'solid', 'loose', 'runny', 'mucousy', 'hard', 'pebbles', 'diarrhea'
             diaper_rash: Whether baby has diaper rash
             is_potty: Whether to log as potty or diaper
+            how_it_happened: How potty happened: "wentPotty", "accident", "satButDry"
             notes: Optional notes about this diaper change
         """
         _LOGGER.info("Logging diaper change for child %s: mode=%s", child_uid, mode)
