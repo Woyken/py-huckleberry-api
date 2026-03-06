@@ -43,6 +43,7 @@ DiaperMode = Literal["pee", "poo", "both", "dry"]
 DiaperAmount = Literal["little", "medium", "big"]
 PooColor = Literal["yellow", "brown", "black", "green", "red", "gray"]
 PooConsistency = Literal["solid", "loose", "runny", "mucousy", "hard", "pebbles", "diarrhea"]
+PottyHowItHappened = Literal["wentPotty", "accident", "satButDry"]
 MeasurementUnits = Literal["metric", "imperial"]
 
 # Union type for all document data types used in listeners
@@ -1078,7 +1079,8 @@ class HuckleberryAPI:
     def log_diaper(self, child_uid: str, mode: DiaperMode,
                    pee_amount: DiaperAmount | None = None, poo_amount: DiaperAmount | None = None,
                    color: PooColor | None = None, consistency: PooConsistency | None = None,
-                   diaper_rash: bool = False, notes: str | None = None) -> None:
+                   diaper_rash: bool = False, is_potty: bool = False,
+                   how_it_happened: PottyHowItHappened | None = None, notes: str | None = None) -> None:
         """
         Log a diaper change.
 
@@ -1090,6 +1092,7 @@ class HuckleberryAPI:
             color: Poo color - 'yellow', 'brown', 'black', 'green', 'red', 'gray'
             consistency: Poo consistency - 'solid', 'loose', 'runny', 'mucousy', 'hard', 'pebbles', 'diarrhea'
             diaper_rash: Whether baby has diaper rash
+            is_potty: Whether to log as potty or diaper
             notes: Optional notes about this diaper change
         """
         _LOGGER.info("Logging diaper change for child %s: mode=%s", child_uid, mode)
@@ -1130,6 +1133,11 @@ class HuckleberryAPI:
             interval_data["consistency"] = consistency
         if diaper_rash:
             interval_data["diaperRash"] = True  # type: ignore # Not in TypedDict yet
+        if is_potty:
+            interval_data["isPotty"] = True  # type: ignore # Not in TypedDict yet
+            if how_it_happened is None:
+                how_it_happened = "wentPotty"
+            interval_data["howItHappened"] = how_it_happened  # type: ignore # Not in TypedDict yet
         if notes:
             interval_data["notes"] = notes  # type: ignore # Not in TypedDict yet
 
@@ -1587,7 +1595,8 @@ class HuckleberryAPI:
             end_timestamp: End of range (Unix timestamp in seconds)
 
         Returns:
-            List of diaper interval dicts with 'start', 'mode', and optional details
+            List of diaper interval dicts with 'start', 'mode', optional details,
+            and 'isPotty' flag.
         """
         events = []
         client = self._get_firestore_client()
@@ -1610,6 +1619,7 @@ class HuckleberryAPI:
                 event = {
                     "start": data["start"],
                     "mode": data.get("mode", "unknown"),
+                    "isPotty": data.get("isPotty", False),
                 }
                 # Add optional fields if present
                 if "pooColor" in data:
@@ -1642,6 +1652,7 @@ class HuckleberryAPI:
                     event = {
                         "start": entry_start,
                         "mode": entry.get("mode", "unknown"),
+                        "isPotty": entry.get("isPotty", False),
                     }
                     # Add optional fields if present
                     if "pooColor" in entry:

@@ -61,3 +61,14 @@ class TestDiaperTracking:
         data = diaper_doc.to_dict()
         assert data is not None
         assert data["prefs"]["lastDiaper"]["mode"] == "dry"
+
+    def test_log_potty_pee(self, api: HuckleberryAPI, child_uid: str) -> None:
+        """Test logging potty event with default how_it_happened."""
+        api.log_diaper(child_uid, mode="pee", pee_amount="little", is_potty=True)
+        time.sleep(1)
+
+        diaper_doc = api._get_firestore_client().collection("diaper").document(child_uid).get()
+        data = diaper_doc.to_dict()
+
+        assert data is not None
+        assert data["prefs"]["lastPotty"]["mode"] == "pee"
