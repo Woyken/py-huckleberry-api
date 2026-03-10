@@ -915,6 +915,7 @@ class HuckleberryAPI:
         amount: float,
         bottle_type: BottleType = "Formula",
         units: VolumeUnits = "ml",
+        start_time: datetime | None = None,
     ) -> None:
         """Log bottle feeding as instant event.
 
@@ -923,13 +924,14 @@ class HuckleberryAPI:
             bottle_type: Type of bottle contents ("Breast Milk", "Formula", "Cow Milk", etc.)
             amount: Amount fed in specified units
             units: Volume units ("ml" or "oz")
+            start_time: When the bottle feeding occurred; defaults to now
         """
         _LOGGER.info("Logging bottle feeding for child %s: %s %s of %s", child_uid, amount, units, bottle_type)
 
         client = await self._get_firestore_client()
         feed_ref = client.collection("feed").document(child_uid)
 
-        now_time = time.time()
+        now_time = start_time.timestamp() if start_time is not None else time.time()
         interval_id = f"{int(now_time * 1000)}-{uuid.uuid4().hex[:20]}"
 
         # Create interval document for bottle feeding
@@ -1069,6 +1071,7 @@ class HuckleberryAPI:
         notes: str = "",
         reaction: SolidsReaction | None = None,
         food_note_image: str | None = None,
+        start_time: datetime | None = None,
     ) -> None:
         """Log solid food feeding.
 
@@ -1078,6 +1081,7 @@ class HuckleberryAPI:
             notes: Optional notes about the meal
             reaction: Optional reaction - "LOVED", "MEH", "HATED", or "ALLERGIC"
             food_note_image: Optional Firebase Storage image filename
+            start_time: When the solids feeding occurred; defaults to now
         """
         if not foods:
             raise ValueError("At least one food is required")
@@ -1087,7 +1091,7 @@ class HuckleberryAPI:
         client = await self._get_firestore_client()
         feed_ref = client.collection("feed").document(child_uid)
 
-        now_time = time.time()
+        now_time = start_time.timestamp() if start_time is not None else time.time()
         interval_id = f"{int(now_time * 1000)}-{uuid.uuid4().hex[:20]}"
 
         foods_dict: dict[str, SolidsFoodEntry] = {}
@@ -1348,7 +1352,7 @@ class HuckleberryAPI:
         consistency: PooConsistency | None = None,
         diaper_rash: bool = False,
         notes: str | None = None,
-        timestamp: datetime | None = None,
+        start_time: datetime | None = None,
     ) -> None:
         """
         Log a diaper change.
@@ -1362,7 +1366,7 @@ class HuckleberryAPI:
             consistency: Poo consistency - 'solid', 'loose', 'runny', 'mucousy', 'hard', 'pebbles', 'diarrhea'
             diaper_rash: Whether baby has diaper rash
             notes: Optional notes about this diaper change
-            timestamp: When the diaper change occurred; defaults to now
+            start_time: When the diaper change occurred; defaults to now
         """
         await self._log_diaper_or_potty_event(
             child_uid,
@@ -1374,7 +1378,7 @@ class HuckleberryAPI:
             consistency=consistency,
             diaper_rash=diaper_rash,
             notes=notes,
-            timestamp=timestamp,
+            timestamp=start_time,
         )
 
     async def log_potty(
@@ -1387,6 +1391,7 @@ class HuckleberryAPI:
         color: PooColor | None = None,
         consistency: PooConsistency | None = None,
         notes: str | None = None,
+        start_time: datetime | None = None,
     ) -> None:
         """Log a potty event in the shared diaper tracker.
 
@@ -1399,6 +1404,7 @@ class HuckleberryAPI:
             color: Poo color - 'yellow', 'brown', 'black', 'green', 'red', 'gray'
             consistency: Poo consistency - 'solid', 'loose', 'runny', 'mucousy', 'hard', 'pebbles', 'diarrhea'
             notes: Optional notes about this potty event
+            start_time: When the potty event occurred; defaults to now
         """
         await self._log_diaper_or_potty_event(
             child_uid,
@@ -1411,6 +1417,7 @@ class HuckleberryAPI:
             notes=notes,
             is_potty=True,
             how_it_happened=how_it_happened,
+            timestamp=start_time,
         )
 
     async def log_growth(
@@ -1420,6 +1427,7 @@ class HuckleberryAPI:
         height: float | None = None,
         head: float | None = None,
         units: Literal["metric", "imperial"] = "metric",
+        timestamp: datetime | None = None,
     ) -> None:
         """
         Log growth measurements (weight, height, head circumference).
@@ -1430,6 +1438,7 @@ class HuckleberryAPI:
             height: Height measurement (cm for metric, inches for imperial)
             head: Head circumference (cm for metric, inches for imperial)
             units: 'metric' or 'imperial'
+            timestamp: When the measurement was taken; defaults to now
         """
         _LOGGER.info("Logging growth data for child %s", child_uid)
 
@@ -1439,7 +1448,7 @@ class HuckleberryAPI:
         client = await self._get_firestore_client()
         health_ref = client.collection("health").document(child_uid)
 
-        current_time = time.time()
+        current_time = timestamp.timestamp() if timestamp is not None else time.time()
 
         # Create interval ID (timestamp in ms + random suffix)
         interval_timestamp_ms = int(current_time * 1000)

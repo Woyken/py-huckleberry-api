@@ -90,7 +90,7 @@ class TestDiaperTracking:
         """Test that a custom timestamp is stored on the interval."""
         past_time = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
         unique_note = str(uuid.uuid4())
-        await api.log_diaper(child_uid, mode="pee", timestamp=past_time, notes=unique_note)
+        await api.log_diaper(child_uid, mode="pee", start_time=past_time, notes=unique_note)
         await asyncio.sleep(1)
 
         db = await api._get_firestore_client()
@@ -114,3 +114,23 @@ class TestDiaperTracking:
         assert docs
         start = docs[0].to_dict()["start"]
         assert before <= start <= after
+
+    async def test_log_potty_with_start_time(self, api: HuckleberryAPI, child_uid: str) -> None:
+        """Test that a custom start_time is stored on the potty interval."""
+        past_time = datetime(2024, 5, 20, 9, 0, 0, tzinfo=timezone.utc)
+        unique_note = str(uuid.uuid4())
+        await api.log_potty(
+            child_uid,
+            mode="pee",
+            how_it_happened="wentPotty",
+            notes=unique_note,
+            start_time=past_time,
+        )
+        await asyncio.sleep(1)
+
+        db = await api._get_firestore_client()
+        diaper_ref = db.collection("diaper").document(child_uid)
+        intervals = diaper_ref.collection("intervals").where("notes", "==", unique_note).stream()
+        docs = [doc async for doc in intervals]
+        assert len(docs) == 1, "Expected exactly one interval with the unique note"
+        assert docs[0].to_dict()["start"] == past_time.timestamp()

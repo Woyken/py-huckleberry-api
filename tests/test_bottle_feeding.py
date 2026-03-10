@@ -1,7 +1,9 @@
 """Bottle feeding tests for Huckleberry API."""
 
 import asyncio
+import random
 import time
+from datetime import datetime, timezone
 
 from google.cloud import firestore
 
@@ -191,3 +193,20 @@ class TestBottleFeeding:
         assert prefs["lastBottle"]["bottleType"] == "Breast Milk"
         assert prefs["lastBottle"]["bottleAmount"] == 110.0
         assert prefs["lastBottle"]["bottleUnits"] == "oz"
+
+    async def test_log_bottle_with_start_time(self, api: HuckleberryAPI, child_uid: str) -> None:
+        """Test that a custom start_time is stored on the bottle interval."""
+        past_time = datetime(2024, 6, 1, 14, 0, 0, tzinfo=timezone.utc)
+        unique_amount = round(random.uniform(0.1, 200.0), 2)
+        await api.log_bottle(child_uid, amount=unique_amount, bottle_type="Formula", units="ml", start_time=past_time)
+        await asyncio.sleep(2)
+
+        interval_data = await self._find_recent_bottle_interval(
+            api,
+            child_uid,
+            created_after=0,
+            bottle_type="Formula",
+            amount=unique_amount,
+            units="ml",
+        )
+        assert interval_data["start"] == past_time.timestamp()

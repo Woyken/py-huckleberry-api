@@ -2,6 +2,8 @@
 
 import asyncio
 import time
+import uuid
+from datetime import datetime, timezone
 
 from google.cloud import firestore
 
@@ -153,3 +155,25 @@ class TestSolidsFeeding:
 
         feed_entries = await api.list_feed_intervals(child_uid, start_ts, end_ts)
         assert any(entry.mode == "solids" for entry in feed_entries)
+
+    async def test_log_solids_with_start_time(self, api: HuckleberryAPI, child_uid: str) -> None:
+        """Test that a custom start_time is stored on the solids interval."""
+        curated = await api.list_solids_curated_foods()
+        assert curated
+
+        past_time = datetime(2024, 3, 10, 12, 0, 0, tzinfo=timezone.utc)
+        unique_note = str(uuid.uuid4())
+        await api.log_solids(
+            child_uid,
+            foods=[SolidsFoodReference(id=curated[0].id, source="curated", name=curated[0].name, amount="small")],
+            notes=unique_note,
+            start_time=past_time,
+        )
+        await asyncio.sleep(2)
+
+        db = await api._get_firestore_client()
+        intervals_ref = db.collection("feed").document(child_uid).collection("intervals")
+        intervals = intervals_ref.where("notes", "==", unique_note).stream()
+        docs = [doc async for doc in intervals]
+        assert len(docs) == 1, "Expected exactly one interval with the unique note"
+        assert docs[0].to_dict()["start"] == past_time.timestamp()
