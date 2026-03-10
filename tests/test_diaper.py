@@ -1,6 +1,8 @@
 """Diaper tracking tests for Huckleberry API."""
 
 import asyncio
+import uuid
+from datetime import datetime, timezone
 
 from huckleberry_api import HuckleberryAPI
 
@@ -83,3 +85,32 @@ class TestDiaperTracking:
         assert latest is not None
         assert latest["isPotty"] is True
         assert latest["howItHappened"] == "wentPotty"
+
+    async def test_log_diaper_with_timestamp(self, api: HuckleberryAPI, child_uid: str) -> None:
+        """Test that a custom timestamp is stored on the interval."""
+        past_time = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        unique_note = str(uuid.uuid4())
+        await api.log_diaper(child_uid, mode="pee", timestamp=past_time, notes=unique_note)
+        await asyncio.sleep(1)
+
+        db = await api._get_firestore_client()
+        diaper_ref = db.collection("diaper").document(child_uid)
+        intervals = diaper_ref.collection("intervals").where("notes", "==", unique_note).stream()
+        docs = [doc async for doc in intervals]
+        assert len(docs) == 1, "Expected exactly one interval with the unique note"
+        assert docs[0].to_dict()["start"] == past_time.timestamp()
+
+    async def test_log_diaper_without_timestamp_uses_current_time(self, api: HuckleberryAPI, child_uid: str) -> None:
+        """Test that omitting timestamp defaults to approximately now."""
+        before = datetime.now(timezone.utc).timestamp()
+        await api.log_diaper(child_uid, mode="dry")
+        after = datetime.now(timezone.utc).timestamp()
+        await asyncio.sleep(1)
+
+        db = await api._get_firestore_client()
+        diaper_ref = db.collection("diaper").document(child_uid)
+        intervals = diaper_ref.collection("intervals").order_by("start", direction="DESCENDING").limit(1).stream()
+        docs = [doc async for doc in intervals]
+        assert docs
+        start = docs[0].to_dict()["start"]
+        assert before <= start <= after

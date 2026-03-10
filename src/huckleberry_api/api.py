@@ -1251,6 +1251,7 @@ class HuckleberryAPI:
         notes: str | None = None,
         is_potty: bool = False,
         how_it_happened: PottyResult | None = None,
+        timestamp: datetime | None = None,
     ) -> None:
         """Write a diaper-collection diaper or potty event and update the matching prefs summary."""
         event_kind = "potty" if is_potty else "diaper"
@@ -1259,7 +1260,7 @@ class HuckleberryAPI:
         client = await self._get_firestore_client()
         diaper_ref = client.collection("diaper").document(child_uid)
 
-        current_time = time.time()
+        current_time = timestamp.timestamp() if timestamp is not None else time.time()
         current_offset = await self._get_timezone_offset_minutes()
 
         # Create interval ID (timestamp in ms + random suffix)
@@ -1347,6 +1348,7 @@ class HuckleberryAPI:
         consistency: PooConsistency | None = None,
         diaper_rash: bool = False,
         notes: str | None = None,
+        timestamp: datetime | None = None,
     ) -> None:
         """
         Log a diaper change.
@@ -1360,6 +1362,7 @@ class HuckleberryAPI:
             consistency: Poo consistency - 'solid', 'loose', 'runny', 'mucousy', 'hard', 'pebbles', 'diarrhea'
             diaper_rash: Whether baby has diaper rash
             notes: Optional notes about this diaper change
+            timestamp: When the diaper change occurred; defaults to now
         """
         await self._log_diaper_or_potty_event(
             child_uid,
@@ -1371,6 +1374,7 @@ class HuckleberryAPI:
             consistency=consistency,
             diaper_rash=diaper_rash,
             notes=notes,
+            timestamp=timestamp,
         )
 
     async def log_potty(
