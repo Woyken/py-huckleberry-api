@@ -1137,8 +1137,9 @@ class HuckleberryAPI:
         if is_potty:
             interval_data["isPotty"] = True  # type: ignore # Not in TypedDict yet
             if how_it_happened is None:
-                how_it_happened = "wentPotty"
-            interval_data["howItHappened"] = how_it_happened  # type: ignore # Not in TypedDict yet
+                interval_data["howItHappened"] = "wentPotty"  # type: ignore # Not in TypedDict yet
+        if how_it_happened:
+            interval_data["howItHappened"] = how_it_happened
         if notes:
             interval_data["notes"] = notes  # type: ignore # Not in TypedDict yet
 
