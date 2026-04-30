@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "huckleberry-api==0.4.2",
+    "huckleberry-api @ git+https://github.com/zenibako/py-huckleberry-api.git@v0.4.3",
 ]
 
 [dependency-groups]
