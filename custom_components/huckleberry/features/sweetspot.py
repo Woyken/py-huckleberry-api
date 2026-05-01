@@ -30,6 +30,7 @@ def _selected_sweetspot_time(sweetspot: FirebaseChildSweetspot | None) -> dateti
     if selected_nap_day is None:
         return None
 
+    selected_nap_day = int(float(selected_nap_day))
     if selected_nap_day >= len(sweetspot.sweetSpotTimes):
         return None
     selected_time = sweetspot.sweetSpotTimes[selected_nap_day]
