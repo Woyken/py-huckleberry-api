@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Number: TypeAlias = int | float
 JsonScalar: TypeAlias = str | int | float | bool | None
@@ -161,9 +161,24 @@ class FirebaseChildSweetspot(StrictModel):
     """Known payload for childs/{child_id}.sweetspot."""
 
     selectedNapDay: Number | None = None
-    sweetSpotTimes: dict[str, Number] | None = None
+    sweetSpotTimes: list[Number | None] | None = None
     sweetspotStrings: FirebaseChildSweetspotStrings | None = None
     uuid: str | None = None
+
+    @field_validator("sweetSpotTimes", mode="before")
+    @classmethod
+    def _normalize_sweetspot_times(cls, value: object) -> object:
+        """Firebase sends this as either a dict or a list; normalize to list."""
+        if isinstance(value, dict):
+            if not value:
+                return None
+            # Determine max index to size the list
+            max_idx = max(int(k) for k in value.keys())
+            result: list[Number | None] = [None] * (max_idx + 1)
+            for k, v in value.items():
+                result[int(k)] = v
+            return result
+        return value
 
 
 class FirebaseChildDocument(StrictModel):

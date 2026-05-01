@@ -7,6 +7,8 @@ from huckleberry_api.firebase_types import (
     FirebaseActivityPrefs,
     FirebaseActivityTimerData,
     FirebaseActivityTimerEntryData,
+    FirebaseChildDocument,
+    FirebaseChildSweetspot,
     FirebaseDiaperDocumentData,
     FirebaseFeedDocumentData,
     FirebaseGrowthData,
@@ -451,3 +453,41 @@ def test_activity_multi_container_model() -> None:
     assert len(model.data) == 2
     assert model.data["interval1"].mode == "bath"
     assert model.data["interval2"].mode == "storyTime"
+
+
+def test_child_document_accepts_list_shaped_sweetspot_times() -> None:
+    """sweetSpotTimes is a list (not dict) with None placeholders from Firebase."""
+    model = FirebaseChildDocument.model_validate(
+        {
+            "childsName": "Test Child",
+            "birthdate": "2023-01-01",
+            "gender": "M",
+            "sweetspot": {
+                "selectedNapDay": 3,
+                "sweetSpotTimes": [None, None, None, 1777506600.0, 1777504800.0],
+            },
+        }
+    )
+
+    assert model.sweetspot is not None
+    assert model.sweetspot.sweetSpotTimes == [None, None, None, 1777506600.0, 1777504800.0]
+    assert model.sweetspot.selectedNapDay == 3
+
+
+def test_child_document_normalizes_dict_shaped_sweetspot_times() -> None:
+    """sweetSpotTimes may also arrive as a sparse dict from Firebase."""
+    model = FirebaseChildDocument.model_validate(
+        {
+            "childsName": "Test Child",
+            "birthdate": "2023-01-01",
+            "gender": "M",
+            "sweetspot": {
+                "selectedNapDay": 4,
+                "sweetSpotTimes": {"3": 1777567800.0, "4": 1777566600.0},
+            },
+        }
+    )
+
+    assert model.sweetspot is not None
+    assert model.sweetspot.sweetSpotTimes == [None, None, None, 1777567800.0, 1777566600.0]
+    assert model.sweetspot.selectedNapDay == 4
