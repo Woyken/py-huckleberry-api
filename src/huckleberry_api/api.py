@@ -99,6 +99,22 @@ TDocumentData = TypeVar(
 
 _LOGGER = logging.getLogger(__name__)
 
+# Epoch seconds are ~1.8e9; values beyond this can only be milliseconds.
+_MS_EPOCH_THRESHOLD = 1e11
+
+
+def _ensure_epoch_seconds(value: float) -> float:
+    """Normalize an epoch value that may be in milliseconds to seconds.
+
+    The official iOS app writes feed `timer.feedStartTime` in milliseconds
+    (observed live, 2026-07), while library-started sessions store seconds.
+    History intervals must always use seconds; a millisecond value written
+    verbatim dates the entry ~56,000 years in the future and freezes the
+    official app's summary pages.
+    """
+    return value / 1000 if value > _MS_EPOCH_THRESHOLD else value
+
+
 _FEED_INTERVAL_ADAPTER = TypeAdapter(FirebaseFeedIntervalData)
 _HEALTH_ENTRY_ADAPTER = TypeAdapter(HealthDataEntry)
 _ACTIVITY_LAST_FIELD_BY_MODE: dict[ActivityMode, str] = {
@@ -946,8 +962,8 @@ class HuckleberryAPI:
             return
 
         now_time = time.time()
-        # timerStartTime is in seconds for feeding
-        timer_start_sec = float(timer_start)
+        # timerStartTime is in seconds for feeding (normalized defensively)
+        timer_start_sec = _ensure_epoch_seconds(float(timer_start))
 
         left_duration = timer.leftDuration or 0.0
         right_duration = timer.rightDuration or 0.0
@@ -965,7 +981,10 @@ class HuckleberryAPI:
         # Calculate total duration from accumulated durations
         total_duration = left_duration + right_duration
 
-        feed_start_time = timer.feedStartTime or timer_start_sec
+        # App-started sessions store feedStartTime in milliseconds.
+        feed_start_time = (
+            _ensure_epoch_seconds(float(timer.feedStartTime)) if timer.feedStartTime else timer_start_sec
+        )
 
         # Determine last side for history
         last_side_value = timer.activeSide or timer.lastSide or "right"
