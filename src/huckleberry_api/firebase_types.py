@@ -556,7 +556,9 @@ class FirebaseBottleFeedIntervalData(StrictModel):
     start: Number
     lastUpdated: Number | None = None
     bottleType: BottleType
-    amount: Number
+    # Live bottle rows can omit `amount` entirely while still carrying
+    # `bottleType` and `units`, when the feed was saved without a volume.
+    amount: Number | None = None
     units: VolumeUnits
     offset: Number
     end_offset: Number | None = None

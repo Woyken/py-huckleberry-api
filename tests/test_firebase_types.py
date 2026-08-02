@@ -1,5 +1,7 @@
 """Unit tests for strict Firebase schema models."""
 
+from pydantic import TypeAdapter
+
 from huckleberry_api.firebase_types import (
     FirebaseActivityDocumentData,
     FirebaseActivityIntervalData,
@@ -7,9 +9,11 @@ from huckleberry_api.firebase_types import (
     FirebaseActivityPrefs,
     FirebaseActivityTimerData,
     FirebaseActivityTimerEntryData,
+    FirebaseBottleFeedIntervalData,
     FirebaseChildDocument,
     FirebaseDiaperDocumentData,
     FirebaseFeedDocumentData,
+    FirebaseFeedIntervalData,
     FirebaseGrowthData,
     FirebaseLastActivityData,
     FirebaseLastPumpData,
@@ -136,6 +140,64 @@ def test_medication_model_accepts_live_app_ounce_units() -> None:
     )
 
     assert model.units == "oz"
+
+
+def test_bottle_feed_interval_accepts_missing_amount() -> None:
+    """Bottle rows saved without a volume omit `amount` entirely.
+
+    Payload copied from a live `feed/{child_uid}/intervals` document.
+    """
+    model = FirebaseBottleFeedIntervalData.model_validate(
+        {
+            "mode": "bottle",
+            "start": 1785513600.0,
+            "lastUpdated": 1785517038.669,
+            "bottleType": "Formula",
+            "units": "ml",
+            "offset": -60.0,
+        }
+    )
+
+    assert model.amount is None
+    assert model.units == "ml"
+    assert model.bottleType == "Formula"
+
+
+def test_feed_interval_union_resolves_bottle_without_amount() -> None:
+    """The union must still pick the bottle member when `amount` is absent.
+
+    This is the path `list_feed_intervals` takes, and where a required
+    `amount` surfaced: the row matched no union member, so the whole query
+    failed rather than just the one document.
+    """
+    model = TypeAdapter(FirebaseFeedIntervalData).validate_python(
+        {
+            "mode": "bottle",
+            "start": 1785513600.0,
+            "bottleType": "Formula",
+            "units": "ml",
+            "offset": -60.0,
+        }
+    )
+
+    assert isinstance(model, FirebaseBottleFeedIntervalData)
+    assert model.amount is None
+
+
+def test_bottle_feed_interval_still_accepts_an_amount() -> None:
+    """Making `amount` optional must not stop it being read when present."""
+    model = FirebaseBottleFeedIntervalData.model_validate(
+        {
+            "mode": "bottle",
+            "start": 1785513600.0,
+            "bottleType": "Breast Milk",
+            "amount": 60.0,
+            "units": "ml",
+            "offset": -60.0,
+        }
+    )
+
+    assert model.amount == 60.0
 
 
 def test_child_sweetspot_times_accepts_null_slots() -> None:
