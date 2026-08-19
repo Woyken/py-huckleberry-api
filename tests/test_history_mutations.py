@@ -38,7 +38,16 @@ class FakeDocumentReference:
 
     async def get(self, transaction=None) -> FakeSnapshot:
         del transaction
-        return self.client.documents[self.path]
+        snapshot = self.client.documents.get(self.path)
+        if snapshot is not None:
+            return snapshot
+        if len(self.path) == 2:
+            return FakeSnapshot(
+                self.path[-1],
+                {},
+                datetime(2026, 8, 18, 10, 0, tzinfo=timezone.utc),
+            )
+        raise KeyError(self.path)
 
 
 class FakeQuery:
@@ -118,15 +127,24 @@ class FakeCollectionReference(FakeQuery):
 class FakeTransaction:
     def __init__(self):
         self.operations: list[tuple[str, tuple[str, ...], dict[str, object] | None]] = []
+        self.options: list[tuple[tuple[str, ...], object]] = []
+        self.committed = False
 
     def set(self, reference: FakeDocumentReference, data: dict[str, object]) -> None:
         self.operations.append(("set", reference.path, deepcopy(data)))
 
-    def update(self, reference: FakeDocumentReference, data: dict[str, object]) -> None:
+    def update(self, reference: FakeDocumentReference, data: dict[str, object], option=None) -> None:
         self.operations.append(("update", reference.path, deepcopy(data)))
+        if option is not None:
+            self.options.append((reference.path, option))
 
-    def delete(self, reference: FakeDocumentReference) -> None:
+    def delete(self, reference: FakeDocumentReference, option=None) -> None:
         self.operations.append(("delete", reference.path, None))
+        if option is not None:
+            self.options.append((reference.path, option))
+
+    async def commit(self) -> None:
+        self.committed = True
 
 
 class FakeClient:
@@ -140,6 +158,14 @@ class FakeClient:
     def transaction(self) -> FakeTransaction:
         self.last_transaction = FakeTransaction()
         return self.last_transaction
+
+    def batch(self) -> FakeTransaction:
+        self.last_transaction = FakeTransaction()
+        return self.last_transaction
+
+    @staticmethod
+    def write_option(**kwargs):
+        return kwargs
 
 
 def make_api(monkeypatch: pytest.MonkeyPatch, client: FakeClient) -> HuckleberryAPI:
@@ -216,11 +242,10 @@ async def test_stale_reference_is_rejected_before_writes(monkeypatch: pytest.Mon
     with pytest.raises(HuckleberryRecordConflictError):
         await api.delete_sleep_interval("child", stale_reference)
 
-    assert client.last_transaction is not None
-    assert client.last_transaction.operations == []
+    assert client.last_transaction is None
 
 
-async def test_delete_repairs_last_sleep_in_same_transaction(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_delete_repairs_last_sleep_in_revision_guarded_batch(monkeypatch: pytest.MonkeyPatch) -> None:
     target_revision = datetime(2026, 8, 18, 12, 0, tzinfo=timezone.utc)
     documents = {
         ("sleep", "child", "intervals", "latest-id"): FakeSnapshot(
@@ -251,6 +276,11 @@ async def test_delete_repairs_last_sleep_in_same_transaction(monkeypatch: pytest
     )
     assert root_update is not None
     assert root_update["prefs.lastSleep"] == {"start": 100.0, "duration": 30.0, "offset": 240.0}
+    assert client.last_transaction.committed is True
+    assert {path for path, _option in client.last_transaction.options} == {
+        ("sleep", "child", "intervals", "latest-id"),
+        ("sleep", "child"),
+    }
 
 
 async def test_update_multi_bottle_preserves_container_and_repairs_cache(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -305,7 +335,7 @@ async def test_update_multi_bottle_preserves_container_and_repairs_cache(monkeyp
     assert client.last_transaction is not None
     operations = client.last_transaction.operations
     container_write = next(
-        data for operation, path, data in operations if operation == "set" and path[-1] == "multi-id"
+        data for operation, path, data in operations if operation == "update" and path[-1] == "multi-id"
     )
     assert container_write is not None
     container_entries = cast(dict[str, dict[str, object]], container_write["data"])
@@ -394,15 +424,15 @@ async def test_update_diaper_replaces_optional_fields(monkeypatch: pytest.Monkey
     interval_write = next(
         data
         for operation, path, data in client.last_transaction.operations
-        if operation == "set" and path[-1] == "diaper-id"
+        if operation == "update" and path[-1] == "diaper-id"
     )
     assert interval_write is not None
     assert interval_write["mode"] == "pee"
     assert interval_write["quantity"] == {"pee": 100.0}
-    assert "color" not in interval_write
-    assert "consistency" not in interval_write
-    assert "diaperRash" not in interval_write
-    assert "notes" not in interval_write
+    assert interval_write["color"] is firestore.DELETE_FIELD
+    assert interval_write["consistency"] is firestore.DELETE_FIELD
+    assert interval_write["diaperRash"] is firestore.DELETE_FIELD
+    assert interval_write["notes"] is firestore.DELETE_FIELD
 
 
 async def test_update_growth_replaces_measurements_and_units(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -446,15 +476,15 @@ async def test_update_growth_replaces_measurements_and_units(monkeypatch: pytest
     interval_write = next(
         data
         for operation, path, data in client.last_transaction.operations
-        if operation == "set" and path[-1] == "growth-id"
+        if operation == "update" and path[-1] == "growth-id"
     )
     assert interval_write is not None
     assert interval_write["weight"] == 12.0
     assert interval_write["weightUnits"] == "lbs.oz"
     assert interval_write["head"] == 15.0
     assert interval_write["headUnits"] == "hin"
-    assert "height" not in interval_write
-    assert "heightUnits" not in interval_write
+    assert interval_write["height"] is firestore.DELETE_FIELD
+    assert interval_write["heightUnits"] is firestore.DELETE_FIELD
 
 
 async def test_edit_validation_happens_before_firestore(monkeypatch: pytest.MonkeyPatch) -> None:

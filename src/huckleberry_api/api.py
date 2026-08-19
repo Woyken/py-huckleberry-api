@@ -15,7 +15,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import aiohttp
-from google.api_core.exceptions import GoogleAPICallError
+from google.api_core.exceptions import FailedPrecondition, GoogleAPICallError
 from google.auth.credentials import Credentials
 from google.cloud import firestore
 from google.cloud.firestore import DELETE_FIELD
@@ -2346,67 +2346,85 @@ class HuckleberryAPI:
         allowed_preference_kinds: tuple[HistoryPreferenceKind, ...],
         mutator: HistoryMutator,
     ) -> None:
-        """Atomically mutate one exact entry and repair its cached latest value."""
+        """Atomically mutate one exact entry and repair its cached latest value.
+
+        The batch is conditional on both the history document revision returned
+        to the caller and the child root document revision used to rebuild the
+        cached latest value. Concurrent history writes therefore fail closed.
+        """
         client = await self._get_firestore_client()
         root_ref = client.collection(collection_name).document(child_uid)
         target_ref = root_ref.collection(_HISTORY_SUBCOLLECTION[collection_name]).document(reference.document_id)
-        transaction = client.transaction()
+        target_doc, root_doc = await asyncio.gather(target_ref.get(), root_ref.get())
+        if not target_doc.exists:
+            raise HuckleberryRecordNotFoundError("Referenced history document no longer exists")
+        if not root_doc.exists or root_doc.update_time is None:
+            raise HuckleberryRecordReferenceError("History root document is unavailable")
+        self._validate_history_revision(target_doc, reference)
+        document_data = target_doc.to_dict()
+        if not document_data:
+            raise HuckleberryRecordNotFoundError("Referenced history document is empty")
 
-        @firestore.async_transactional
-        async def apply_mutation(transaction) -> None:
-            doc = await target_ref.get(transaction=transaction)
-            if not doc.exists:
-                raise HuckleberryRecordNotFoundError("Referenced history document no longer exists")
-            self._validate_history_revision(doc, reference)
-            document_data = doc.to_dict()
-            if not document_data:
-                raise HuckleberryRecordNotFoundError("Referenced history document is empty")
+        original = self._extract_history_entry(document_data, reference)
+        preference_kind = self._history_preference_kind(collection_name, original)
+        if preference_kind not in allowed_preference_kinds:
+            raise HuckleberryRecordReferenceError("Referenced history record has the wrong type")
 
-            original = self._extract_history_entry(document_data, reference)
-            preference_kind = self._history_preference_kind(collection_name, original)
-            if preference_kind not in allowed_preference_kinds:
-                raise HuckleberryRecordReferenceError("Referenced history record has the wrong type")
+        now = time.time()
+        replacement = mutator(deepcopy(original), now)
+        if replacement is not None:
+            replacement_kind = self._history_preference_kind(collection_name, replacement)
+            if replacement_kind != preference_kind:
+                raise HuckleberryRecordReferenceError("A history mutation cannot change the record type")
 
-            now = time.time()
-            replacement = mutator(deepcopy(original), now)
-            if replacement is not None:
-                replacement_kind = self._history_preference_kind(collection_name, replacement)
-                if replacement_kind != preference_kind:
-                    raise HuckleberryRecordReferenceError("A history mutation cannot change the record type")
+        latest = await self._find_latest_history_candidate(
+            collection_name=collection_name,
+            child_uid=child_uid,
+            preference_kind=preference_kind,
+            transaction=None,
+            target_reference=reference,
+            replacement=replacement,
+        )
 
-            latest = await self._find_latest_history_candidate(
-                collection_name=collection_name,
-                child_uid=child_uid,
-                preference_kind=preference_kind,
-                transaction=transaction,
-                target_reference=reference,
-                replacement=replacement,
-            )
-
-            updated_document = deepcopy(document_data)
-            if reference.entry_key is None:
-                if replacement is None:
-                    transaction.delete(target_ref)
-                else:
-                    transaction.set(target_ref, replacement)
+        batch = client.batch()
+        target_option = client.write_option(last_update_time=target_doc.update_time)
+        root_option = client.write_option(last_update_time=root_doc.update_time)
+        updated_document = deepcopy(document_data)
+        if reference.entry_key is None:
+            if replacement is None:
+                batch.delete(target_ref, option=target_option)
             else:
-                entries = updated_document.get("data")
-                if not isinstance(entries, dict):
-                    raise HuckleberryRecordReferenceError("Multi-entry history document has no data map")
-                if replacement is None:
-                    entries.pop(reference.entry_key, None)
-                else:
-                    entries[reference.entry_key] = replacement
-                if entries:
-                    updated_document["data"] = entries
-                    updated_document["lastUpdated"] = now
-                    transaction.set(target_ref, updated_document)
-                else:
-                    transaction.delete(target_ref)
+                field_updates = {
+                    **{field_name: DELETE_FIELD for field_name in original.keys() - replacement.keys()},
+                    **replacement,
+                }
+                batch.update(target_ref, field_updates, option=target_option)
+        else:
+            entries = updated_document.get("data")
+            if not isinstance(entries, dict):
+                raise HuckleberryRecordReferenceError("Multi-entry history document has no data map")
+            if replacement is None:
+                entries.pop(reference.entry_key, None)
+            else:
+                entries[reference.entry_key] = replacement
+            if entries:
+                batch.update(
+                    target_ref,
+                    {"data": entries, "lastUpdated": now},
+                    option=target_option,
+                )
+            else:
+                batch.delete(target_ref, option=target_option)
 
-            transaction.update(root_ref, self._history_preference_updates(preference_kind, latest, now))
-
-        await apply_mutation(transaction)
+        batch.update(
+            root_ref,
+            self._history_preference_updates(preference_kind, latest, now),
+            option=root_option,
+        )
+        try:
+            await batch.commit()
+        except FailedPrecondition as exc:
+            raise HuckleberryRecordConflictError("History changed while applying the mutation; fetch it again") from exc
 
     @staticmethod
     def _require_aware_datetime(value: datetime, field_name: str) -> float:
