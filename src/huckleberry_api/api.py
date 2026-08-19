@@ -7,6 +7,7 @@ import json
 import logging
 import time
 import uuid
+from copy import deepcopy
 from datetime import datetime
 from datetime import timezone as dt_timezone
 from typing import Callable, Literal, TypeVar, cast
@@ -37,15 +38,19 @@ from .firebase_types import (
     FirebaseCustomFoodTypeDocument,
     FirebaseDiaperData,
     FirebaseDiaperDocumentData,
+    FirebaseDiaperIntervalRecord,
     FirebaseDiaperMultiContainer,
     FirebaseDiaperQuantity,
     FirebaseFeedDocumentData,
     FirebaseFeedIntervalData,
+    FirebaseFeedIntervalRecord,
     FirebaseFeedMultiContainer,
     FirebaseFeedTimerData,
     FirebaseGrowthData,
     FirebaseHealthDocumentData,
+    FirebaseHealthEntryRecord,
     FirebaseHealthMultiContainer,
+    FirebaseHistoryRecordReference,
     FirebaseLastActivityData,
     FirebaseLastBottleData,
     FirebaseLastDiaperData,
@@ -62,6 +67,7 @@ from .firebase_types import (
     FirebaseSleepDetails,
     FirebaseSleepDocumentData,
     FirebaseSleepIntervalData,
+    FirebaseSleepIntervalRecord,
     FirebaseSleepLocations,
     FirebaseSleepMultiContainer,
     FirebaseSleepTimerData,
@@ -80,10 +86,36 @@ from .firebase_types import (
     VolumeUnits,
     to_firebase_dict,
 )
+from .exceptions import (
+    HuckleberryRecordConflictError,
+    HuckleberryRecordNotFoundError,
+    HuckleberryRecordReferenceError,
+)
 from .models import SolidsFoodReference
 
 CURATED_FOODS_BUCKET = "simpleintervals.appspot.com"
 CURATED_FOODS_OBJECT = "foods/fooddb.json"
+
+type HistoryCollection = Literal["sleep", "feed", "diaper", "health"]
+type HistoryPreferenceKind = Literal[
+    "sleep",
+    "nursing",
+    "bottle",
+    "solids",
+    "diaper",
+    "potty",
+    "growth",
+]
+type RawHistoryData = dict[str, object]
+type HistoryCandidate = tuple[RawHistoryData, str, str | None]
+type HistoryMutator = Callable[[RawHistoryData, float], RawHistoryData | None]
+
+_HISTORY_SUBCOLLECTION: dict[HistoryCollection, Literal["intervals", "data"]] = {
+    "sleep": "intervals",
+    "feed": "intervals",
+    "diaper": "intervals",
+    "health": "data",
+}
 
 # Type variable for listener callback typing
 TDocumentData = TypeVar(
@@ -344,6 +376,24 @@ class HuckleberryAPI:
         if offset is None:
             return 0.0
         return -offset.total_seconds() / 60
+
+    def _get_timezone_offset_minutes_at(self, timestamp: float) -> float:
+        """Return the Huckleberry offset convention for a specific instant."""
+        offset = datetime.fromtimestamp(timestamp, self._timezone).utcoffset()
+        if offset is None:
+            return 0.0
+        return -offset.total_seconds() / 60
+
+    @staticmethod
+    def _history_record_reference(doc, entry_key: str | None = None) -> FirebaseHistoryRecordReference:
+        """Build an optimistic-concurrency reference from a Firestore snapshot."""
+        if doc.update_time is None:
+            raise HuckleberryRecordReferenceError("History document has no update revision")
+        return FirebaseHistoryRecordReference(
+            document_id=doc.id,
+            entry_key=entry_key,
+            revision=doc.update_time.isoformat(),
+        )
 
     async def get_child(self, child_uid: str) -> FirebaseChildDocument | None:
         """Get a single child document by child UID."""
@@ -2005,14 +2055,649 @@ class HuckleberryAPI:
             _LOGGER.error("Failed to get growth data: %s", err)
             return None
 
-    async def list_sleep_intervals(
+    @staticmethod
+    def _validate_history_revision(doc, reference: FirebaseHistoryRecordReference) -> None:
+        """Reject stale references before changing a history document."""
+        if doc.update_time is None:
+            raise HuckleberryRecordReferenceError("History document has no update revision")
+        if doc.update_time.isoformat() != reference.revision:
+            raise HuckleberryRecordConflictError("History record changed after it was read; list it again")
+
+    @staticmethod
+    def _extract_history_entry(
+        document_data: RawHistoryData,
+        reference: FirebaseHistoryRecordReference,
+    ) -> RawHistoryData:
+        """Resolve a regular or multi-container entry from one document snapshot."""
+        is_multi = document_data.get("multi") is True
+        if reference.entry_key is None:
+            if is_multi:
+                raise HuckleberryRecordReferenceError("Regular record reference points to a multi-entry document")
+            return deepcopy(document_data)
+
+        if not is_multi:
+            raise HuckleberryRecordReferenceError("Multi-entry reference points to a regular document")
+
+        entries = document_data.get("data")
+        if not isinstance(entries, dict):
+            raise HuckleberryRecordReferenceError("Multi-entry history document has no data map")
+        entries = cast(dict[str, object], entries)
+        entry = entries.get(reference.entry_key)
+        if not isinstance(entry, dict):
+            raise HuckleberryRecordNotFoundError("Referenced history entry no longer exists")
+        return deepcopy(cast(RawHistoryData, entry))
+
+    async def _get_history_record_data(
+        self,
+        collection_name: HistoryCollection,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+    ) -> RawHistoryData:
+        """Read one exact history entry and verify its optimistic revision."""
+        client = await self._get_firestore_client()
+        document_ref = (
+            client.collection(collection_name)
+            .document(child_uid)
+            .collection(_HISTORY_SUBCOLLECTION[collection_name])
+            .document(reference.document_id)
+        )
+        doc = await document_ref.get()
+        if not doc.exists:
+            raise HuckleberryRecordNotFoundError("Referenced history document no longer exists")
+        self._validate_history_revision(doc, reference)
+        document_data = doc.to_dict()
+        if not document_data:
+            raise HuckleberryRecordNotFoundError("Referenced history document is empty")
+        return self._extract_history_entry(document_data, reference)
+
+    async def get_sleep_interval_record(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+    ) -> FirebaseSleepIntervalRecord:
+        """Read one exact sleep record, rejecting a stale reference."""
+        data = await self._get_history_record_data("sleep", child_uid, reference)
+        return FirebaseSleepIntervalRecord(reference=reference, data=FirebaseSleepIntervalData.model_validate(data))
+
+    async def get_feed_interval_record(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+    ) -> FirebaseFeedIntervalRecord:
+        """Read one exact feed record, rejecting a stale reference."""
+        data = await self._get_history_record_data("feed", child_uid, reference)
+        return FirebaseFeedIntervalRecord(reference=reference, data=_FEED_INTERVAL_ADAPTER.validate_python(data))
+
+    async def get_diaper_interval_record(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+    ) -> FirebaseDiaperIntervalRecord:
+        """Read one exact diaper record, rejecting a stale reference."""
+        data = await self._get_history_record_data("diaper", child_uid, reference)
+        return FirebaseDiaperIntervalRecord(reference=reference, data=FirebaseDiaperData.model_validate(data))
+
+    async def get_health_entry_record(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+    ) -> FirebaseHealthEntryRecord:
+        """Read one exact health record, rejecting a stale reference."""
+        data = await self._get_history_record_data("health", child_uid, reference)
+        return FirebaseHealthEntryRecord(reference=reference, data=_HEALTH_ENTRY_ADAPTER.validate_python(data))
+
+    @staticmethod
+    def _history_preference_kind(
+        collection_name: HistoryCollection,
+        entry: RawHistoryData,
+    ) -> HistoryPreferenceKind:
+        """Map a history payload to the cached preference it controls."""
+        if collection_name == "sleep":
+            return "sleep"
+        if collection_name == "feed":
+            mode = entry.get("mode")
+            if mode == "breast":
+                return "nursing"
+            if mode == "bottle":
+                return "bottle"
+            if mode == "solids":
+                return "solids"
+            raise HuckleberryRecordReferenceError("Referenced feed record has an unsupported mode")
+        if collection_name == "diaper":
+            return "potty" if entry.get("isPotty") is True else "diaper"
+        if entry.get("mode") == "growth":
+            return "growth"
+        raise HuckleberryRecordReferenceError("Referenced health record is not a growth entry")
+
+    def _candidate_matches_preference(
+        self,
+        collection_name: HistoryCollection,
+        preference_kind: HistoryPreferenceKind,
+        entry: RawHistoryData,
+    ) -> bool:
+        try:
+            return self._history_preference_kind(collection_name, entry) == preference_kind
+        except HuckleberryRecordReferenceError:
+            return False
+
+    async def _find_latest_history_candidate(
+        self,
+        *,
+        collection_name: HistoryCollection,
+        child_uid: str,
+        preference_kind: HistoryPreferenceKind,
+        transaction,
+        target_reference: FirebaseHistoryRecordReference,
+        replacement: RawHistoryData | None,
+    ) -> HistoryCandidate | None:
+        """Find the latest matching entry while logically applying one pending mutation."""
+        client = await self._get_firestore_client()
+        subcollection = (
+            client.collection(collection_name).document(child_uid).collection(_HISTORY_SUBCOLLECTION[collection_name])
+        )
+        latest: HistoryCandidate | None = None
+
+        def consider(entry: RawHistoryData, document_id: str, entry_key: str | None) -> None:
+            nonlocal latest
+            if not self._candidate_matches_preference(collection_name, preference_kind, entry):
+                return
+            start = entry.get("start")
+            if not isinstance(start, int | float):
+                return
+            if latest is None:
+                latest = (deepcopy(entry), document_id, entry_key)
+                return
+            latest_start = latest[0].get("start")
+            if not isinstance(latest_start, int | float) or float(start) > float(latest_start):
+                latest = (deepcopy(entry), document_id, entry_key)
+
+        if replacement is not None:
+            consider(replacement, target_reference.document_id, target_reference.entry_key)
+
+        regular_docs = subcollection.order_by("start", direction=firestore.Query.DESCENDING).stream(
+            transaction=transaction
+        )
+        async for doc in regular_docs:
+            if doc.id == target_reference.document_id and target_reference.entry_key is None:
+                continue
+            data = doc.to_dict()
+            if not data or data.get("multi") is True:
+                continue
+            if self._candidate_matches_preference(collection_name, preference_kind, data):
+                consider(data, doc.id, None)
+                break
+
+        multi_docs = subcollection.where(filter=firestore.FieldFilter("multi", "==", True)).stream(
+            transaction=transaction
+        )
+        async for doc in multi_docs:
+            data = doc.to_dict()
+            entries = data.get("data") if data else None
+            if not isinstance(entries, dict):
+                continue
+            for entry_key, entry in entries.items():
+                if (
+                    doc.id == target_reference.document_id
+                    and target_reference.entry_key is not None
+                    and entry_key == target_reference.entry_key
+                ):
+                    continue
+                if isinstance(entry, dict):
+                    consider(entry, doc.id, entry_key)
+
+        return latest
+
+    @staticmethod
+    def _history_preference_updates(
+        preference_kind: HistoryPreferenceKind,
+        latest: HistoryCandidate | None,
+        now: float,
+    ) -> dict[str, object]:
+        """Build the root-document cache update for one history category."""
+        updates: dict[str, object] = {
+            "prefs.timestamp": {"seconds": now},
+            "prefs.local_timestamp": now,
+        }
+        if latest is None:
+            field_by_kind = {
+                "sleep": "prefs.lastSleep",
+                "nursing": "prefs.lastNursing",
+                "bottle": "prefs.lastBottle",
+                "solids": "prefs.lastSolid",
+                "diaper": "prefs.lastDiaper",
+                "potty": "prefs.lastPotty",
+                "growth": "prefs.lastGrowthEntry",
+            }
+            updates[field_by_kind[preference_kind]] = DELETE_FIELD
+            if preference_kind == "nursing":
+                updates["prefs.lastSide"] = DELETE_FIELD
+            return updates
+
+        entry, document_id, entry_key = latest
+        if preference_kind == "sleep":
+            interval = FirebaseSleepIntervalData.model_validate(entry)
+            updates["prefs.lastSleep"] = to_firebase_dict(
+                FirebaseLastSleepData(start=interval.start, duration=interval.duration, offset=interval.offset)
+            )
+        elif preference_kind == "nursing":
+            interval = FirebaseBreastFeedIntervalData.model_validate(entry)
+            left_duration = interval.leftDuration or 0.0
+            right_duration = interval.rightDuration or 0.0
+            updates["prefs.lastNursing"] = to_firebase_dict(
+                FirebaseLastNursingData(
+                    mode="breast",
+                    start=interval.start,
+                    duration=float(left_duration) + float(right_duration),
+                    leftDuration=left_duration,
+                    rightDuration=right_duration,
+                    offset=interval.offset,
+                )
+            )
+            updates["prefs.lastSide"] = to_firebase_dict(
+                FirebaseLastSideData(start=interval.start, lastSide=interval.lastSide)
+            )
+        elif preference_kind == "bottle":
+            interval = FirebaseBottleFeedIntervalData.model_validate(entry)
+            updates["prefs.lastBottle"] = to_firebase_dict(
+                FirebaseLastBottleData(
+                    mode="bottle",
+                    start=interval.start,
+                    bottleType=interval.bottleType,
+                    bottleAmount=interval.amount,
+                    bottleUnits=interval.units,
+                    offset=interval.offset,
+                )
+            )
+        elif preference_kind == "solids":
+            interval = FirebaseSolidsFeedIntervalData.model_validate(entry)
+            updates["prefs.lastSolid"] = to_firebase_dict(
+                FirebaseLastSolidData(
+                    mode="solids",
+                    start=interval.start,
+                    foods=interval.foods,
+                    reactions=interval.reactions,
+                    notes=interval.notes,
+                    offset=interval.offset,
+                )
+            )
+        elif preference_kind == "diaper":
+            interval = FirebaseDiaperData.model_validate(entry)
+            updates["prefs.lastDiaper"] = to_firebase_dict(
+                FirebaseLastDiaperData(start=interval.start, mode=interval.mode, offset=interval.offset)
+            )
+        elif preference_kind == "potty":
+            interval = FirebaseDiaperData.model_validate(entry)
+            updates["prefs.lastPotty"] = to_firebase_dict(
+                FirebaseLastPottyData(start=interval.start, mode=interval.mode, offset=interval.offset)
+            )
+        else:
+            interval = FirebaseGrowthData.model_validate(entry)
+            growth_data = interval.model_dump(by_alias=True, exclude_none=True)
+            growth_data["_id"] = interval.id_ or entry_key or document_id
+            updates["prefs.lastGrowthEntry"] = growth_data
+        return updates
+
+    async def _mutate_history_record(
+        self,
+        *,
+        collection_name: HistoryCollection,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+        allowed_preference_kinds: tuple[HistoryPreferenceKind, ...],
+        mutator: HistoryMutator,
+    ) -> None:
+        """Atomically mutate one exact entry and repair its cached latest value."""
+        client = await self._get_firestore_client()
+        root_ref = client.collection(collection_name).document(child_uid)
+        target_ref = root_ref.collection(_HISTORY_SUBCOLLECTION[collection_name]).document(reference.document_id)
+        transaction = client.transaction()
+
+        @firestore.async_transactional
+        async def apply_mutation(transaction) -> None:
+            doc = await target_ref.get(transaction=transaction)
+            if not doc.exists:
+                raise HuckleberryRecordNotFoundError("Referenced history document no longer exists")
+            self._validate_history_revision(doc, reference)
+            document_data = doc.to_dict()
+            if not document_data:
+                raise HuckleberryRecordNotFoundError("Referenced history document is empty")
+
+            original = self._extract_history_entry(document_data, reference)
+            preference_kind = self._history_preference_kind(collection_name, original)
+            if preference_kind not in allowed_preference_kinds:
+                raise HuckleberryRecordReferenceError("Referenced history record has the wrong type")
+
+            now = time.time()
+            replacement = mutator(deepcopy(original), now)
+            if replacement is not None:
+                replacement_kind = self._history_preference_kind(collection_name, replacement)
+                if replacement_kind != preference_kind:
+                    raise HuckleberryRecordReferenceError("A history mutation cannot change the record type")
+
+            latest = await self._find_latest_history_candidate(
+                collection_name=collection_name,
+                child_uid=child_uid,
+                preference_kind=preference_kind,
+                transaction=transaction,
+                target_reference=reference,
+                replacement=replacement,
+            )
+
+            updated_document = deepcopy(document_data)
+            if reference.entry_key is None:
+                if replacement is None:
+                    transaction.delete(target_ref)
+                else:
+                    transaction.set(target_ref, replacement)
+            else:
+                entries = updated_document.get("data")
+                if not isinstance(entries, dict):
+                    raise HuckleberryRecordReferenceError("Multi-entry history document has no data map")
+                if replacement is None:
+                    entries.pop(reference.entry_key, None)
+                else:
+                    entries[reference.entry_key] = replacement
+                if entries:
+                    updated_document["data"] = entries
+                    updated_document["lastUpdated"] = now
+                    transaction.set(target_ref, updated_document)
+                else:
+                    transaction.delete(target_ref)
+
+            transaction.update(root_ref, self._history_preference_updates(preference_kind, latest, now))
+
+        await apply_mutation(transaction)
+
+    @staticmethod
+    def _require_aware_datetime(value: datetime, field_name: str) -> float:
+        """Convert an aware datetime to seconds, rejecting host-local ambiguity."""
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError(f"{field_name} must include a timezone")
+        return value.timestamp()
+
+    async def update_sleep_interval(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+        *,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> None:
+        """Replace the timestamps of one sleep record if its revision still matches."""
+        start = self._require_aware_datetime(start_time, "start_time")
+        end = self._require_aware_datetime(end_time, "end_time")
+        if end <= start:
+            raise ValueError("end_time must be after start_time")
+
+        def mutate(entry: RawHistoryData, now: float) -> RawHistoryData:
+            FirebaseSleepIntervalData.model_validate(entry)
+            entry.update(
+                {
+                    "start": start,
+                    "duration": end - start,
+                    "offset": self._get_timezone_offset_minutes_at(start),
+                    "end_offset": self._get_timezone_offset_minutes_at(end),
+                    "lastUpdated": now,
+                }
+            )
+            FirebaseSleepIntervalData.model_validate(entry)
+            return entry
+
+        await self._mutate_history_record(
+            collection_name="sleep",
+            child_uid=child_uid,
+            reference=reference,
+            allowed_preference_kinds=("sleep",),
+            mutator=mutate,
+        )
+
+    async def delete_sleep_interval(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+    ) -> None:
+        """Delete one sleep record if its revision still matches."""
+        await self._mutate_history_record(
+            collection_name="sleep",
+            child_uid=child_uid,
+            reference=reference,
+            allowed_preference_kinds=("sleep",),
+            mutator=lambda _entry, _now: None,
+        )
+
+    async def update_nursing_interval(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+        *,
+        start_time: datetime,
+        left_duration: float,
+        right_duration: float,
+        last_side: Literal["left", "right"],
+    ) -> None:
+        """Replace one nursing record if its revision still matches."""
+        start = self._require_aware_datetime(start_time, "start_time")
+        if left_duration < 0 or right_duration < 0 or left_duration + right_duration <= 0:
+            raise ValueError("Nursing durations must be non-negative with a positive total")
+
+        def mutate(entry: RawHistoryData, now: float) -> RawHistoryData:
+            FirebaseBreastFeedIntervalData.model_validate(entry)
+            end = start + left_duration + right_duration
+            entry.update(
+                {
+                    "start": start,
+                    "leftDuration": left_duration,
+                    "rightDuration": right_duration,
+                    "lastSide": last_side,
+                    "offset": self._get_timezone_offset_minutes_at(start),
+                    "end_offset": self._get_timezone_offset_minutes_at(end),
+                    "lastUpdated": now,
+                }
+            )
+            FirebaseBreastFeedIntervalData.model_validate(entry)
+            return entry
+
+        await self._mutate_history_record(
+            collection_name="feed",
+            child_uid=child_uid,
+            reference=reference,
+            allowed_preference_kinds=("nursing",),
+            mutator=mutate,
+        )
+
+    async def update_bottle_interval(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+        *,
+        start_time: datetime,
+        amount: float,
+        bottle_type: BottleType,
+        units: VolumeUnits,
+    ) -> None:
+        """Replace one bottle record if its revision still matches."""
+        start = self._require_aware_datetime(start_time, "start_time")
+        if amount <= 0:
+            raise ValueError("amount must be positive")
+
+        def mutate(entry: RawHistoryData, now: float) -> RawHistoryData:
+            FirebaseBottleFeedIntervalData.model_validate(entry)
+            entry.update(
+                {
+                    "start": start,
+                    "amount": amount,
+                    "bottleType": bottle_type,
+                    "units": units,
+                    "offset": self._get_timezone_offset_minutes_at(start),
+                    "end_offset": self._get_timezone_offset_minutes_at(start),
+                    "lastUpdated": now,
+                }
+            )
+            FirebaseBottleFeedIntervalData.model_validate(entry)
+            return entry
+
+        await self._mutate_history_record(
+            collection_name="feed",
+            child_uid=child_uid,
+            reference=reference,
+            allowed_preference_kinds=("bottle",),
+            mutator=mutate,
+        )
+
+    async def delete_feed_interval(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+    ) -> None:
+        """Delete one nursing, bottle, or solids record if its revision still matches."""
+        await self._mutate_history_record(
+            collection_name="feed",
+            child_uid=child_uid,
+            reference=reference,
+            allowed_preference_kinds=("nursing", "bottle", "solids"),
+            mutator=lambda _entry, _now: None,
+        )
+
+    async def update_diaper_interval(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+        *,
+        start_time: datetime,
+        mode: DiaperMode,
+        pee_amount: Literal["little", "medium", "big"] | None = None,
+        poo_amount: Literal["little", "medium", "big"] | None = None,
+        color: PooColor | None = None,
+        consistency: PooConsistency | None = None,
+        diaper_rash: bool = False,
+        notes: str | None = None,
+    ) -> None:
+        """Replace one diaper record if its revision still matches."""
+        start = self._require_aware_datetime(start_time, "start_time")
+        amount_map = {"little": 0.0, "medium": 50.0, "big": 100.0}
+
+        def mutate(entry: RawHistoryData, now: float) -> RawHistoryData:
+            FirebaseDiaperData.model_validate(entry)
+            quantity: dict[str, float] = {}
+            if pee_amount is not None:
+                quantity["pee"] = amount_map[pee_amount]
+            if poo_amount is not None:
+                quantity["poo"] = amount_map[poo_amount]
+            entry.update(
+                {
+                    "start": start,
+                    "mode": mode,
+                    "offset": self._get_timezone_offset_minutes_at(start),
+                    "lastUpdated": now,
+                }
+            )
+            optional_values: dict[str, object | None] = {
+                "quantity": quantity or None,
+                "color": color,
+                "consistency": consistency,
+                "diaperRash": True if diaper_rash else None,
+                "notes": notes,
+            }
+            for field_name, value in optional_values.items():
+                if value is None:
+                    entry.pop(field_name, None)
+                else:
+                    entry[field_name] = value
+            FirebaseDiaperData.model_validate(entry)
+            return entry
+
+        await self._mutate_history_record(
+            collection_name="diaper",
+            child_uid=child_uid,
+            reference=reference,
+            allowed_preference_kinds=("diaper",),
+            mutator=mutate,
+        )
+
+    async def delete_diaper_interval(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+    ) -> None:
+        """Delete one diaper or potty record if its revision still matches."""
+        await self._mutate_history_record(
+            collection_name="diaper",
+            child_uid=child_uid,
+            reference=reference,
+            allowed_preference_kinds=("diaper", "potty"),
+            mutator=lambda _entry, _now: None,
+        )
+
+    async def update_growth_entry(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+        *,
+        start_time: datetime,
+        weight: float | None = None,
+        height: float | None = None,
+        head: float | None = None,
+        units: Literal["metric", "imperial"] = "metric",
+    ) -> None:
+        """Replace one growth record if its revision still matches."""
+        start = self._require_aware_datetime(start_time, "start_time")
+        measurements = [value for value in (weight, height, head) if value is not None]
+        if not measurements or any(value <= 0 for value in measurements):
+            raise ValueError("At least one positive growth measurement is required")
+
+        def mutate(entry: RawHistoryData, now: float) -> RawHistoryData:
+            FirebaseGrowthData.model_validate(entry)
+            for field_name in ("weight", "weightUnits", "height", "heightUnits", "head", "headUnits"):
+                entry.pop(field_name, None)
+            entry.update(
+                {
+                    "start": start,
+                    "offset": self._get_timezone_offset_minutes_at(start),
+                    "lastUpdated": now,
+                }
+            )
+            if weight is not None:
+                entry["weight"] = weight
+                entry["weightUnits"] = "kg" if units == "metric" else "lbs.oz"
+            if height is not None:
+                entry["height"] = height
+                entry["heightUnits"] = "cm" if units == "metric" else "ft.in"
+            if head is not None:
+                entry["head"] = head
+                entry["headUnits"] = "hcm" if units == "metric" else "hin"
+            FirebaseGrowthData.model_validate(entry)
+            return entry
+
+        await self._mutate_history_record(
+            collection_name="health",
+            child_uid=child_uid,
+            reference=reference,
+            allowed_preference_kinds=("growth",),
+            mutator=mutate,
+        )
+
+    async def delete_growth_entry(
+        self,
+        child_uid: str,
+        reference: FirebaseHistoryRecordReference,
+    ) -> None:
+        """Delete one growth record if its revision still matches."""
+        await self._mutate_history_record(
+            collection_name="health",
+            child_uid=child_uid,
+            reference=reference,
+            allowed_preference_kinds=("growth",),
+            mutator=lambda _entry, _now: None,
+        )
+
+    async def list_sleep_interval_records(
         self,
         child_uid: str,
         start_time: datetime,
         end_time: datetime,
-    ) -> list[FirebaseSleepIntervalData]:
+    ) -> list[FirebaseSleepIntervalRecord]:
         """
-        Fetch sleep intervals from Firestore for a date range.
+        Fetch sleep intervals with stable record references for a date range.
 
         Args:
             child_uid: Child unique identifier
@@ -2020,9 +2705,9 @@ class HuckleberryAPI:
             end_time: End of range
 
         Returns:
-            List of Firebase-validated sleep interval entries
+            List of validated sleep records with optimistic-concurrency references
         """
-        events: list[FirebaseSleepIntervalData] = []
+        records: list[FirebaseSleepIntervalRecord] = []
         start_timestamp, end_timestamp = start_time.timestamp(), end_time.timestamp()
         client = await self._get_firestore_client()
         sleep_ref = client.collection("sleep").document(child_uid)
@@ -2043,7 +2728,12 @@ class HuckleberryAPI:
                     continue  # Skip multi-entry docs from this query
 
                 interval = FirebaseSleepIntervalData.model_validate(data)
-                events.append(interval)
+                records.append(
+                    FirebaseSleepIntervalRecord(
+                        reference=self._history_record_reference(doc),
+                        data=interval,
+                    )
+                )
 
             # Query 2: Get multi-entry documents (can't filter by nested start field)
             multi_docs = intervals_ref.where(filter=firestore.FieldFilter("multi", "==", True)).stream()
@@ -2056,26 +2746,41 @@ class HuckleberryAPI:
                 container = FirebaseSleepMultiContainer.model_validate(data)
 
                 # Iterate through batched entries and filter by date
-                for entry in container.data.values():
+                for entry_key, entry in container.data.items():
                     entry_start = entry.start
                     if not (start_timestamp <= entry_start < end_timestamp):
                         continue
 
-                    events.append(entry)
+                    records.append(
+                        FirebaseSleepIntervalRecord(
+                            reference=self._history_record_reference(doc, entry_key),
+                            data=entry,
+                        )
+                    )
 
         except (GoogleAPICallError, ValidationError) as err:
             _LOGGER.error("Error fetching sleep intervals: %s", err)
 
-        return events
+        return records
 
-    async def list_feed_intervals(
+    async def list_sleep_intervals(
         self,
         child_uid: str,
         start_time: datetime,
         end_time: datetime,
-    ) -> list[FirebaseFeedIntervalData]:
+    ) -> list[FirebaseSleepIntervalData]:
+        """Fetch sleep interval payloads for a date range."""
+        records = await self.list_sleep_interval_records(child_uid, start_time, end_time)
+        return [record.data for record in records]
+
+    async def list_feed_interval_records(
+        self,
+        child_uid: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[FirebaseFeedIntervalRecord]:
         """
-        Fetch feeding intervals from Firestore for a date range.
+        Fetch feeding intervals with stable record references for a date range.
 
         Args:
             child_uid: Child unique identifier
@@ -2083,9 +2788,9 @@ class HuckleberryAPI:
             end_time: End of range
 
         Returns:
-            List of Firebase-validated feed interval entries
+            List of validated feed records with optimistic-concurrency references
         """
-        events: list[FirebaseFeedIntervalData] = []
+        records: list[FirebaseFeedIntervalRecord] = []
         start_timestamp, end_timestamp = start_time.timestamp(), end_time.timestamp()
         client = await self._get_firestore_client()
         feed_ref = client.collection("feed").document(child_uid)
@@ -2110,7 +2815,12 @@ class HuckleberryAPI:
                 if feed_mode is None:
                     continue
 
-                events.append(interval)
+                records.append(
+                    FirebaseFeedIntervalRecord(
+                        reference=self._history_record_reference(doc),
+                        data=interval,
+                    )
+                )
 
             # Query 2: Get multi-entry documents (can't filter by nested start field)
             multi_docs = intervals_ref.where(filter=firestore.FieldFilter("multi", "==", True)).stream()
@@ -2123,7 +2833,7 @@ class HuckleberryAPI:
                 container = FirebaseFeedMultiContainer.model_validate(data)
 
                 # Iterate through batched entries and filter by date
-                for entry in container.data.values():
+                for entry_key, entry in container.data.items():
                     entry_start = entry.start
                     if not (start_timestamp <= entry_start < end_timestamp):
                         continue
@@ -2132,21 +2842,36 @@ class HuckleberryAPI:
                     if feed_mode is None:
                         continue
 
-                    events.append(entry)
+                    records.append(
+                        FirebaseFeedIntervalRecord(
+                            reference=self._history_record_reference(doc, entry_key),
+                            data=entry,
+                        )
+                    )
 
         except (GoogleAPICallError, ValidationError) as err:
             _LOGGER.error("Error fetching feed intervals: %s", err)
 
-        return events
+        return records
 
-    async def list_diaper_intervals(
+    async def list_feed_intervals(
         self,
         child_uid: str,
         start_time: datetime,
         end_time: datetime,
-    ) -> list[FirebaseDiaperData]:
+    ) -> list[FirebaseFeedIntervalData]:
+        """Fetch feed interval payloads for a date range."""
+        records = await self.list_feed_interval_records(child_uid, start_time, end_time)
+        return [record.data for record in records]
+
+    async def list_diaper_interval_records(
+        self,
+        child_uid: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[FirebaseDiaperIntervalRecord]:
         """
-        Fetch diaper intervals from Firestore for a date range.
+        Fetch diaper intervals with stable record references for a date range.
 
         Args:
             child_uid: Child unique identifier
@@ -2154,9 +2879,9 @@ class HuckleberryAPI:
             end_time: End of range
 
         Returns:
-            List of Firebase-validated diaper interval entries
+            List of validated diaper records with optimistic-concurrency references
         """
-        events: list[FirebaseDiaperData] = []
+        records: list[FirebaseDiaperIntervalRecord] = []
         start_timestamp, end_timestamp = start_time.timestamp(), end_time.timestamp()
         client = await self._get_firestore_client()
         diaper_ref = client.collection("diaper").document(child_uid)
@@ -2177,7 +2902,12 @@ class HuckleberryAPI:
                     continue  # Skip multi-entry docs from this query
 
                 entry = FirebaseDiaperData.model_validate(data)
-                events.append(entry)
+                records.append(
+                    FirebaseDiaperIntervalRecord(
+                        reference=self._history_record_reference(doc),
+                        data=entry,
+                    )
+                )
 
             # Query 2: Get multi-entry documents (can't filter by nested start field)
             multi_docs = intervals_ref.where(filter=firestore.FieldFilter("multi", "==", True)).stream()
@@ -2190,26 +2920,41 @@ class HuckleberryAPI:
                 container = FirebaseDiaperMultiContainer.model_validate(data)
 
                 # Iterate through batched entries and filter by date
-                for entry in container.data.values():
+                for entry_key, entry in container.data.items():
                     entry_start = entry.start
                     if not (start_timestamp <= entry_start < end_timestamp):
                         continue
 
-                    events.append(entry)
+                    records.append(
+                        FirebaseDiaperIntervalRecord(
+                            reference=self._history_record_reference(doc, entry_key),
+                            data=entry,
+                        )
+                    )
 
         except (GoogleAPICallError, ValidationError) as err:
             _LOGGER.error("Error fetching diaper intervals: %s", err)
 
-        return events
+        return records
 
-    async def list_health_entries(
+    async def list_diaper_intervals(
         self,
         child_uid: str,
         start_time: datetime,
         end_time: datetime,
-    ) -> list[HealthDataEntry]:
+    ) -> list[FirebaseDiaperData]:
+        """Fetch diaper interval payloads for a date range."""
+        records = await self.list_diaper_interval_records(child_uid, start_time, end_time)
+        return [record.data for record in records]
+
+    async def list_health_entry_records(
+        self,
+        child_uid: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[FirebaseHealthEntryRecord]:
         """
-        Fetch health entries from Firestore for a date range.
+        Fetch health entries with stable record references for a date range.
 
         Args:
             child_uid: Child unique identifier
@@ -2217,9 +2962,9 @@ class HuckleberryAPI:
             end_time: End of range
 
         Returns:
-            List of Firebase-validated health entries
+            List of validated health records with optimistic-concurrency references
         """
-        events: list[HealthDataEntry] = []
+        records: list[FirebaseHealthEntryRecord] = []
         start_timestamp, end_timestamp = start_time.timestamp(), end_time.timestamp()
         client = await self._get_firestore_client()
         health_ref = client.collection("health").document(child_uid)
@@ -2241,7 +2986,12 @@ class HuckleberryAPI:
                     continue  # Skip multi-entry docs from this query
 
                 entry = _HEALTH_ENTRY_ADAPTER.validate_python(data)
-                events.append(entry)
+                records.append(
+                    FirebaseHealthEntryRecord(
+                        reference=self._history_record_reference(doc),
+                        data=entry,
+                    )
+                )
 
             # Query 2: Get multi-entry documents (can't filter by nested start field)
             multi_docs = data_ref.where(filter=firestore.FieldFilter("multi", "==", True)).stream()
@@ -2254,17 +3004,32 @@ class HuckleberryAPI:
                 container = FirebaseHealthMultiContainer.model_validate(data)
 
                 # Iterate through batched entries and filter by date
-                for entry in container.data.values():
+                for entry_key, entry in container.data.items():
                     entry_start = entry.start
                     if not (start_timestamp <= entry_start < end_timestamp):
                         continue
 
-                    events.append(entry)
+                    records.append(
+                        FirebaseHealthEntryRecord(
+                            reference=self._history_record_reference(doc, entry_key),
+                            data=entry,
+                        )
+                    )
 
         except (GoogleAPICallError, ValidationError) as err:
             _LOGGER.error("Error fetching health entries: %s", err)
 
-        return events
+        return records
+
+    async def list_health_entries(
+        self,
+        child_uid: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> list[HealthDataEntry]:
+        """Fetch health entry payloads for a date range."""
+        records = await self.list_health_entry_records(child_uid, start_time, end_time)
+        return [record.data for record in records]
 
     async def list_pump_intervals(
         self,

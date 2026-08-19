@@ -34,6 +34,22 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="ignore", strict=True, populate_by_name=True, protected_namespaces=())
 
 
+class FirebaseHistoryRecordReference(StrictModel):
+    """Stable reference to one history entry.
+
+    ``document_id`` identifies the Firestore document. ``entry_key`` identifies
+    an entry inside a batched ``multi`` document and is ``None`` for a regular
+    history document. ``revision`` is the Firestore document update timestamp
+    captured by a list operation and is required for optimistic concurrency.
+
+    This is API metadata and is never written into Huckleberry documents.
+    """
+
+    document_id: str = Field(min_length=1, pattern=r"^[^/]+$")
+    entry_key: str | None = Field(default=None, min_length=1)
+    revision: str = Field(min_length=1)
+
+
 DiaperMode = Literal["pee", "poo", "both", "dry"]
 PooColor = Literal["yellow", "brown", "black", "green", "red", "gray"]
 PooConsistency = Literal["solid", "loose", "runny", "mucousy", "hard", "pebbles", "diarrhea"]
@@ -403,6 +419,13 @@ class FirebaseSleepMultiContainer(StrictModel):
     data: dict[str, FirebaseSleepIntervalData]
 
 
+class FirebaseSleepIntervalRecord(StrictModel):
+    """Sleep history entry paired with its stable mutation reference."""
+
+    reference: FirebaseHistoryRecordReference
+    data: FirebaseSleepIntervalData
+
+
 # ---------------------------------------------------------------------------
 # feed/{child_uid}
 # ---------------------------------------------------------------------------
@@ -604,6 +627,13 @@ class FirebaseFeedMultiContainer(StrictModel):
     data: dict[str, FirebaseFeedIntervalData]
 
 
+class FirebaseFeedIntervalRecord(StrictModel):
+    """Feed history entry paired with its stable mutation reference."""
+
+    reference: FirebaseHistoryRecordReference
+    data: FirebaseFeedIntervalData
+
+
 # ---------------------------------------------------------------------------
 # diaper/{child_uid}
 # ---------------------------------------------------------------------------
@@ -674,6 +704,13 @@ class FirebaseDiaperMultiContainer(StrictModel):
     hasMoreRoom: bool | None = None
     lastUpdated: Number | None = None
     data: dict[str, FirebaseDiaperData]
+
+
+class FirebaseDiaperIntervalRecord(StrictModel):
+    """Diaper history entry paired with its stable mutation reference."""
+
+    reference: FirebaseHistoryRecordReference
+    data: FirebaseDiaperData
 
 
 # ---------------------------------------------------------------------------
@@ -765,6 +802,13 @@ class FirebaseHealthMultiContainer(StrictModel):
     hasMoreRoom: bool | None = None
     lastUpdated: Number | None = None
     data: dict[str, HealthDataEntry]
+
+
+class FirebaseHealthEntryRecord(StrictModel):
+    """Health history entry paired with its stable mutation reference."""
+
+    reference: FirebaseHistoryRecordReference
+    data: HealthDataEntry
 
 
 # ---------------------------------------------------------------------------
