@@ -66,6 +66,7 @@ from .firebase_types import (
     FirebaseSleepMultiContainer,
     FirebaseSleepTimerData,
     FirebaseSolidsFeedIntervalData,
+    FirebaseTemperatureData,
     FirebaseTimestamp,
     FirebaseTypesAvailableTypes,
     FirebaseTypesDocument,
@@ -77,6 +78,7 @@ from .firebase_types import (
     PumpEntryMode,
     SolidsFoodEntry,
     SolidsReaction,
+    TemperatureUnits,
     VolumeUnits,
     to_firebase_dict,
 )
@@ -387,6 +389,34 @@ class HuckleberryAPI:
             return None
 
         return FirebaseUserDocument.model_validate(user_data)
+
+    async def get_sleep(self, child_uid: str) -> FirebaseSleepDocumentData | None:
+        """Get the typed sleep/{child_uid} document, including live timer state."""
+        _LOGGER.debug("Fetching sleep document for %s", child_uid)
+
+        db = await self._get_firestore_client()
+        sleep_doc = await db.collection("sleep").document(child_uid).get(timeout=10.0)
+        if not sleep_doc.exists:
+            return None
+
+        sleep_data = sleep_doc.to_dict()
+        if not sleep_data:
+            return None
+        return FirebaseSleepDocumentData.model_validate(sleep_data)
+
+    async def get_feed(self, child_uid: str) -> FirebaseFeedDocumentData | None:
+        """Get the typed feed/{child_uid} document, including live nursing timer state."""
+        _LOGGER.debug("Fetching feed document for %s", child_uid)
+
+        db = await self._get_firestore_client()
+        feed_doc = await db.collection("feed").document(child_uid).get(timeout=10.0)
+        if not feed_doc.exists:
+            return None
+
+        feed_data = feed_doc.to_dict()
+        if not feed_data:
+            return None
+        return FirebaseFeedDocumentData.model_validate(feed_data)
 
     async def start_sleep(self, child_uid: str) -> None:
         """Start sleep tracking for a child."""
@@ -1795,6 +1825,73 @@ class HuckleberryAPI:
                 raise
 
         _LOGGER.info("Growth data logged successfully (updated_last=%s)", should_update_last_growth)
+
+    async def log_temperature(
+        self,
+        child_uid: str,
+        *,
+        start_time: datetime,
+        amount: float,
+        units: TemperatureUnits,
+    ) -> None:
+        """Log a body-temperature measurement.
+
+        Args:
+            child_uid: Child unique identifier
+            start_time: Measurement time
+            amount: Temperature value
+            units: ``C`` for Celsius or ``F`` for Fahrenheit
+        """
+        _LOGGER.info("Logging temperature data for child %s", child_uid)
+
+        client = await self._get_firestore_client()
+        health_ref = client.collection("health").document(child_uid)
+
+        start_timestamp = start_time.timestamp()
+        current_time = time.time()
+        current_offset = await self._get_timezone_offset_minutes()
+        health_doc = await health_ref.get()
+        health_model = FirebaseHealthDocumentData.model_validate(health_doc.to_dict() or {})
+        existing_last_temperature = health_model.prefs.lastTemperature if health_model.prefs else None
+        existing_last_temperature_start = existing_last_temperature.start if existing_last_temperature else None
+        should_update_last_temperature = existing_last_temperature_start is None or start_timestamp >= float(
+            existing_last_temperature_start
+        )
+
+        interval_timestamp_ms = int(current_time * 1000)
+        interval_id = f"{interval_timestamp_ms}-{uuid.uuid4().hex[:20]}"
+        temperature_entry = FirebaseTemperatureData(
+            type="health",
+            mode="temperature",
+            start=start_timestamp,
+            lastUpdated=current_time,
+            offset=current_offset,
+            amount=float(amount),
+            units=units,
+            multientry_key=None,
+        )
+
+        health_data_ref = health_ref.collection("data").document(interval_id)
+        try:
+            await health_data_ref.set(to_firebase_dict(temperature_entry))
+            _LOGGER.info("Created temperature data entry in subcollection: %s", interval_id)
+        except GoogleAPICallError as err:
+            _LOGGER.error("Failed to create temperature data entry: %s", err)
+
+        if should_update_last_temperature:
+            try:
+                await health_ref.update(
+                    {
+                        "prefs.lastTemperature": to_firebase_dict(temperature_entry),
+                        "prefs.timestamp": {"seconds": current_time},
+                        "prefs.local_timestamp": current_time,
+                    }
+                )
+            except GoogleAPICallError as err:
+                _LOGGER.error("Failed to log temperature data: %s", err)
+                raise
+
+        _LOGGER.info("Temperature data logged successfully (updated_last=%s)", should_update_last_temperature)
 
     async def log_pump(
         self,
