@@ -99,6 +99,12 @@ async def main() -> None:
             head=35.0,
             units="metric",
         )
+        await api.log_temperature(
+            child_uid,
+            start_time=datetime.now(),
+            amount=37.2,
+            units="C",
+        )
 
 
 asyncio.run(main())
@@ -185,6 +191,10 @@ async def main() -> None:
 - `await log_growth(child_uid, start_time=..., weight=..., height=..., head=..., units=...)` - Log measurements with an explicit event timestamp
   - `units`: "metric" (kg/cm) or "imperial" (lbs/inches)
 - `await get_latest_growth(child_uid)` - Get latest measurements
+
+### Temperature Tracking
+- `await log_temperature(child_uid, start_time=..., amount=..., units=...)` - Log a body-temperature measurement
+  - `units`: `"C"` for Celsius or `"F"` for Fahrenheit
 
 ### Real-time Listeners
 - `await setup_sleep_listener(child_uid, callback)` - Listen to sleep updates
