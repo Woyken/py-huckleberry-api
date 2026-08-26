@@ -47,6 +47,8 @@ from .firebase_types import (
     FirebaseHealthDocumentData,
     FirebaseHealthMultiContainer,
     FirebaseLastActivityData,
+    FirebaseMedicationData,
+    MedicationUnits,
     FirebaseLastBottleData,
     FirebaseLastDiaperData,
     FirebaseLastNursingData,
@@ -1795,6 +1797,82 @@ class HuckleberryAPI:
                 raise
 
         _LOGGER.info("Growth data logged successfully (updated_last=%s)", should_update_last_growth)
+
+    async def log_medication(
+        self,
+        child_uid: str,
+        *,
+        start_time: datetime,
+        name: str,
+        amount: float | None = None,
+        units: MedicationUnits | None = None,
+        notes: str | None = None,
+    ) -> None:
+        """Log a medication dose.
+
+        Args:
+            child_uid: Child unique identifier
+            start_time: Event time
+            name: Medication name (e.g., "Tylenol")
+            amount: Dose amount
+            units: Dose units — "ml", "oz", "tsp", or "drops"
+            notes: Optional notes
+        """
+        _LOGGER.info("Logging medication for child %s: %s", child_uid, name)
+
+        client = await self._get_firestore_client()
+        health_ref = client.collection("health").document(child_uid)
+
+        start_timestamp = start_time.timestamp()
+        current_time = time.time()
+        current_offset = await self._get_timezone_offset_minutes()
+
+        health_doc = await health_ref.get()
+        health_model = FirebaseHealthDocumentData.model_validate(health_doc.to_dict() or {})
+        existing_last_med = health_model.prefs.lastMedication if health_model.prefs else None
+        existing_last_med_start = existing_last_med.start if existing_last_med else None
+        should_update_last_med = existing_last_med_start is None or start_timestamp >= float(
+            existing_last_med_start
+        )
+
+        interval_timestamp_ms = int(current_time * 1000)
+        interval_id = f"{interval_timestamp_ms}-{uuid.uuid4().hex[:20]}"
+
+        # Health tracker uses "data" subcollection (not "intervals")
+        med_entry = FirebaseMedicationData(
+            type="health",
+            mode="medication",
+            start=start_timestamp,
+            lastUpdated=current_time,
+            offset=current_offset,
+            medication_name=name,
+            amount=float(amount) if amount is not None else None,
+            units=units,
+            notes=notes,
+        )
+
+        health_data_ref = health_ref.collection("data").document(interval_id)
+        try:
+            await health_data_ref.set(to_firebase_dict(med_entry))
+            _LOGGER.info("Created medication entry: %s", interval_id)
+        except GoogleAPICallError as err:
+            _LOGGER.error("Failed to create medication entry: %s", err)
+            raise
+
+        if should_update_last_med:
+            try:
+                await health_ref.update(
+                    {
+                        "prefs.lastMedication": to_firebase_dict(med_entry),
+                        "prefs.timestamp": {"seconds": current_time},
+                        "prefs.local_timestamp": current_time,
+                    }
+                )
+            except GoogleAPICallError as err:
+                _LOGGER.error("Failed to update lastMedication prefs: %s", err)
+                raise
+
+        _LOGGER.info("Medication logged successfully (updated_last=%s)", should_update_last_med)
 
     async def log_pump(
         self,
