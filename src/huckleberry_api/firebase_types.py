@@ -502,7 +502,11 @@ class FirebaseFeedTimerData(StrictModel):
     local_timestamp: Number | None = None
     feedStartTime: Number | None = Field(
         default=None,
-        description="Feeding session start time in seconds since epoch.",
+        description=(
+            "Feeding session start time since epoch. Library-started sessions "
+            "store seconds; the official iOS app writes milliseconds (observed "
+            "live, 2026-07). Consumers must normalize before writing history."
+        ),
     )
     timerStartTime: Number | None = Field(
         default=None,

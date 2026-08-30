@@ -4,6 +4,7 @@ import asyncio
 import time
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from google.cloud import firestore
 
 from huckleberry_api import HuckleberryAPI
@@ -155,6 +156,49 @@ class TestFeedingTracking:
         assert "start" in interval_data
         assert "mode" in interval_data
         assert interval_data["mode"] == "breast"
+
+    async def test_complete_nursing_normalizes_ms_feed_start_time(
+        self, api: HuckleberryAPI, child_uid: str
+    ) -> None:
+        """App-started sessions store timer.feedStartTime in milliseconds; the
+        interval written on completion must still use epoch seconds.
+
+        Regression test for issue #51: the resulting future-dated interval
+        (year ~58000) freezes the official app's summary pages.
+        """
+        await api.start_nursing(child_uid, side="right")
+        await asyncio.sleep(2)
+
+        db = await api._get_firestore_client()
+        feed_ref = db.collection("feed").document(child_uid)
+
+        # Simulate the official iOS app having started this session: observed
+        # live (2026-07), the app writes feedStartTime in milliseconds.
+        start_ms = (time.time() - 60) * 1000
+        await feed_ref.update({"timer.feedStartTime": start_ms})
+
+        created_after = time.time()
+        await api.complete_nursing(child_uid)
+        await asyncio.sleep(2)
+
+        intervals_ref = feed_ref.collection("intervals")
+        recent = intervals_ref.order_by("lastUpdated", direction=firestore.Query.DESCENDING).limit(5)
+        interval_data = next(
+            (
+                data
+                for doc in await recent.get()
+                if (data := doc.to_dict())
+                and data.get("mode") == "breast"
+                and float(data.get("lastUpdated", 0.0)) >= created_after
+            ),
+            None,
+        )
+        assert interval_data is not None
+        assert interval_data["start"] == pytest.approx(start_ms / 1000, abs=1.0)
+
+        prefs = (await feed_ref.get()).to_dict()["prefs"]
+        assert prefs["lastNursing"]["start"] == pytest.approx(start_ms / 1000, abs=1.0)
+        assert prefs["lastSide"]["start"] == pytest.approx(start_ms / 1000, abs=1.0)
 
     async def test_log_nursing_with_explicit_times(self, api: HuckleberryAPI, child_uid: str) -> None:
         """Test logging a completed nursing interval with explicit timestamps."""
