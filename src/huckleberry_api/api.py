@@ -404,7 +404,7 @@ class HuckleberryAPI:
             return None
         return FirebaseSleepDocumentData.model_validate(sleep_data)
 
-    async def get_feed(self, child_uid: str) -> FirebaseFeedDocumentData | None:
+    async def get_nursing(self, child_uid: str) -> FirebaseFeedDocumentData | None:
         """Get the typed feed/{child_uid} document, including live nursing timer state."""
         _LOGGER.debug("Fetching feed document for %s", child_uid)
 

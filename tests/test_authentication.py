@@ -203,16 +203,16 @@ class TestChildrenRetrieval:
         assert child.model_dump(exclude_none=True)
 
     async def test_get_live_timer_documents(self, api: HuckleberryAPI, child_uid: str) -> None:
-        """Typed sleep and feed reads expose current timer state without mutation."""
+        """Typed sleep and nursing reads expose current timer state without mutation."""
         sleep = await api.get_sleep(child_uid)
-        feed = await api.get_feed(child_uid)
+        nursing = await api.get_nursing(child_uid)
 
         assert sleep is not None
-        assert feed is not None
+        assert nursing is not None
         if sleep.timer is not None:
             assert isinstance(sleep.timer.active, bool)
-        if feed.timer is not None:
-            assert isinstance(feed.timer.active, bool)
+        if nursing.timer is not None:
+            assert isinstance(nursing.timer.active, bool)
 
 
 class TestErrorHandling:
