@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [0.4.5] - 2026-09-15
+
+### Features
+
+- Add start, pause, resume, complete, and cancel support for pumping timers.
+
+
 ## [0.4.4] - 2026-09-15
 
 ### Features
