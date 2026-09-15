@@ -55,6 +55,7 @@ from .firebase_types import (
     FirebaseLastSideData,
     FirebaseLastSleepData,
     FirebaseLastSolidData,
+    FirebaseLastTemperatureData,
     FirebasePumpDocumentData,
     FirebasePumpIntervalData,
     FirebasePumpMultiContainer,
@@ -1833,6 +1834,7 @@ class HuckleberryAPI:
         start_time: datetime,
         amount: float,
         units: TemperatureUnits,
+        notes: str | None = None,
     ) -> None:
         """Log a body-temperature measurement.
 
@@ -1841,6 +1843,7 @@ class HuckleberryAPI:
             start_time: Measurement time
             amount: Temperature value
             units: ``C`` for Celsius or ``F`` for Fahrenheit
+            notes: Optional notes attached to the measurement
         """
         _LOGGER.info("Logging temperature data for child %s", child_uid)
 
@@ -1861,6 +1864,16 @@ class HuckleberryAPI:
         interval_timestamp_ms = int(current_time * 1000)
         interval_id = f"{interval_timestamp_ms}-{uuid.uuid4().hex[:20]}"
         temperature_entry = FirebaseTemperatureData(
+            mode="temperature",
+            start=start_timestamp,
+            lastUpdated=current_time,
+            offset=current_offset,
+            amount=float(amount),
+            units=units,
+            notes=notes,
+        )
+        last_temperature = FirebaseLastTemperatureData(
+            _id=interval_id,
             type="health",
             mode="temperature",
             start=start_timestamp,
@@ -1872,17 +1885,14 @@ class HuckleberryAPI:
         )
 
         health_data_ref = health_ref.collection("data").document(interval_id)
-        try:
-            await health_data_ref.set(to_firebase_dict(temperature_entry))
-            _LOGGER.info("Created temperature data entry in subcollection: %s", interval_id)
-        except GoogleAPICallError as err:
-            _LOGGER.error("Failed to create temperature data entry: %s", err)
+        await health_data_ref.set(to_firebase_dict(temperature_entry))
+        _LOGGER.info("Created temperature data entry in subcollection: %s", interval_id)
 
         if should_update_last_temperature:
             try:
                 await health_ref.update(
                     {
-                        "prefs.lastTemperature": to_firebase_dict(temperature_entry),
+                        "prefs.lastTemperature": last_temperature.model_dump(by_alias=True),
                         "prefs.timestamp": {"seconds": current_time},
                         "prefs.local_timestamp": current_time,
                     }

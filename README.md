@@ -150,6 +150,7 @@ async def main() -> None:
 - `await get_child(child_uid)` - Get a single child profile by id
 
 ### Sleep Tracking
+- `await get_sleep(child_uid)` - Get the typed sleep document and current timer state
 - `await start_sleep(child_uid)` - Start sleep session
 - `await pause_sleep(child_uid)` - Pause active session
 - `await resume_sleep(child_uid)` - Resume paused session
@@ -158,6 +159,7 @@ async def main() -> None:
 - `await log_sleep(child_uid, start_time=..., end_time=..., details=None)` - Log a completed sleep interval with explicit timestamps
 
 ### Feeding Tracking
+- `await get_nursing(child_uid)` - Get the typed feeding document and current nursing timer state
 - `await start_nursing(child_uid, side)` - Start breastfeeding session
 - `await pause_nursing(child_uid)` - Pause active session
 - `await resume_nursing(child_uid, side)` - Resume paused session
@@ -193,7 +195,7 @@ async def main() -> None:
 - `await get_latest_growth(child_uid)` - Get latest measurements
 
 ### Temperature Tracking
-- `await log_temperature(child_uid, start_time=..., amount=..., units=...)` - Log a body-temperature measurement
+- `await log_temperature(child_uid, start_time=..., amount=..., units=..., notes=None)` - Log a body-temperature measurement
   - `units`: `"C"` for Celsius or `"F"` for Fahrenheit
 
 ### Real-time Listeners

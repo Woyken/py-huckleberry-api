@@ -727,17 +727,36 @@ class FirebaseMedicationData(StrictModel):
 class FirebaseTemperatureData(StrictModel):
     """health/{child_uid}/data temperature entry payload.
 
-    Health tracker writes temperature rows to `health/{child_uid}/data`.
+    Live app write observed with amount, timestamps, units, and optional notes.
+    Unlike prefs.lastTemperature, history rows omit `_id`, `type`, and
+    `multientry_key`.
     """
 
-    type: Literal["health"] | None = None
     mode: Literal["temperature"]
     start: Number
-    lastUpdated: Number | None = None
+    lastUpdated: Number
     offset: Number
-    amount: Number | None = None
-    units: TemperatureUnits | None = None
-    multientry_key: str | None = None
+    amount: Number
+    units: TemperatureUnits
+    notes: str | None = None
+
+
+class FirebaseLastTemperatureData(StrictModel):
+    """health/{child_uid}.prefs.lastTemperature payload.
+
+    Live data includes the history document ID and health metadata that are
+    absent from the corresponding health/{child_uid}/data row.
+    """
+
+    id_: str = Field(alias="_id")
+    type: Literal["health"]
+    mode: Literal["temperature"]
+    start: Number
+    lastUpdated: Number
+    offset: Number
+    amount: Number
+    units: TemperatureUnits
+    multientry_key: None = None
 
 
 HealthDataEntry: TypeAlias = FirebaseGrowthData | FirebaseMedicationData | FirebaseTemperatureData
@@ -748,7 +767,7 @@ class FirebaseHealthPrefs(StrictModel):
 
     lastGrowthEntry: FirebaseGrowthData | None = None
     lastMedication: FirebaseMedicationData | None = None
-    lastTemperature: FirebaseTemperatureData | None = None
+    lastTemperature: FirebaseLastTemperatureData | None = None
     reminderV2: ReminderV2 | None = None
     timestamp: FirebaseTimestamp | None = None
     local_timestamp: Number | None = None

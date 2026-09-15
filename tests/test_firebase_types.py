@@ -15,6 +15,7 @@ from huckleberry_api.firebase_types import (
     FirebaseFeedDocumentData,
     FirebaseFeedIntervalData,
     FirebaseGrowthData,
+    FirebaseHealthDocumentData,
     FirebaseLastActivityData,
     FirebaseLastPumpData,
     FirebaseMedicationData,
@@ -23,6 +24,7 @@ from huckleberry_api.firebase_types import (
     FirebasePumpMultiContainer,
     FirebasePumpPrefs,
     FirebaseSleepDocumentData,
+    FirebaseTemperatureData,
 )
 
 
@@ -140,6 +142,43 @@ def test_medication_model_accepts_live_app_ounce_units() -> None:
     )
 
     assert model.units == "oz"
+
+
+def test_temperature_models_accept_distinct_live_history_and_latest_payloads() -> None:
+    """Temperature history and latest-pref rows have different live shapes."""
+    history = FirebaseTemperatureData.model_validate(
+        {
+            "amount": 37.2,
+            "lastUpdated": 1789476705.854,
+            "mode": "temperature",
+            "notes": "With a note!",
+            "offset": -180.0,
+            "start": 1789476679.311,
+            "units": "C",
+        }
+    )
+    health = FirebaseHealthDocumentData.model_validate(
+        {
+            "prefs": {
+                "lastTemperature": {
+                    "_id": "1773640786119-a762313500b521fee51f",
+                    "type": "health",
+                    "mode": "temperature",
+                    "amount": 96.7,
+                    "units": "F",
+                    "offset": -120.0,
+                    "start": 1773640784.705,
+                    "lastUpdated": 1773640786.119,
+                    "multientry_key": None,
+                }
+            }
+        }
+    )
+
+    assert history.notes == "With a note!"
+    assert health.prefs is not None
+    assert health.prefs.lastTemperature is not None
+    assert health.prefs.lastTemperature.id_ == "1773640786119-a762313500b521fee51f"
 
 
 def test_bottle_feed_interval_accepts_missing_amount() -> None:
