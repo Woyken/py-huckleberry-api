@@ -24,6 +24,7 @@ from huckleberry_api.firebase_types import (
     FirebasePumpIntervalData,
     FirebasePumpMultiContainer,
     FirebasePumpPrefs,
+    FirebasePumpTimerData,
     FirebaseSleepDocumentData,
     FirebaseTemperatureData,
 )
@@ -389,6 +390,28 @@ def test_pump_document_data_model() -> None:
     assert model.prefs.lastPump is not None
     assert model.prefs.lastPump.entryMode == "total"
     assert model.prefs.lastPump.units == "oz"
+
+
+def test_pump_timer_model() -> None:
+    """Validate the running and paused pump timer fields observed in Firebase."""
+    model = FirebasePumpTimerData.model_validate(
+        {
+            "active": True,
+            "paused": True,
+            "startTime": 1_789_482_890_482.0,
+            "endTime": 1_789_482_916_021.0,
+            "entryMode": "total",
+            "units": "ml",
+            "timestamp": {"seconds": 1_789_482_916.021},
+            "local_timestamp": 1_789_482_916.021,
+            "uuid": "dca86f2ba764cf06",
+        }
+    )
+
+    assert model.active is True
+    assert model.paused is True
+    assert model.startTime == 1_789_482_890_482.0
+    assert model.endTime == 1_789_482_916_021.0
 
 
 def test_pump_multi_container_model() -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 import uuid
 from datetime import datetime
@@ -19,6 +20,7 @@ from google.auth.credentials import Credentials
 from google.cloud import firestore
 from google.cloud.firestore import DELETE_FIELD
 from google.cloud.firestore_v1 import AsyncClient
+from google.cloud.firestore_v1.async_document import AsyncDocumentReference
 from pydantic import TypeAdapter, ValidationError
 
 from .const import AUTH_URL, FIREBASE_API_KEY, REFRESH_URL
@@ -60,6 +62,7 @@ from .firebase_types import (
     FirebasePumpDocumentData,
     FirebasePumpIntervalData,
     FirebasePumpMultiContainer,
+    FirebasePumpTimerData,
     FirebaseSleepCondition,
     FirebaseSleepDetails,
     FirebaseSleepDocumentData,
@@ -105,6 +108,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _FEED_INTERVAL_ADAPTER = TypeAdapter(FirebaseFeedIntervalData)
 _HEALTH_ENTRY_ADAPTER = TypeAdapter(HealthDataEntry)
+_VOLUME_UNITS_ADAPTER = TypeAdapter(VolumeUnits)
 _ACTIVITY_LAST_FIELD_BY_MODE: dict[ActivityMode, str] = {
     "bath": "lastBath",
     "brushTeeth": "lastBrushTeeth",
@@ -115,6 +119,42 @@ _ACTIVITY_LAST_FIELD_BY_MODE: dict[ActivityMode, str] = {
     "storyTime": "lastStoryTime",
     "tummyTime": "lastTummyTime",
 }
+
+
+def _resolve_pump_amounts(
+    *,
+    left_amount: float | int | None,
+    right_amount: float | int | None,
+    total_amount: float | int | None,
+) -> tuple[PumpEntryMode, float, float]:
+    """Validate pump amounts and convert total mode to Firebase side values."""
+    if total_amount is not None:
+        if left_amount is not None or right_amount is not None:
+            raise ValueError("Provide either total_amount or left/right amounts, not both")
+        if not math.isfinite(float(total_amount)) or float(total_amount) < 0:
+            raise ValueError("total_amount must be a non-negative finite number")
+        per_side_amount = float(total_amount) / 2
+        return "total", per_side_amount, per_side_amount
+
+    if left_amount is None or right_amount is None:
+        raise ValueError("leftright pump entries require both left_amount and right_amount")
+    if not math.isfinite(float(left_amount)) or float(left_amount) < 0:
+        raise ValueError("left_amount must be a non-negative finite number")
+    if not math.isfinite(float(right_amount)) or float(right_amount) < 0:
+        raise ValueError("right_amount must be a non-negative finite number")
+    return "leftright", float(left_amount), float(right_amount)
+
+
+def _inactive_pump_timer(session_uuid: str, now_ms: int) -> FirebasePumpTimerData:
+    """Build the minimal inactive timer shape observed after save and reset."""
+    now = now_ms / 1000
+    return FirebasePumpTimerData(
+        active=False,
+        timestamp=FirebaseTimestamp(seconds=now),
+        local_timestamp=now,
+        startTime=float(now_ms),
+        uuid=session_uuid,
+    )
 
 
 async def _raise_for_status_with_details(response: aiohttp.ClientResponse, operation: str) -> None:
@@ -1905,6 +1945,126 @@ class HuckleberryAPI:
 
         _LOGGER.info("Temperature data logged successfully (updated_last=%s)", should_update_last_temperature)
 
+    async def start_pump(self, child_uid: str) -> None:
+        """Start a pumping timer."""
+        pump_ref, existing_timer = await self._get_pump_timer(child_uid)
+        if existing_timer and existing_timer.active:
+            _LOGGER.info("Pump timer is already active for %s", child_uid)
+            return
+
+        now_ms = int(time.time() * 1000)
+        now = now_ms / 1000
+        session_uuid = existing_timer.uuid if existing_timer else uuid.uuid4().hex[:16]
+        timer = FirebasePumpTimerData(
+            active=True,
+            paused=False,
+            timestamp=FirebaseTimestamp(seconds=now),
+            local_timestamp=now,
+            startTime=float(now_ms),
+            uuid=session_uuid,
+        )
+        await pump_ref.set({"timer": to_firebase_dict(timer)}, merge=True)
+
+    async def pause_pump(self, child_uid: str) -> None:
+        """Pause the active pumping timer."""
+        pump_ref, timer = await self._get_pump_timer(child_uid)
+        if not timer or not timer.active or timer.paused:
+            return
+
+        now_ms = int(time.time() * 1000)
+        now = now_ms / 1000
+        await pump_ref.update(
+            {
+                "timer.active": True,
+                "timer.paused": True,
+                "timer.endTime": float(now_ms),
+                "timer.timestamp": {"seconds": now},
+                "timer.local_timestamp": now,
+            }
+        )
+
+    async def resume_pump(self, child_uid: str) -> None:
+        """Resume the paused pumping timer."""
+        pump_ref, timer = await self._get_pump_timer(child_uid)
+        if not timer or not timer.active or not timer.paused:
+            return
+
+        now_ms = int(time.time() * 1000)
+        now = now_ms / 1000
+        await pump_ref.update(
+            {
+                "timer.active": True,
+                "timer.paused": False,
+                "timer.endTime": DELETE_FIELD,
+                "timer.timestamp": {"seconds": now},
+                "timer.local_timestamp": now,
+            }
+        )
+
+    async def cancel_pump(self, child_uid: str) -> None:
+        """Cancel the active pumping timer without saving an interval."""
+        pump_ref, timer = await self._get_pump_timer(child_uid)
+        if not timer or not timer.active:
+            return
+
+        now_ms = int(time.time() * 1000)
+        inactive_timer = _inactive_pump_timer(timer.uuid, now_ms)
+        await pump_ref.update({"timer": to_firebase_dict(inactive_timer)})
+
+    async def complete_pump(
+        self,
+        child_uid: str,
+        *,
+        left_amount: float | int | None = None,
+        right_amount: float | int | None = None,
+        total_amount: float | int | None = None,
+        units: VolumeUnits | None = None,
+        notes: str | None = None,
+    ) -> None:
+        """Complete the active pumping timer and save its amounts."""
+        _resolve_pump_amounts(
+            left_amount=left_amount,
+            right_amount=right_amount,
+            total_amount=total_amount,
+        )
+        if units is not None:
+            units = _VOLUME_UNITS_ADAPTER.validate_python(units)
+
+        pump_ref, timer = await self._get_pump_timer(child_uid)
+        if not timer or not timer.active:
+            return
+        if timer.startTime is None:
+            raise ValueError("Active pump timer is missing startTime")
+
+        now_ms = int(time.time() * 1000)
+        end_time_ms = timer.endTime if timer.paused and timer.endTime is not None else now_ms
+        duration = (float(end_time_ms) - float(timer.startTime)) / 1000
+        if duration < 0:
+            raise ValueError("Pump timer endTime must not precede startTime")
+
+        await self._log_pump(
+            child_uid,
+            start_time=datetime.fromtimestamp(float(timer.startTime) / 1000, tz=dt_timezone.utc),
+            duration=duration,
+            left_amount=left_amount,
+            right_amount=right_amount,
+            total_amount=total_amount,
+            units=units or timer.units or "ml",
+            notes=notes,
+            update_pref_timestamps=False,
+        )
+
+        inactive_timer = _inactive_pump_timer(timer.uuid, now_ms)
+        await pump_ref.update({"timer": to_firebase_dict(inactive_timer)})
+
+    async def _get_pump_timer(self, child_uid: str) -> tuple[AsyncDocumentReference, FirebasePumpTimerData | None]:
+        """Load a pump document reference and its validated timer."""
+        client = await self._get_firestore_client()
+        pump_ref = client.collection("pump").document(child_uid)
+        pump_doc = await pump_ref.get(timeout=10.0)
+        pump_data = FirebasePumpDocumentData.model_validate(pump_doc.to_dict() or {})
+        return pump_ref, pump_data.timer
+
     async def log_pump(
         self,
         child_uid: str,
@@ -1929,32 +2089,49 @@ class HuckleberryAPI:
             units: Volume units ("ml" or "oz").
             notes: Optional notes attached to the interval.
         """
-        if duration is not None and float(duration) < 0:
-            raise ValueError("duration must be non-negative")
+        await self._log_pump(
+            child_uid,
+            start_time=start_time,
+            duration=duration,
+            left_amount=left_amount,
+            right_amount=right_amount,
+            total_amount=total_amount,
+            units=units,
+            notes=notes,
+            update_pref_timestamps=True,
+        )
 
-        using_total_amount = total_amount is not None
-        if using_total_amount and (left_amount is not None or right_amount is not None):
-            raise ValueError("Provide either total_amount or left/right amounts, not both")
+    async def _log_pump(
+        self,
+        child_uid: str,
+        *,
+        start_time: datetime,
+        duration: float | int | None,
+        left_amount: float | int | None,
+        right_amount: float | int | None,
+        total_amount: float | int | None,
+        units: VolumeUnits,
+        notes: str | None,
+        update_pref_timestamps: bool,
+    ) -> None:
+        """Write a validated pump interval and latest summary."""
+        units = _VOLUME_UNITS_ADAPTER.validate_python(units)
+        if duration is not None and (not math.isfinite(float(duration)) or float(duration) < 0):
+            raise ValueError("duration must be a non-negative finite number")
 
-        if using_total_amount:
-            assert total_amount is not None
-            resolved_entry_mode: PumpEntryMode = "total"
-            per_side_amount = float(total_amount) / 2.0
-            resolved_left_amount = per_side_amount
-            resolved_right_amount = per_side_amount
-        else:
-            resolved_entry_mode = "leftright"
-            if left_amount is None or right_amount is None:
-                raise ValueError("leftright pump entries require both left_amount and right_amount")
-            resolved_left_amount = float(left_amount)
-            resolved_right_amount = float(right_amount)
+        resolved_entry_mode, resolved_left_amount, resolved_right_amount = _resolve_pump_amounts(
+            left_amount=left_amount,
+            right_amount=right_amount,
+            total_amount=total_amount,
+        )
 
         start_timestamp = start_time.timestamp()
         current_offset = await self._get_timezone_offset_minutes()
         end_offset = current_offset if duration is not None else None
 
-        current_time = time.time()
-        interval_id = f"{int(current_time * 1000)}-{uuid.uuid4().hex[:20]}"
+        current_time_ms = int(time.time() * 1000)
+        current_time = current_time_ms / 1000
+        interval_id = f"{current_time_ms}-{uuid.uuid4().hex[:20]}"
         interval = FirebasePumpIntervalData(
             start=start_timestamp,
             entryMode=resolved_entry_mode,
@@ -1991,13 +2168,16 @@ class HuckleberryAPI:
             should_update_last_pump = False
 
         if should_update_last_pump:
-            await pump_ref.update(
-                {
-                    "prefs.lastPump": to_firebase_dict(last_pump),
-                    "prefs.timestamp": {"seconds": current_time},
-                    "prefs.local_timestamp": current_time,
-                }
-            )
+            if update_pref_timestamps:
+                await pump_ref.update(
+                    {
+                        "prefs.lastPump": to_firebase_dict(last_pump),
+                        "prefs.timestamp": {"seconds": current_time},
+                        "prefs.local_timestamp": current_time,
+                    }
+                )
+            else:
+                await pump_ref.update({"prefs.lastPump": to_firebase_dict(last_pump)})
 
         _LOGGER.info(
             "Pump logged for child %s with mode %s (updated_last=%s)",

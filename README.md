@@ -173,6 +173,10 @@ async def main() -> None:
   - `units`: "ml" or "oz"
 
 ### Pumping Tracking
+- `await start_pump(child_uid)` - Start a pumping timer
+- `await pause_pump(child_uid)` / `await resume_pump(child_uid)` - Pause or resume pumping
+- `await complete_pump(child_uid, total_amount=..., units=..., notes=...)` - Save the active timer with total or left/right amounts
+- `await cancel_pump(child_uid)` - Cancel the active timer without saving
 - `await log_pump(child_uid, start_time=..., total_amount=..., duration=..., units=...)` - Log pumping entry; total entries are stored split evenly across `leftAmount` and `rightAmount`
 - `await list_pump_intervals(child_uid, start_time, end_time)` - List pump history for a range using `datetime` objects
 

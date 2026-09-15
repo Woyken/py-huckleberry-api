@@ -829,7 +829,13 @@ class FirebasePumpPrefs(StrictModel):
 
 
 class FirebasePumpTimerData(StrictModel):
-    """pump/{child_uid}.timer structure."""
+    """pump/{child_uid}.timer structure.
+
+    Live app/Firebase verification on 2026-09-15 showed millisecond `startTime`
+    and `endTime` values. `endTime` exists only while a running timer is paused.
+    Every transition refreshes `timestamp` and `local_timestamp`; the same observed
+    16-character lowercase hexadecimal `uuid` persists across timer sessions.
+    """
 
     active: bool
     paused: bool | None = None
@@ -838,6 +844,10 @@ class FirebasePumpTimerData(StrictModel):
     startTime: Number | None = Field(
         default=None,
         description="Observed pump timer field in milliseconds since epoch.",
+    )
+    endTime: Number | None = Field(
+        default=None,
+        description="Observed paused pump end time in milliseconds since epoch.",
     )
     entryMode: PumpEntryMode | None = None
     units: VolumeUnits | None = None
@@ -856,6 +866,9 @@ class FirebasePumpIntervalData(StrictModel):
     """pump/{child_uid}/intervals row.
 
     Pump tracker follows the common `intervals` subcollection convention.
+    Live Firebase accepted 39,422.142 ml independently for each side; the app's
+    slider is not a schema upper bound. Amount writers should enforce only the
+    observed zero lower bound and numeric finiteness.
     """
 
     start: Number

@@ -54,7 +54,7 @@ class TestPumpFeeding:
         intervals_ref = db.collection("pump").document(child_uid).collection("intervals")
 
         for _ in range(10):
-            recent_intervals = intervals_ref.order_by("start", direction=firestore.Query.DESCENDING).limit(10)
+            recent_intervals = intervals_ref.order_by("lastUpdated", direction=firestore.Query.DESCENDING).limit(10)
             intervals_list = list(await recent_intervals.get())
 
             for interval_doc in intervals_list:
@@ -88,7 +88,7 @@ class TestPumpFeeding:
             await asyncio.sleep(0.5)
 
         # Debug: print last 10 intervals for troubleshooting
-        recent_intervals = intervals_ref.order_by("start", direction=firestore.Query.DESCENDING).limit(10)
+        recent_intervals = intervals_ref.order_by("lastUpdated", direction=firestore.Query.DESCENDING).limit(10)
         intervals_list = list(await recent_intervals.get())
         print(f"Recent intervals: {[doc.to_dict() for doc in intervals_list]}")
         raise AssertionError("No matching recent pump interval found")
@@ -368,3 +368,46 @@ class TestPumpFeeding:
         assert latest_after_older.leftAmount == 16.5
         assert latest_after_older.rightAmount == 16.5
         assert latest_after_older.duration == 600.0
+
+    async def test_complete_pump_timer_writes_interval(self, api: HuckleberryAPI, child_uid: str) -> None:
+        """Test the live start, pause, and complete pumping flow."""
+        created_after = time.time()
+        db = await api._get_firestore_client()
+        pump_ref = db.collection("pump").document(child_uid)
+        before = (await pump_ref.get()).to_dict() or {}
+        before_prefs = before.get("prefs", {})
+        before_timestamp = before_prefs.get("timestamp")
+        before_local_timestamp = before_prefs.get("local_timestamp")
+
+        await api.start_pump(child_uid)
+        await asyncio.sleep(0.2)
+        await api.pause_pump(child_uid)
+        await api.complete_pump(
+            child_uid,
+            total_amount=14.5,
+            notes="pump timer integration test",
+        )
+        await asyncio.sleep(1)
+
+        interval = await self._find_recent_pump_interval(
+            api,
+            child_uid,
+            created_after=created_after,
+            entry_mode="total",
+            units="ml",
+            amount=14.5,
+        )
+        assert interval["leftAmount"] == 7.25
+        assert interval["rightAmount"] == 7.25
+        assert interval["notes"] == "pump timer integration test"
+        assert isinstance(interval["duration"], int | float)
+
+        pump_doc = await pump_ref.get()
+        after = pump_doc.to_dict() or {}
+        pump_data = FirebasePumpDocumentData.model_validate(after)
+        assert pump_data.timer is not None
+        assert pump_data.timer.active is False
+        assert pump_data.timer.paused is None
+        after_prefs = after.get("prefs", {})
+        assert after_prefs.get("timestamp") == before_timestamp
+        assert after_prefs.get("local_timestamp") == before_local_timestamp
