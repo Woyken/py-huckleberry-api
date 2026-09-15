@@ -13,7 +13,6 @@ from huckleberry_api.firebase_types import (
     FirebaseMedicationData,
     FirebaseMedicationTypeDocument,
 )
-from huckleberry_api.models import MedicineTypeReference
 
 
 def _medicine_api(websession, monkeypatch, health_payload: dict[str, object] | None = None):
@@ -108,7 +107,12 @@ async def test_log_medicine_writes_history_type_and_latest(websession, monkeypat
     await api.log_medicine(
         "child",
         start_time=taken_at,
-        medicine_type=MedicineTypeReference(id="medicine-id", name="Vitamin D"),
+        medicine_type=FirebaseMedicationTypeDocument(
+            _id="medicine-id",
+            active=True,
+            mode="medication",
+            name="Vitamin D",
+        ),
         amount=1.2,
         units="tsp",
         notes="After dinner",
@@ -174,7 +178,12 @@ async def test_log_medicine_does_not_replace_newer_latest(websession, monkeypatc
     await api.log_medicine(
         "child",
         start_time=datetime(2026, 9, 15, tzinfo=timezone.utc),
-        medicine_type=MedicineTypeReference(id="medicine-id", name="Vitamin D"),
+        medicine_type=FirebaseMedicationTypeDocument(
+            _id="medicine-id",
+            active=True,
+            mode="medication",
+            name="Vitamin D",
+        ),
         amount=2,
         units="drops",
     )
@@ -211,7 +220,12 @@ async def test_log_medicine_without_amount_matches_live_omitted_fields(websessio
     await api.log_medicine(
         "child",
         start_time=datetime(2026, 9, 15, tzinfo=timezone.utc),
-        medicine_type=MedicineTypeReference(id="new-id", name="New"),
+        medicine_type=FirebaseMedicationTypeDocument(
+            _id="new-id",
+            active=True,
+            mode="medication",
+            name="New",
+        ),
     )
 
     history = data_document.set.await_args.args[0]
@@ -236,7 +250,12 @@ async def test_log_medicine_requires_units_with_amount(websession, monkeypatch) 
         await api.log_medicine(
             "child",
             start_time=datetime(2026, 9, 15, tzinfo=timezone.utc),
-            medicine_type=MedicineTypeReference(id="medicine-id", name="Vitamin D"),
+            medicine_type=FirebaseMedicationTypeDocument(
+                _id="medicine-id",
+                active=True,
+                mode="medication",
+                name="Vitamin D",
+            ),
             amount=1,
         )
 
@@ -253,7 +272,12 @@ async def test_log_medicine_rejects_unknown_units_before_firebase(websession, mo
         await api.log_medicine(
             "child",
             start_time=datetime(2026, 9, 15, tzinfo=timezone.utc),
-            medicine_type=MedicineTypeReference(id="medicine-id", name="Vitamin D"),
+            medicine_type=FirebaseMedicationTypeDocument(
+                _id="medicine-id",
+                active=True,
+                mode="medication",
+                name="Vitamin D",
+            ),
             amount=1,
             units=invalid_units,
         )

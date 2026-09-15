@@ -19,10 +19,3 @@ class SolidsFoodReference(StrictModel):
     source: SolidsFoodSource
     name: str
     amount: str | Number
-
-
-class MedicineTypeReference(StrictModel):
-    """Reference to an existing child-specific medicine type."""
-
-    id: str
-    name: str

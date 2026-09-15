@@ -213,10 +213,10 @@ async def main() -> None:
   - `units`: `"C"` for Celsius or `"F"` for Fahrenheit
 
 ### Medicine Tracking
-- `await list_medicine_types(child_uid, include_inactive=False)` - List child-specific medicine types
+- `await list_medicine_types(child_uid)` - List active child-specific medicine types
 - `await create_medicine_type(child_uid, name)` - Add a selectable medicine type
 - `await log_medicine(child_uid, start_time=..., medicine_type=..., amount=..., units=..., notes="")` - Log a medicine dose
-  - `medicine_type`: A type returned by `list_medicine_types()` / `create_medicine_type()`, or a `MedicineTypeReference`
+  - `medicine_type`: A type returned by `list_medicine_types()` or `create_medicine_type()`
   - `amount`: Optional; the app-compatible blank value is stored as `0.0`
   - `units`: `"ml"`, `"oz"`, `"tsp"`, or `"drops"`
 

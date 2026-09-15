@@ -92,7 +92,7 @@ from .firebase_types import (
     VolumeUnits,
     to_firebase_dict,
 )
-from .models import MedicineTypeReference, SolidsFoodReference
+from .models import SolidsFoodReference
 
 CURATED_FOODS_BUCKET = "simpleintervals.appspot.com"
 CURATED_FOODS_OBJECT = "foods/fooddb.json"
@@ -1951,9 +1951,7 @@ class HuckleberryAPI:
 
         _LOGGER.info("Temperature data logged successfully (updated_last=%s)", should_update_last_temperature)
 
-    async def list_medicine_types(
-        self, child_uid: str, include_inactive: bool = False
-    ) -> list[FirebaseMedicationTypeDocument]:
+    async def list_medicine_types(self, child_uid: str) -> list[FirebaseMedicationTypeDocument]:
         """List child-specific medicine types from ``health/{child_uid}/types``."""
         client = await self._get_firestore_client()
         types_ref = client.collection("health").document(child_uid).collection("types")
@@ -1961,9 +1959,8 @@ class HuckleberryAPI:
         medicine_types: list[FirebaseMedicationTypeDocument] = []
         async for doc in types_ref.stream():
             item = FirebaseMedicationTypeDocument.model_validate(doc.to_dict() or {})
-            if not include_inactive and not item.active:
-                continue
-            medicine_types.append(item)
+            if item.active:
+                medicine_types.append(item)
 
         return sorted(medicine_types, key=lambda item: item.name.casefold())
 
@@ -1992,22 +1989,14 @@ class HuckleberryAPI:
         child_uid: str,
         *,
         start_time: datetime,
-        medicine_type: MedicineTypeReference | FirebaseMedicationTypeDocument,
+        medicine_type: FirebaseMedicationTypeDocument,
         amount: float | None = None,
         units: MedicationUnits | None = None,
         notes: str = "",
     ) -> None:
         """Log medicine using an existing child-specific medicine type."""
-        if isinstance(medicine_type, FirebaseMedicationTypeDocument):
-            medicine_ref = MedicineTypeReference(id=medicine_type.id_, name=medicine_type.name)
-        else:
-            medicine_ref = (
-                medicine_type
-                if isinstance(medicine_type, MedicineTypeReference)
-                else MedicineTypeReference.model_validate(medicine_type)
-            )
-        medicine_id = medicine_ref.id.strip()
-        medicine_name = medicine_ref.name.strip()
+        medicine_id = medicine_type.id_.strip()
+        medicine_name = medicine_type.name.strip()
         if not medicine_id:
             raise ValueError("Medicine type ID must be non-empty")
         if not medicine_name:
