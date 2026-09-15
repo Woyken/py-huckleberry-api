@@ -2059,9 +2059,8 @@ class HuckleberryAPI:
         )
 
         if should_update_last_medicine:
-            last_medicine_payload = last_medicine.model_dump(by_alias=True)
-            if latest_units is None:
-                last_medicine_payload.pop("units")
+            last_medicine_payload = to_firebase_dict(last_medicine)
+            last_medicine_payload["multientry_key"] = None
             await health_ref.update(
                 {
                     "prefs.lastMedication": last_medicine_payload,
