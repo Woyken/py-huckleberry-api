@@ -2060,9 +2060,13 @@ class HuckleberryAPI:
         )
 
         await health_ref.collection("data").document(interval_id).set(to_firebase_dict(medicine_entry))
-        await health_ref.collection("types").document(medicine_id).set(
-            {"lastTake": to_firebase_dict(last_take)},
-            merge=True,
+        await (
+            health_ref.collection("types")
+            .document(medicine_id)
+            .set(
+                {"lastTake": to_firebase_dict(last_take)},
+                merge=True,
+            )
         )
 
         if should_update_last_medicine:
