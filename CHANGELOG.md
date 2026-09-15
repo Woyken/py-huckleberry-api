@@ -7,13 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
-## Unreleased
-
-### Features
-
-- Add child-specific medicine type listing and creation, plus medicine dose logging with all app-supported units. ([#33](https://github.com/Woyken/py-huckleberry-api/issues/33))
-
-
 ## [0.4.5] - 2026-09-15
 
 ### Features

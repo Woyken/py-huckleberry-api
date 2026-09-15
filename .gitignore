@@ -40,7 +40,7 @@ htmlcov/
 *.whl
 
 # Secrets (if any test credentials)
-.env
+.env*
 secrets.json
 credentials.json
 
