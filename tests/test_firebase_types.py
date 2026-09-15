@@ -128,7 +128,6 @@ def test_medication_model_accepts_live_app_ounce_units() -> None:
     """Medication schema should accept the live app's oz unit option."""
     model = FirebaseMedicationData.model_validate(
         {
-            "type": "health",
             "mode": "medication",
             "start": 1773641000.0,
             "lastUpdated": 1773641001.0,
@@ -137,6 +136,7 @@ def test_medication_model_accepts_live_app_ounce_units() -> None:
             "medication_name": "Vitamin D",
             "amount": 2.0,
             "units": "oz",
+            "notes": "",
         }
     )
 

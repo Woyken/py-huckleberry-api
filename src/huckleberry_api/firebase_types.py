@@ -715,23 +715,63 @@ class FirebaseLastGrowthData(FirebaseGrowthData):
     multientry_key: None = None
 
 
+class FirebaseMedicationTypeLastTake(StrictModel):
+    """health/{child_uid}/types/{type_id}.lastTake payload.
+
+    The app adds this object after a medicine type is used.
+    """
+
+    amount: Number | None = None
+    reminderType: Literal["at"]
+    units: MedicationUnits | None = None
+
+
+class FirebaseMedicationTypeDocument(StrictModel):
+    """Selectable medicine stored at health/{child_uid}/types/{type_id}.
+
+    Newly created types contain only `_id`, `active`, `mode`, and `name`.
+    `lastTake` is added when the type is used for a medicine log.
+    """
+
+    id_: str = Field(alias="_id")
+    active: bool
+    mode: Literal["medication"]
+    name: str
+    lastTake: FirebaseMedicationTypeLastTake | None = None
+
+
 class FirebaseMedicationData(StrictModel):
     """health/{child_uid}/data medication entry payload.
 
     Health tracker writes medication rows to `health/{child_uid}/data`.
+    App-created history rows omit `_id`, `type`, `isNight`, and
+    `multientry_key`, while storing an empty string when notes are omitted.
+    Current standalone rows include `lastUpdated`; older batched rows may
+    omit it. A blank amount is stored as `0.0` and omits `units`.
     """
 
-    type: Literal["health"] | None = None
     mode: Literal["medication"]
     start: Number
     lastUpdated: Number | None = None
     offset: Number
-    medication_id: str | None = None
-    medication_name: str | None = None
-    amount: Number | None = None
+    medication_id: str
+    medication_name: str
+    amount: Number
     units: MedicationUnits | None = None
-    notes: str | None = None
-    multientry_key: str | None = None
+    notes: str
+
+
+class FirebaseLastMedicationData(FirebaseMedicationData):
+    """health/{child_uid}.prefs.lastMedication payload.
+
+    The latest summary adds the history document ID and health metadata.
+    """
+
+    id_: str = Field(alias="_id")
+    type: Literal["health"]
+    lastUpdated: Number
+    isNight: bool
+    multientry_key: None = None
 
 
 class FirebaseTemperatureData(StrictModel):
@@ -776,7 +816,7 @@ class FirebaseHealthPrefs(StrictModel):
     """health/{child_uid}.prefs structure."""
 
     lastGrowthEntry: FirebaseLastGrowthData | None = None
-    lastMedication: FirebaseMedicationData | None = None
+    lastMedication: FirebaseLastMedicationData | None = None
     lastTemperature: FirebaseLastTemperatureData | None = None
     reminderV2: ReminderV2 | None = None
     timestamp: FirebaseTimestamp | None = None

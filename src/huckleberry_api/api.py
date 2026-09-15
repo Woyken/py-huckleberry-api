@@ -48,10 +48,14 @@ from .firebase_types import (
     FirebaseGrowthData,
     FirebaseHealthDocumentData,
     FirebaseHealthMultiContainer,
+    FirebaseMedicationData,
+    FirebaseMedicationTypeDocument,
+    FirebaseMedicationTypeLastTake,
     FirebaseLastActivityData,
     FirebaseLastBottleData,
     FirebaseLastDiaperData,
     FirebaseLastGrowthData,
+    FirebaseLastMedicationData,
     FirebaseLastNursingData,
     FirebaseLastPottyData,
     FirebaseLastPumpData,
@@ -77,6 +81,7 @@ from .firebase_types import (
     FirebaseTypesDocument,
     FirebaseUserDocument,
     HealthDataEntry,
+    MedicationUnits,
     PooColor,
     PooConsistency,
     PottyResult,
@@ -87,7 +92,7 @@ from .firebase_types import (
     VolumeUnits,
     to_firebase_dict,
 )
-from .models import SolidsFoodReference
+from .models import MedicineTypeReference, SolidsFoodReference
 
 CURATED_FOODS_BUCKET = "simpleintervals.appspot.com"
 CURATED_FOODS_OBJECT = "foods/fooddb.json"
@@ -108,6 +113,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _FEED_INTERVAL_ADAPTER = TypeAdapter(FirebaseFeedIntervalData)
 _HEALTH_ENTRY_ADAPTER = TypeAdapter(HealthDataEntry)
+_MEDICATION_UNITS_ADAPTER = TypeAdapter(MedicationUnits)
 _VOLUME_UNITS_ADAPTER = TypeAdapter(VolumeUnits)
 _ACTIVITY_LAST_FIELD_BY_MODE: dict[ActivityMode, str] = {
     "bath": "lastBath",
@@ -1944,6 +1950,132 @@ class HuckleberryAPI:
                 raise
 
         _LOGGER.info("Temperature data logged successfully (updated_last=%s)", should_update_last_temperature)
+
+    async def list_medicine_types(
+        self, child_uid: str, include_inactive: bool = False
+    ) -> list[FirebaseMedicationTypeDocument]:
+        """List child-specific medicine types from ``health/{child_uid}/types``."""
+        client = await self._get_firestore_client()
+        types_ref = client.collection("health").document(child_uid).collection("types")
+
+        medicine_types: list[FirebaseMedicationTypeDocument] = []
+        async for doc in types_ref.stream():
+            item = FirebaseMedicationTypeDocument.model_validate(doc.to_dict() or {})
+            if not include_inactive and not item.active:
+                continue
+            medicine_types.append(item)
+
+        return sorted(medicine_types, key=lambda item: item.name.casefold())
+
+    async def create_medicine_type(self, child_uid: str, name: str) -> FirebaseMedicationTypeDocument:
+        """Create a selectable medicine type for a child."""
+        medicine_name = name.strip()
+        if not medicine_name:
+            raise ValueError("Medicine name must be non-empty")
+
+        current_time = time.time()
+        medicine_id = f"{int(current_time * 1000)}-{uuid.uuid4().hex[:20]}"
+        medicine_type = FirebaseMedicationTypeDocument(
+            _id=medicine_id,
+            active=True,
+            mode="medication",
+            name=medicine_name,
+        )
+
+        client = await self._get_firestore_client()
+        type_ref = client.collection("health").document(child_uid).collection("types").document(medicine_id)
+        await type_ref.set(to_firebase_dict(medicine_type))
+        return medicine_type
+
+    async def log_medicine(
+        self,
+        child_uid: str,
+        *,
+        start_time: datetime,
+        medicine_type: MedicineTypeReference | FirebaseMedicationTypeDocument,
+        amount: float | None = None,
+        units: MedicationUnits | None = None,
+        notes: str = "",
+    ) -> None:
+        """Log medicine using an existing child-specific medicine type."""
+        if isinstance(medicine_type, FirebaseMedicationTypeDocument):
+            medicine_ref = MedicineTypeReference(id=medicine_type.id_, name=medicine_type.name)
+        else:
+            medicine_ref = (
+                medicine_type
+                if isinstance(medicine_type, MedicineTypeReference)
+                else MedicineTypeReference.model_validate(medicine_type)
+            )
+        medicine_id = medicine_ref.id.strip()
+        medicine_name = medicine_ref.name.strip()
+        if not medicine_id:
+            raise ValueError("Medicine type ID must be non-empty")
+        if not medicine_name:
+            raise ValueError("Medicine name must be non-empty")
+        if units is not None:
+            units = _MEDICATION_UNITS_ADAPTER.validate_python(units)
+        if amount is not None and units is None:
+            raise ValueError("Medicine units are required when an amount is provided")
+
+        client = await self._get_firestore_client()
+        health_ref = client.collection("health").document(child_uid)
+        start_timestamp = start_time.timestamp()
+        current_time = time.time()
+        current_offset = await self._get_timezone_offset_minutes()
+        interval_id = f"{int(current_time * 1000)}-{uuid.uuid4().hex[:20]}"
+
+        health_doc = await health_ref.get()
+        health_model = FirebaseHealthDocumentData.model_validate(health_doc.to_dict() or {})
+        existing_last_medicine = health_model.prefs.lastMedication if health_model.prefs else None
+        existing_last_medicine_start = existing_last_medicine.start if existing_last_medicine else None
+        should_update_last_medicine = existing_last_medicine_start is None or start_timestamp >= float(
+            existing_last_medicine_start
+        )
+        latest_units = units if units is not None else existing_last_medicine.units if existing_last_medicine else None
+        logged_amount = 0.0 if amount is None else float(amount)
+
+        medicine_entry = FirebaseMedicationData(
+            mode="medication",
+            start=start_timestamp,
+            lastUpdated=current_time,
+            offset=current_offset,
+            medication_id=medicine_id,
+            medication_name=medicine_name,
+            amount=logged_amount,
+            units=units,
+            notes=notes,
+        )
+        last_medicine = FirebaseLastMedicationData(
+            **medicine_entry.model_dump(exclude={"units"}),
+            _id=interval_id,
+            type="health",
+            isNight=False,
+            multientry_key=None,
+            units=latest_units,
+        )
+        last_take = FirebaseMedicationTypeLastTake(
+            amount=float(amount) if amount is not None else None,
+            reminderType="at",
+            units=units,
+        )
+
+        await health_ref.collection("data").document(interval_id).set(to_firebase_dict(medicine_entry))
+        await health_ref.collection("types").document(medicine_id).set(
+            {"lastTake": to_firebase_dict(last_take)},
+            merge=True,
+        )
+
+        if should_update_last_medicine:
+            last_medicine_payload = last_medicine.model_dump(by_alias=True)
+            if latest_units is None:
+                last_medicine_payload.pop("units")
+            await health_ref.update(
+                {
+                    "prefs.lastMedication": last_medicine_payload,
+                    "prefs.timestamp": {"seconds": current_time},
+                    "prefs.local_timestamp": current_time,
+                }
+            )
 
     async def start_pump(self, child_uid: str) -> None:
         """Start a pumping timer."""

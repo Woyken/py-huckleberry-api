@@ -16,6 +16,7 @@ This is a reverse-engineered API client that connects directly to Huckleberry's 
 - 🤱 **Pumping Tracking**: Log pumping sessions and fetch latest/history
 - 🧷 **Diaper Changes**: Log pee, poo, both, or dry checks with color/consistency
 - 📏 **Growth Measurements**: Record weight, height, and head circumference
+- 💊 **Medicine Tracking**: Manage medicine types and record doses
 - 🔄 **Real-time Updates**: Firebase snapshot listeners for instant synchronization
 - 👶 **Child Management**: Support for multiple children profiles
 
@@ -104,6 +105,15 @@ async def main() -> None:
             start_time=datetime.now(),
             amount=37.2,
             units="C",
+        )
+
+        medicine_type = await api.create_medicine_type(child_uid, "Vitamin D")
+        await api.log_medicine(
+            child_uid,
+            start_time=datetime.now(),
+            medicine_type=medicine_type,
+            amount=1.0,
+            units="ml",
         )
 
 
@@ -201,6 +211,14 @@ async def main() -> None:
 ### Temperature Tracking
 - `await log_temperature(child_uid, start_time=..., amount=..., units=..., notes=None)` - Log a body-temperature measurement
   - `units`: `"C"` for Celsius or `"F"` for Fahrenheit
+
+### Medicine Tracking
+- `await list_medicine_types(child_uid, include_inactive=False)` - List child-specific medicine types
+- `await create_medicine_type(child_uid, name)` - Add a selectable medicine type
+- `await log_medicine(child_uid, start_time=..., medicine_type=..., amount=..., units=..., notes="")` - Log a medicine dose
+  - `medicine_type`: A type returned by `list_medicine_types()` / `create_medicine_type()`, or a `MedicineTypeReference`
+  - `amount`: Optional; the app-compatible blank value is stored as `0.0`
+  - `units`: `"ml"`, `"oz"`, `"tsp"`, or `"drops"`
 
 ### Real-time Listeners
 - `await setup_sleep_listener(child_uid, callback)` - Listen to sleep updates
