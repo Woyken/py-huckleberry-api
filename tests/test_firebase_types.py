@@ -17,6 +17,7 @@ from huckleberry_api.firebase_types import (
     FirebaseGrowthData,
     FirebaseHealthDocumentData,
     FirebaseLastActivityData,
+    FirebaseLastGrowthData,
     FirebaseLastPumpData,
     FirebaseMedicationData,
     FirebasePumpDocumentData,
@@ -76,9 +77,9 @@ def test_sleep_and_diaper_documents_accept_empty_last_summary_maps() -> None:
     assert diaper_model.prefs.lastPotty.mode is None
 
 
-def test_growth_model_accepts_live_app_imperial_summary_units() -> None:
+def test_last_growth_model_accepts_live_app_imperial_summary_units() -> None:
     """Growth schema should accept the composite imperial units emitted by the live app."""
-    model = FirebaseGrowthData.model_validate(
+    model = FirebaseLastGrowthData.model_validate(
         {
             "_id": "1773175568582-ef0c64260d2686001e96",
             "head": 10.2,
@@ -118,9 +119,6 @@ def test_growth_model_accepts_sparse_live_app_data_rows() -> None:
         }
     )
 
-    assert model.id_ is None
-    assert model.type is None
-    assert model.isNight is None
     assert model.weightUnits == "kg"
     assert model.heightUnits == "cm"
 

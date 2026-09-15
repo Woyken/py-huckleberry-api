@@ -686,23 +686,33 @@ class FirebaseDiaperMultiContainer(StrictModel):
 class FirebaseGrowthData(StrictModel):
     """health/{child_uid}/data growth entry payload.
 
-    Health history uses `data` subcollection (not `intervals`).
+    Live app history rows omit the `_id`, `type`, `isNight`, and
+    `multientry_key` fields found in prefs.lastGrowthEntry.
     """
 
-    id_: str | None = Field(default=None, alias="_id")
-    type: Literal["health"] | None = None
     mode: Literal["growth"]
     start: Number
     lastUpdated: Number | None = None
     offset: Number
-    isNight: bool | None = None
-    multientry_key: str | None = None
     weight: Number | None = None
     weightUnits: WeightUnits | None = None
     height: Number | None = None
     heightUnits: HeightUnits | None = None
     head: Number | None = None
     headUnits: HeadUnits | None = None
+
+
+class FirebaseLastGrowthData(FirebaseGrowthData):
+    """health/{child_uid}.prefs.lastGrowthEntry payload.
+
+    Live data includes the corresponding history document ID and summary
+    metadata that are absent from app-created health history rows.
+    """
+
+    id_: str = Field(alias="_id")
+    type: Literal["health"]
+    isNight: bool | None = None
+    multientry_key: None = None
 
 
 class FirebaseMedicationData(StrictModel):
@@ -765,7 +775,7 @@ HealthDataEntry: TypeAlias = FirebaseGrowthData | FirebaseMedicationData | Fireb
 class FirebaseHealthPrefs(StrictModel):
     """health/{child_uid}.prefs structure."""
 
-    lastGrowthEntry: FirebaseGrowthData | None = None
+    lastGrowthEntry: FirebaseLastGrowthData | None = None
     lastMedication: FirebaseMedicationData | None = None
     lastTemperature: FirebaseLastTemperatureData | None = None
     reminderV2: ReminderV2 | None = None

@@ -49,6 +49,7 @@ from .firebase_types import (
     FirebaseLastActivityData,
     FirebaseLastBottleData,
     FirebaseLastDiaperData,
+    FirebaseLastGrowthData,
     FirebaseLastNursingData,
     FirebaseLastPottyData,
     FirebaseLastPumpData,
@@ -1020,11 +1021,8 @@ class HuckleberryAPI:
             end_offset=await self._get_timezone_offset_minutes(),
         )
 
-        try:
-            await feed_intervals_ref.set(to_firebase_dict(breast_interval))
-            _LOGGER.info("Created nursing interval entry: %s", interval_id)
-        except GoogleAPICallError as err:
-            _LOGGER.error("Failed to create nursing interval entry: %s", err)
+        await feed_intervals_ref.set(to_firebase_dict(breast_interval))
+        _LOGGER.info("Created nursing interval entry: %s", interval_id)
 
         last_nursing_data = FirebaseLastNursingData(
             mode="breast",
@@ -1747,6 +1745,8 @@ class HuckleberryAPI:
 
         if not any([weight, height, head]):
             raise ValueError("At least one measurement (weight, height, or head) is required")
+        if units not in ("metric", "imperial"):
+            raise ValueError("units must be 'metric' or 'imperial'")
 
         client = await self._get_firestore_client()
         health_ref = client.collection("health").document(child_uid)
@@ -1768,14 +1768,10 @@ class HuckleberryAPI:
 
         # Build growth entry matching Huckleberry app structure
         growth_entry = FirebaseGrowthData(
-            id_=interval_id,
-            type="health",
             mode="growth",
             start=start_timestamp,
             lastUpdated=current_time,
             offset=current_offset,
-            isNight=False,
-            multientry_key=None,
         )
 
         # Add measurements with proper unit fields (matches app structure)
@@ -1800,23 +1796,29 @@ class HuckleberryAPI:
                 growth_entry.head = float(head)
                 growth_entry.headUnits = "hin"
 
+        last_growth_entry = FirebaseLastGrowthData(
+            **growth_entry.model_dump(),
+            _id=interval_id,
+            type="health",
+            isNight=False,
+            multientry_key=None,
+        )
+
         # Create interval document in health/{child_uid}/data subcollection
         # (Health uses "data" subcollection, not "intervals" like other trackers)
         health_data_ref = health_ref.collection("data").document(interval_id)
 
-        try:
-            await health_data_ref.set(to_firebase_dict(growth_entry))
-            _LOGGER.info("Created growth data entry in subcollection: %s", interval_id)
-        except GoogleAPICallError as err:
-            _LOGGER.error("Failed to create growth data entry: %s", err)
-            # Continue to update prefs even if subcollection write fails
+        await health_data_ref.set(to_firebase_dict(growth_entry))
+        _LOGGER.info("Created growth data entry in subcollection: %s", interval_id)
 
         # Update prefs.lastGrowthEntry and timestamps (matches Huckleberry app structure)
         if should_update_last_growth:
+            last_growth_payload = to_firebase_dict(last_growth_entry)
+            last_growth_payload["multientry_key"] = None
             try:
                 await health_ref.update(
                     {
-                        "prefs.lastGrowthEntry": to_firebase_dict(growth_entry),
+                        "prefs.lastGrowthEntry": last_growth_payload,
                         "prefs.timestamp": {"seconds": current_time},
                         "prefs.local_timestamp": current_time,
                     }
@@ -2107,7 +2109,7 @@ class HuckleberryAPI:
             if not last_growth:
                 return None
 
-            return FirebaseGrowthData.model_validate(last_growth.model_dump(by_alias=True, exclude_none=True))
+            return last_growth
         except (GoogleAPICallError, ValidationError, RuntimeError, TypeError, ValueError) as err:
             _LOGGER.error("Failed to get growth data: %s", err)
             return None

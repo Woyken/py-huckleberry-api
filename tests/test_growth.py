@@ -3,6 +3,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from google.cloud import firestore
 
 from huckleberry_api import HuckleberryAPI
@@ -84,3 +85,34 @@ class TestGrowthTracking:
         assert growth_data is not None
         assert growth_data["start"] == start_time.timestamp()
         assert growth_data["weight"] == 6.1
+
+    @pytest.mark.integration
+    async def test_log_growth_writes_live_history_shape(self, api: HuckleberryAPI, child_uid: str) -> None:
+        """Growth history omits fields that belong only to the latest preference."""
+        start_time = datetime(2020, 1, 3, 4, 5, 6, tzinfo=timezone.utc)
+        db = await api._get_firestore_client()
+        health_ref = db.collection("health").document(child_uid)
+        health_data = (await health_ref.get()).to_dict() or {}
+        latest = health_data.get("prefs", {}).get("lastGrowthEntry")
+        if not latest or latest["start"] <= start_time.timestamp():
+            pytest.skip("A newer lastGrowthEntry is required for non-destructive integration testing")
+
+        query = health_ref.collection("data").where(filter=firestore.FieldFilter("start", "==", start_time.timestamp()))
+        existing_ids = {snapshot.id for snapshot in await query.get()}
+        try:
+            await api.log_growth(child_uid, start_time=start_time, weight=5.1, units="metric")
+            snapshots = await query.get()
+            created = [snapshot for snapshot in snapshots if snapshot.id not in existing_ids]
+            assert len(created) == 1
+            payload = created[0].to_dict()
+            assert payload is not None
+            assert payload["weight"] == 5.1
+            assert payload["weightUnits"] == "kg"
+            assert "_id" not in payload
+            assert "type" not in payload
+            assert "isNight" not in payload
+            assert "multientry_key" not in payload
+        finally:
+            for snapshot in await query.get():
+                if snapshot.id not in existing_ids:
+                    await snapshot.reference.delete()
