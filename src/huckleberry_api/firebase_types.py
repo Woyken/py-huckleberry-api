@@ -765,13 +765,15 @@ class FirebaseLastMedicationData(FirebaseMedicationData):
     """health/{child_uid}.prefs.lastMedication payload.
 
     The latest summary adds the history document ID and health metadata.
+    Live app data observed on 2026-09-16 can use a distinct 20-character
+    document ID string for `multientry_key`; API-created summaries use null.
     """
 
     id_: str = Field(alias="_id")
     type: Literal["health"]
     lastUpdated: Number
     isNight: bool
-    multientry_key: None = None
+    multientry_key: str | None = None
 
 
 class FirebaseTemperatureData(StrictModel):

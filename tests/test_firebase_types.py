@@ -18,6 +18,7 @@ from huckleberry_api.firebase_types import (
     FirebaseHealthDocumentData,
     FirebaseLastActivityData,
     FirebaseLastGrowthData,
+    FirebaseLastMedicationData,
     FirebaseLastPumpData,
     FirebaseMedicationData,
     FirebasePumpDocumentData,
@@ -141,6 +142,29 @@ def test_medication_model_accepts_live_app_ounce_units() -> None:
     )
 
     assert model.units == "oz"
+
+
+def test_last_medication_accepts_live_multientry_key() -> None:
+    """Latest medicine schema should accept the app's document ID key."""
+    model = FirebaseLastMedicationData.model_validate(
+        {
+            "_id": "first-medicine-id",
+            "type": "health",
+            "mode": "medication",
+            "start": 1_789_568_304.0,
+            "lastUpdated": 1_789_568_305.0,
+            "offset": -180,
+            "medication_id": "medicine-type-id",
+            "medication_name": "Vitamin D",
+            "amount": 1.0,
+            "units": "ml",
+            "notes": "",
+            "isNight": False,
+            "multientry_key": "second-medicine-id",
+        }
+    )
+
+    assert model.multientry_key == "second-medicine-id"
 
 
 def test_temperature_models_accept_distinct_live_history_and_latest_payloads() -> None:
