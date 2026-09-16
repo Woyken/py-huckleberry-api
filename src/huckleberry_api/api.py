@@ -2526,9 +2526,7 @@ class HuckleberryAPI:
 
         now_ms = int(time.time() * 1000)
         duration = (
-            int(float(timer.duration or 0))
-            if timer.paused
-            else _activity_duration(float(timer.startTime), now_ms)
+            int(float(timer.duration or 0)) if timer.paused else _activity_duration(float(timer.startTime), now_ms)
         )
         await self._reset_activity_timer(
             activities_ref,
@@ -2600,9 +2598,7 @@ class HuckleberryAPI:
         now_ms = int(time.time() * 1000)
         now = now_ms / 1000
         duration = (
-            float(source.duration or 0)
-            if source.paused
-            else float(_activity_duration(float(source.startTime), now_ms))
+            float(source.duration or 0) if source.paused else float(_activity_duration(float(source.startTime), now_ms))
         )
         target: dict[str, object] = {
             "active": True,
