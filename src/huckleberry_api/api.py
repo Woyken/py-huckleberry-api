@@ -2674,6 +2674,7 @@ class HuckleberryAPI:
         duration: float | int,
     ) -> None:
         """Write the inactive timer shape shared by save and reset."""
+        assert timer.startTime is not None
         now = now_ms / 1000
         await activities_ref.set(
             {
