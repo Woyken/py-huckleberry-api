@@ -966,7 +966,17 @@ class FirebaseActivityPrefs(StrictModel):
 
 
 class FirebaseActivityTimerEntryData(StrictModel):
-    """Per-mode timer entry from activities/{child_uid}.timer.<mode>."""
+    """Per-mode timer entry from activities/{child_uid}.timer.<mode>.
+
+    Live app/Firebase verification on 2026-09-16 showed that activity timers use
+    millisecond `startTime`/`endTime` values and rounded whole-second `duration`.
+    Pausing freezes `duration` and `endTime`; resuming keeps the original start
+    and includes paused wall-clock time. Saving or resetting makes the entry
+    inactive and resets `startTime`, while retaining the session duration/end.
+    All activity modes share the same observed 16-character hexadecimal UUID.
+    Switching moves the active session fields to the target mode without adding
+    a history interval.
+    """
 
     active: bool
     paused: bool | None = None

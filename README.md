@@ -14,6 +14,7 @@ This is a reverse-engineered API client that connects directly to Huckleberry's 
 - 💤 **Sleep Tracking**: Start, pause, resume, cancel, and complete sleep sessions
 - 🍼 **Feeding Tracking**: Track breastfeeding with left/right side switching
 - 🤱 **Pumping Tracking**: Log pumping sessions and fetch latest/history
+- 🧸 **Activity Tracking**: Log activities and control timers, including switching activity type
 - 🧷 **Diaper Changes**: Log pee, poo, both, or dry checks with color/consistency
 - 📏 **Growth Measurements**: Record weight, height, and head circumference
 - 💊 **Medicine Tracking**: Manage medicine types and record doses
@@ -189,6 +190,15 @@ async def main() -> None:
 - `await cancel_pump(child_uid)` - Cancel the active timer without saving
 - `await log_pump(child_uid, start_time=..., total_amount=..., duration=..., units=...)` - Log pumping entry; total entries are stored split evenly across `leftAmount` and `rightAmount`
 - `await list_pump_intervals(child_uid, start_time, end_time)` - List pump history for a range using `datetime` objects
+
+### Activity Tracking
+- `await start_activity(child_uid, mode)` - Start an activity timer
+- `await pause_activity(child_uid, mode)` / `await resume_activity(child_uid, mode)` - Pause or resume an activity timer
+- `await switch_activity(child_uid, mode)` - Associate the active timer with another activity type
+- `await complete_activity(child_uid, mode, start_time=..., duration=..., notes=...)` - Save the active timer with optional edit-form overrides
+- `await cancel_activity(child_uid, mode)` - Reset the active timer without saving
+- `await log_activity(child_uid, mode=..., start_time=..., duration=..., notes=...)` - Save an activity directly without running a timer
+- `await list_activity_intervals(child_uid, start_time, end_time)` - List activity history for a range
 
 ### Solids Tracking
 - `await list_solids_curated_foods()` - List curated solids food catalog

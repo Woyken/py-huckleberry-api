@@ -32,6 +32,7 @@ from .firebase_types import (
     FirebaseActivityDocumentData,
     FirebaseActivityIntervalData,
     FirebaseActivityMultiContainer,
+    FirebaseActivityTimerEntryData,
     FirebaseBottleFeedIntervalData,
     FirebaseBreastFeedIntervalData,
     FirebaseChildDocument,
@@ -115,6 +116,7 @@ _FEED_INTERVAL_ADAPTER = TypeAdapter(FirebaseFeedIntervalData)
 _HEALTH_ENTRY_ADAPTER = TypeAdapter(HealthDataEntry)
 _MEDICATION_UNITS_ADAPTER = TypeAdapter(MedicationUnits)
 _VOLUME_UNITS_ADAPTER = TypeAdapter(VolumeUnits)
+_ACTIVITY_MODE_ADAPTER = TypeAdapter(ActivityMode)
 _ACTIVITY_LAST_FIELD_BY_MODE: dict[ActivityMode, str] = {
     "bath": "lastBath",
     "brushTeeth": "lastBrushTeeth",
@@ -161,6 +163,14 @@ def _inactive_pump_timer(session_uuid: str, now_ms: int) -> FirebasePumpTimerDat
         startTime=float(now_ms),
         uuid=session_uuid,
     )
+
+
+def _activity_duration(start_time_ms: float, end_time_ms: int) -> int:
+    """Round elapsed activity time to whole seconds like the app."""
+    elapsed_ms = end_time_ms - start_time_ms
+    if elapsed_ms < 0:
+        raise ValueError("Activity timer end time must not precede start time")
+    return int((elapsed_ms + 500) // 1000)
 
 
 async def _raise_for_status_with_details(response: aiohttp.ClientResponse, operation: str) -> None:
@@ -2328,8 +2338,29 @@ class HuckleberryAPI:
             duration: Optional activity duration in seconds.
             notes: Optional notes attached to the interval.
         """
-        if duration is not None and float(duration) < 0:
-            raise ValueError("duration must be non-negative")
+        await self._log_activity(
+            child_uid,
+            mode=mode,
+            start_time=start_time,
+            duration=duration,
+            notes=notes,
+            update_timer=True,
+        )
+
+    async def _log_activity(
+        self,
+        child_uid: str,
+        *,
+        mode: ActivityMode,
+        start_time: datetime,
+        duration: float | int | None,
+        notes: str | None,
+        update_timer: bool,
+    ) -> None:
+        """Write an activity interval and latest summary."""
+        mode = _ACTIVITY_MODE_ADAPTER.validate_python(mode)
+        if duration is not None and (not math.isfinite(float(duration)) or float(duration) < 0):
+            raise ValueError("duration must be a non-negative finite number")
 
         start_timestamp = start_time.timestamp()
         current_offset = await self._get_timezone_offset_minutes()
@@ -2378,11 +2409,293 @@ class HuckleberryAPI:
                 }
             )
 
+        if update_timer:
+            session_uuid = self._activity_uuid(activities_model)
+            inactive_timer = FirebaseActivityTimerEntryData(
+                active=False,
+                paused=False,
+                timestamp=FirebaseTimestamp(seconds=current_time),
+                local_timestamp=current_time,
+                startTime=float(int(current_time * 1000)),
+                duration=float(duration) if duration is not None else 0,
+                notes="",
+                uuid=session_uuid,
+            )
+            await activities_ref.set(
+                {"timer": {mode: to_firebase_dict(inactive_timer)}},
+                merge=True,
+            )
+
         _LOGGER.info(
             "Activity logged for child %s with mode %s (updated_last=%s)",
             child_uid,
             mode,
             should_update_last_activity,
+        )
+
+    async def start_activity(self, child_uid: str, mode: ActivityMode) -> None:
+        """Start an activity timer."""
+        mode = _ACTIVITY_MODE_ADAPTER.validate_python(mode)
+        activities_ref, activities = await self._get_activity_document(child_uid)
+        active_mode = self._active_activity_mode(activities)
+        if active_mode == mode:
+            return
+        if active_mode is not None:
+            raise ValueError(f"{active_mode} is already active; use switch_activity()")
+
+        now_ms = int(time.time() * 1000)
+        now = now_ms / 1000
+        timer = FirebaseActivityTimerEntryData(
+            active=True,
+            paused=False,
+            timestamp=FirebaseTimestamp(seconds=now),
+            local_timestamp=now,
+            startTime=float(now_ms),
+            duration=0,
+            notes="",
+            uuid=self._activity_uuid(activities),
+        )
+        await activities_ref.set({"timer": {mode: to_firebase_dict(timer)}}, merge=True)
+
+    async def pause_activity(self, child_uid: str, mode: ActivityMode) -> None:
+        """Pause an active activity timer."""
+        mode = _ACTIVITY_MODE_ADAPTER.validate_python(mode)
+        activities_ref, activities = await self._get_activity_document(child_uid)
+        timer = self._activity_timer(activities, mode)
+        if not timer or not timer.active or timer.paused:
+            return
+        if timer.startTime is None:
+            raise ValueError("Active activity timer is missing startTime")
+
+        now_ms = int(time.time() * 1000)
+        now = now_ms / 1000
+        duration = _activity_duration(float(timer.startTime), now_ms)
+        await activities_ref.set(
+            {
+                "timer": {
+                    mode: {
+                        "active": True,
+                        "paused": True,
+                        "timestamp": {"seconds": now},
+                        "local_timestamp": now,
+                        "duration": duration,
+                        "endTime": float(timer.startTime) + duration * 1000,
+                    }
+                }
+            },
+            merge=True,
+        )
+
+    async def resume_activity(self, child_uid: str, mode: ActivityMode) -> None:
+        """Resume a paused activity timer, including paused wall-clock time."""
+        mode = _ACTIVITY_MODE_ADAPTER.validate_python(mode)
+        activities_ref, activities = await self._get_activity_document(child_uid)
+        timer = self._activity_timer(activities, mode)
+        if not timer or not timer.active or not timer.paused:
+            return
+        if timer.startTime is None:
+            raise ValueError("Active activity timer is missing startTime")
+
+        now_ms = int(time.time() * 1000)
+        now = now_ms / 1000
+        duration = _activity_duration(float(timer.startTime), now_ms)
+        await activities_ref.set(
+            {
+                "timer": {
+                    mode: {
+                        "active": True,
+                        "paused": False,
+                        "timestamp": {"seconds": now},
+                        "local_timestamp": now,
+                        "duration": duration,
+                    }
+                }
+            },
+            merge=True,
+        )
+
+    async def cancel_activity(self, child_uid: str, mode: ActivityMode) -> None:
+        """Cancel an active activity timer without saving history."""
+        mode = _ACTIVITY_MODE_ADAPTER.validate_python(mode)
+        activities_ref, activities = await self._get_activity_document(child_uid)
+        timer = self._activity_timer(activities, mode)
+        if not timer or not timer.active:
+            return
+        if timer.startTime is None:
+            raise ValueError("Active activity timer is missing startTime")
+
+        now_ms = int(time.time() * 1000)
+        duration = (
+            int(float(timer.duration or 0))
+            if timer.paused
+            else _activity_duration(float(timer.startTime), now_ms)
+        )
+        await self._reset_activity_timer(
+            activities_ref,
+            mode,
+            timer,
+            now_ms=now_ms,
+            duration=duration,
+        )
+
+    async def complete_activity(
+        self,
+        child_uid: str,
+        mode: ActivityMode,
+        *,
+        start_time: datetime | None = None,
+        duration: float | int | None = None,
+        notes: str | None = None,
+    ) -> None:
+        """Complete an activity timer, optionally applying edits from the save form."""
+        mode = _ACTIVITY_MODE_ADAPTER.validate_python(mode)
+        if duration is not None and (not math.isfinite(float(duration)) or float(duration) < 0):
+            raise ValueError("duration must be a non-negative finite number")
+
+        activities_ref, activities = await self._get_activity_document(child_uid)
+        timer = self._activity_timer(activities, mode)
+        if not timer or not timer.active:
+            return
+        if timer.startTime is None:
+            raise ValueError("Active activity timer is missing startTime")
+
+        now_ms = int(time.time() * 1000)
+        resolved_duration = (
+            float(duration)
+            if duration is not None
+            else float(timer.duration or 0)
+            if timer.paused
+            else float(_activity_duration(float(timer.startTime), now_ms))
+        )
+        resolved_start = start_time or datetime.fromtimestamp(float(timer.startTime) / 1000, tz=dt_timezone.utc)
+        await self._log_activity(
+            child_uid,
+            mode=mode,
+            start_time=resolved_start,
+            duration=resolved_duration,
+            notes=notes,
+            update_timer=False,
+        )
+        await self._reset_activity_timer(
+            activities_ref,
+            mode,
+            timer,
+            now_ms=now_ms,
+            duration=resolved_duration,
+        )
+
+    async def switch_activity(self, child_uid: str, mode: ActivityMode) -> None:
+        """Associate the current activity timer with another activity mode."""
+        mode = _ACTIVITY_MODE_ADAPTER.validate_python(mode)
+        activities_ref, activities = await self._get_activity_document(child_uid)
+        source_mode = self._active_activity_mode(activities)
+        if source_mode is None or source_mode == mode:
+            return
+
+        source = self._activity_timer(activities, source_mode)
+        assert source is not None
+        if source.startTime is None:
+            raise ValueError("Active activity timer is missing startTime")
+
+        now_ms = int(time.time() * 1000)
+        now = now_ms / 1000
+        duration = (
+            float(source.duration or 0)
+            if source.paused
+            else float(_activity_duration(float(source.startTime), now_ms))
+        )
+        target: dict[str, object] = {
+            "active": True,
+            "paused": bool(source.paused),
+            "timestamp": {"seconds": now},
+            "local_timestamp": now,
+            "startTime": source.startTime,
+            "duration": duration,
+            "notes": source.notes or "",
+            "uuid": source.uuid,
+        }
+        if source.paused and source.endTime is not None:
+            target["endTime"] = source.endTime
+
+        await activities_ref.set(
+            {
+                "timer": {
+                    source_mode: {
+                        "active": False,
+                        "paused": False,
+                        "timestamp": {"seconds": now},
+                        "local_timestamp": now,
+                        "startTime": float(now_ms),
+                    },
+                    mode: target,
+                }
+            },
+            merge=True,
+        )
+
+    async def _get_activity_document(
+        self, child_uid: str
+    ) -> tuple[AsyncDocumentReference, FirebaseActivityDocumentData]:
+        """Load an activities document reference and validated data."""
+        client = await self._get_firestore_client()
+        activities_ref = client.collection("activities").document(child_uid)
+        activities_doc = await activities_ref.get(timeout=10.0)
+        activities = FirebaseActivityDocumentData.model_validate(activities_doc.to_dict() or {})
+        return activities_ref, activities
+
+    @staticmethod
+    def _activity_timer(
+        activities: FirebaseActivityDocumentData, mode: ActivityMode
+    ) -> FirebaseActivityTimerEntryData | None:
+        """Return one mode's timer entry."""
+        return getattr(activities.timer, mode) if activities.timer else None
+
+    @classmethod
+    def _active_activity_mode(cls, activities: FirebaseActivityDocumentData) -> ActivityMode | None:
+        """Return the active activity mode, if any."""
+        for mode in _ACTIVITY_LAST_FIELD_BY_MODE:
+            timer = cls._activity_timer(activities, mode)
+            if timer and timer.active:
+                return mode
+        return None
+
+    @classmethod
+    def _activity_uuid(cls, activities: FirebaseActivityDocumentData) -> str:
+        """Reuse the shared activity timer UUID used by the app."""
+        for mode in _ACTIVITY_LAST_FIELD_BY_MODE:
+            timer = cls._activity_timer(activities, mode)
+            if timer:
+                return timer.uuid
+        return uuid.uuid4().hex[:16]
+
+    @staticmethod
+    async def _reset_activity_timer(
+        activities_ref: AsyncDocumentReference,
+        mode: ActivityMode,
+        timer: FirebaseActivityTimerEntryData,
+        *,
+        now_ms: int,
+        duration: float | int,
+    ) -> None:
+        """Write the inactive timer shape shared by save and reset."""
+        now = now_ms / 1000
+        await activities_ref.set(
+            {
+                "timer": {
+                    mode: {
+                        "active": False,
+                        "paused": False,
+                        "timestamp": {"seconds": now},
+                        "local_timestamp": now,
+                        "startTime": float(now_ms),
+                        "endTime": float(timer.startTime) + float(duration) * 1000,
+                        "duration": duration,
+                        "notes": timer.notes or "",
+                        "uuid": timer.uuid,
+                    }
+                }
+            },
+            merge=True,
         )
 
     async def get_latest_growth(self, child_uid: str) -> FirebaseGrowthData | None:
