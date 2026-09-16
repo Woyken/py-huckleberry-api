@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [0.4.7] - 2026-09-16
+
+### Features
+
+- Add start, pause, resume, switch, complete, and cancel support for activity timers. ([#35](https://github.com/Woyken/py-huckleberry-api/issues/35))
+
+
 ## [0.4.6] - 2026-09-15
 
 ### Features
