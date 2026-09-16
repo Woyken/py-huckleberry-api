@@ -56,6 +56,8 @@ ActivityMode = Literal[
 PumpEntryMode = Literal["leftright", "total"]
 PottyResult = Literal["satButDry", "wentPotty", "accident"]
 ReminderDay = Literal["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+MilestoneCategory = Literal["social", "language", "cognitive", "movement", "memory"]
+MilestoneSource = Literal["CDC", "Huckleberry"]
 
 
 class ReminderIn(StrictModel):
@@ -1027,6 +1029,51 @@ class FirebaseActivityMultiContainer(StrictModel):
     hasMoreRoom: bool | None = None
     lastUpdated: Number | None = None
     data: dict[str, FirebaseActivityIntervalData]
+
+
+# ---------------------------------------------------------------------------
+# milestones/{child_uid}/intervals
+# ---------------------------------------------------------------------------
+
+
+class _FirebaseMilestoneBase(StrictModel):
+    """Fields shared by all milestones/{child_uid}/intervals rows."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True, protected_namespaces=())
+
+    start: Number
+    offset: Number
+    name: str
+    lastUpdated: Number
+    notes: str | None = None
+    photo: str | None = None
+
+
+class FirebaseCustomMilestoneData(_FirebaseMilestoneBase):
+    """Custom milestone row from milestones/{child_uid}/intervals.
+
+    APK 0.9.305 and live Firebase verification on 2026-09-16 showed that
+    custom rows contain no explicit custom marker or predefined metadata.
+    Empty notes and absent photos are omitted rather than stored as null.
+    """
+
+
+class FirebasePredefinedMilestoneData(_FirebaseMilestoneBase):
+    """Predefined milestone row from milestones/{child_uid}/intervals.
+
+    The four milestone metadata fields are copied together from the catalog
+    embedded in APK 0.9.305. The app does not allow users to edit them. Live
+    verification showed `photo`, when present, is the `<document_id>.jpeg`
+    Firebase Storage filename.
+    """
+
+    milestoneId: str
+    milestoneCategory: MilestoneCategory
+    milestoneAgeRange: str
+    milestoneSource: MilestoneSource
+
+
+FirebaseMilestoneData: TypeAlias = FirebaseCustomMilestoneData | FirebasePredefinedMilestoneData
 
 
 def to_firebase_dict(model: StrictModel) -> dict[str, object]:

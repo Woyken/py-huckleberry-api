@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import math
+import secrets
 import time
 import uuid
 from datetime import datetime
@@ -51,6 +52,9 @@ from .firebase_types import (
     FirebaseMedicationData,
     FirebaseMedicationTypeDocument,
     FirebaseMedicationTypeLastTake,
+    FirebaseMilestoneData,
+    FirebaseCustomMilestoneData,
+    FirebasePredefinedMilestoneData,
     FirebaseLastActivityData,
     FirebaseLastBottleData,
     FirebaseLastDiaperData,
@@ -92,7 +96,8 @@ from .firebase_types import (
     VolumeUnits,
     to_firebase_dict,
 )
-from .models import SolidsFoodReference
+from .milestone_catalog import PREDEFINED_MILESTONES, PREDEFINED_MILESTONES_BY_ID
+from .models import MilestoneRecord, PredefinedMilestone, SolidsFoodReference
 
 CURATED_FOODS_BUCKET = "simpleintervals.appspot.com"
 CURATED_FOODS_OBJECT = "foods/fooddb.json"
@@ -115,6 +120,7 @@ _FEED_INTERVAL_ADAPTER = TypeAdapter(FirebaseFeedIntervalData)
 _HEALTH_ENTRY_ADAPTER = TypeAdapter(HealthDataEntry)
 _MEDICATION_UNITS_ADAPTER = TypeAdapter(MedicationUnits)
 _VOLUME_UNITS_ADAPTER = TypeAdapter(VolumeUnits)
+_MILESTONE_ADAPTER = TypeAdapter(FirebaseMilestoneData)
 _ACTIVITY_LAST_FIELD_BY_MODE: dict[ActivityMode, str] = {
     "bath": "lastBath",
     "brushTeeth": "lastBrushTeeth",
@@ -1359,6 +1365,181 @@ class HuckleberryAPI:
         await types_ref.collection("custom").document(food_id).set(to_firebase_dict(custom_food))
 
         return custom_food
+
+    @staticmethod
+    def list_predefined_milestones() -> tuple[PredefinedMilestone, ...]:
+        """Return the predefined catalog embedded in Huckleberry APK 0.9.305."""
+        return PREDEFINED_MILESTONES
+
+    async def list_milestones(self, child_uid: str) -> list[MilestoneRecord]:
+        """List a child's custom and predefined milestones in chronological order."""
+        client = await self._get_firestore_client()
+        intervals_ref = client.collection("milestones").document(child_uid).collection("intervals")
+
+        records: list[MilestoneRecord] = []
+        async for doc in intervals_ref.stream():
+            payload = doc.to_dict()
+            if not payload:
+                continue
+            records.append(
+                MilestoneRecord(
+                    id=doc.id,
+                    milestone=_MILESTONE_ADAPTER.validate_python(payload),
+                )
+            )
+
+        return sorted(records, key=lambda record: float(record.milestone.start))
+
+    async def list_available_predefined_milestones(self, child_uid: str) -> tuple[PredefinedMilestone, ...]:
+        """Return predefined milestones that the app would still allow the child to log."""
+        logged_ids = {
+            record.milestone.milestoneId
+            for record in await self.list_milestones(child_uid)
+            if isinstance(record.milestone, FirebasePredefinedMilestoneData)
+        }
+        return tuple(milestone for milestone in PREDEFINED_MILESTONES if milestone.id not in logged_ids)
+
+    def _milestone_datetime(self, value: datetime) -> datetime:
+        """Interpret naive milestone datetimes in the API's configured timezone.
+
+        This matches the app's local date picker rather than the host process's
+        timezone-dependent datetime.timestamp() behavior.
+        """
+        if value.tzinfo is None:
+            return value.replace(tzinfo=self._timezone)
+        return value.astimezone(self._timezone)
+
+    def _milestone_birthdate(self, value: str | float | int | None, maximum: datetime) -> datetime:
+        """Apply the milestone picker's observed birthdate parsing and fallback."""
+        fallback = datetime(2000, 1, 1, tzinfo=self._timezone)
+        try:
+            if isinstance(value, str):
+                if len(value) == 10:
+                    # APK 0.9.305 passes date-only strings through JavaScript Date,
+                    # which interprets YYYY-MM-DD as UTC midnight.
+                    parsed = datetime.fromisoformat(value).replace(tzinfo=dt_timezone.utc)
+                else:
+                    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=self._timezone)
+                minimum = parsed.astimezone(self._timezone)
+            elif isinstance(value, int | float):
+                minimum = datetime.fromtimestamp(float(value) / 1000, tz=self._timezone)
+            else:
+                minimum = fallback
+        except OverflowError, TypeError, ValueError:
+            minimum = fallback
+        return min(minimum, maximum)
+
+    async def _validate_milestone_time(self, child_uid: str, occurred_at: datetime) -> datetime:
+        """Enforce the milestone date picker's birthdate-to-now range."""
+        if not isinstance(occurred_at, datetime):
+            raise TypeError("Milestone start_time must be a datetime")
+        local_time = self._milestone_datetime(occurred_at)
+        maximum = datetime.now(self._timezone)
+        child = await self.get_child(child_uid)
+        if child is None:
+            raise ValueError(f"Child not found: {child_uid}")
+        minimum = self._milestone_birthdate(child.birthdate, maximum)
+
+        if local_time < minimum:
+            raise ValueError("Milestone time cannot be before the child's birthdate")
+        if local_time > maximum:
+            raise ValueError("Milestone time cannot be in the future")
+        return local_time
+
+    @staticmethod
+    def _milestone_notes(notes: str | None) -> str | None:
+        """Trim notes and omit the field when the app would save it empty."""
+        if notes is None:
+            return None
+        if not isinstance(notes, str):
+            raise TypeError("Milestone notes must be a string")
+        return notes.strip() or None
+
+    async def create_custom_milestone(
+        self,
+        child_uid: str,
+        *,
+        name: str,
+        start_time: datetime,
+        notes: str | None = None,
+    ) -> MilestoneRecord:
+        """Create a custom milestone using the fields available in the app.
+
+        Naive start times are interpreted in the API's configured timezone.
+        """
+        if not isinstance(name, str):
+            raise TypeError("Milestone name must be a string")
+        milestone_name = name.strip()
+        if not milestone_name:
+            raise ValueError("Milestone name must be non-empty")
+        milestone_notes = self._milestone_notes(notes)
+
+        local_time = await self._validate_milestone_time(child_uid, start_time)
+        now = time.time()
+        interval_id = f"{int(now * 1000)}-{secrets.token_hex(10)}"
+        offset = local_time.utcoffset()
+        milestone = FirebaseCustomMilestoneData(
+            start=local_time.timestamp(),
+            offset=-(offset.total_seconds() / 60) if offset is not None else 0.0,
+            name=milestone_name,
+            lastUpdated=now,
+            notes=milestone_notes,
+        )
+
+        client = await self._get_firestore_client()
+        interval_ref = client.collection("milestones").document(child_uid).collection("intervals").document(interval_id)
+        await interval_ref.set(to_firebase_dict(milestone))
+        return MilestoneRecord(id=interval_id, milestone=milestone)
+
+    async def create_predefined_milestone(
+        self,
+        child_uid: str,
+        *,
+        milestone: PredefinedMilestone,
+        start_time: datetime,
+        notes: str | None = None,
+    ) -> MilestoneRecord:
+        """Create one exact predefined catalog milestone for a child.
+
+        Naive start times are interpreted in the API's configured timezone.
+        """
+        if not isinstance(milestone, PredefinedMilestone):
+            raise TypeError("milestone must be a PredefinedMilestone returned by list_predefined_milestones()")
+        catalog_milestone = PREDEFINED_MILESTONES_BY_ID.get(milestone.id)
+        if catalog_milestone is None or milestone != catalog_milestone:
+            raise ValueError("Milestone does not exactly match the verified predefined catalog")
+        milestone_notes = self._milestone_notes(notes)
+
+        local_time = await self._validate_milestone_time(child_uid, start_time)
+        now = time.time()
+        interval_id = f"{int(now * 1000)}-{secrets.token_hex(10)}"
+        offset = local_time.utcoffset()
+        firebase_milestone = FirebasePredefinedMilestoneData(
+            start=local_time.timestamp(),
+            offset=-(offset.total_seconds() / 60) if offset is not None else 0.0,
+            name=catalog_milestone.title,
+            lastUpdated=now,
+            notes=milestone_notes,
+            milestoneId=catalog_milestone.id,
+            milestoneCategory=catalog_milestone.category,
+            milestoneAgeRange=catalog_milestone.typical_window,
+            milestoneSource=catalog_milestone.source,
+        )
+
+        client = await self._get_firestore_client()
+        intervals_ref = client.collection("milestones").document(child_uid).collection("intervals")
+        interval_ref = intervals_ref.document(interval_id)
+        duplicate_query = intervals_ref.where(
+            filter=firestore.FieldFilter("milestoneId", "==", catalog_milestone.id)
+        ).limit(1)
+
+        if await duplicate_query.get():
+            raise ValueError(f"Predefined milestone already logged: {catalog_milestone.id}")
+
+        await interval_ref.set(to_firebase_dict(firebase_milestone))
+        return MilestoneRecord(id=interval_id, milestone=firebase_milestone)
 
     async def log_solids(
         self,
