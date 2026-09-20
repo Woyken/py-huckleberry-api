@@ -112,6 +112,31 @@ TDocumentData = TypeVar(
 
 _LOGGER = logging.getLogger(__name__)
 
+# Callers may backdate events, but a clock skew allowance keeps "now" usable from
+# devices whose clocks run slightly fast.
+MAX_EVENT_TIME_SKEW_SECONDS = 60.0
+
+
+def _validate_event_time(value: datetime, *, field_name: str, now: float) -> float:
+    """Validate a caller supplied event time and return it as POSIX seconds.
+
+    Args:
+        value: Timezone-aware datetime supplied by the caller.
+        field_name: Name used in error messages.
+        now: Current POSIX time used as the future bound.
+
+    Raises:
+        ValueError: If the datetime is naive or too far in the future.
+    """
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        raise ValueError(f"{field_name} must be timezone-aware")
+
+    timestamp = value.timestamp()
+    if timestamp > now + MAX_EVENT_TIME_SKEW_SECONDS:
+        raise ValueError(f"{field_name} must not be more than {MAX_EVENT_TIME_SKEW_SECONDS:.0f} seconds in the future")
+
+    return timestamp
+
 _FEED_INTERVAL_ADAPTER = TypeAdapter(FirebaseFeedIntervalData)
 _HEALTH_ENTRY_ADAPTER = TypeAdapter(HealthDataEntry)
 _MEDICATION_UNITS_ADAPTER = TypeAdapter(MedicationUnits)
@@ -476,15 +501,32 @@ class HuckleberryAPI:
             return None
         return FirebaseFeedDocumentData.model_validate(feed_data)
 
-    async def start_sleep(self, child_uid: str) -> None:
-        """Start sleep tracking for a child."""
+    async def start_sleep(self, child_uid: str, *, start_time: datetime | None = None) -> None:
+        """Start sleep tracking for a child.
+
+        Args:
+            child_uid: Child unique identifier
+            start_time: Timezone-aware moment the child fell asleep. Defaults to now.
+                Use it to backdate a sleep that started before the call.
+
+        Raises:
+            ValueError: If ``start_time`` is naive or too far in the future.
+        """
         _LOGGER.info("Starting sleep tracking for child %s", child_uid)
+
+        current_time = time.time()
+        # Validate before touching Firestore so a bad value never writes.
+        if start_time is not None:
+            timer_start_seconds = _validate_event_time(start_time, field_name="start_time", now=current_time)
+        else:
+            timer_start_seconds = current_time
 
         client = await self._get_firestore_client()
         sleep_ref = client.collection("sleep").document(child_uid)
 
-        current_time = time.time()
-        current_time_ms = current_time * 1000  # Milliseconds for timerStartTime
+        # `timestamp`/`local_timestamp` stay "now" because the app treats them as
+        # last-modified, not as the sleep start.
+        current_time_ms = timer_start_seconds * 1000  # Milliseconds for timerStartTime
 
         # Generate a unique session UUID (16 hex characters like the app)
         session_uuid = uuid.uuid4().hex[:16]
@@ -644,9 +686,26 @@ class HuckleberryAPI:
 
         _LOGGER.info("Sleep cancelled for child %s", child_uid)
 
-    async def complete_sleep(self, child_uid: str) -> None:
-        """Complete current sleep session and save interval."""
+    async def complete_sleep(self, child_uid: str, *, end_time: datetime | None = None) -> None:
+        """Complete current sleep session and save interval.
+
+        Args:
+            child_uid: Child unique identifier
+            end_time: Timezone-aware moment the child woke. Defaults to now. Ignored
+                when the timer is paused, because the paused timer already recorded
+                its own end time.
+
+        Raises:
+            ValueError: If ``end_time`` is naive, too far in the future, or not after
+                the timer start.
+        """
         _LOGGER.info("Completing sleep for child %s", child_uid)
+
+        now = time.time()
+        # Validate before touching Firestore so a bad value never writes.
+        end_time_seconds = (
+            _validate_event_time(end_time, field_name="end_time", now=now) if end_time is not None else None
+        )
 
         client = await self._get_firestore_client()
         sleep_ref = client.collection("sleep").document(child_uid)
@@ -676,12 +735,23 @@ class HuckleberryAPI:
                 await sleep_ref.update({"timer": firestore.DELETE_FIELD})
                 return
 
-        now_ms = time.time() * 1000
+        now_ms = now * 1000
 
         # If sleep is paused, use timerEndTime as the end time (not current time)
         if timer.paused and timer.timerEndTime is not None:
+            if end_time_seconds is not None:
+                _LOGGER.warning(
+                    "Ignoring end_time for %s: sleep is paused, so timerEndTime wins",
+                    child_uid,
+                )
             end_ms = timer.timerEndTime
             _LOGGER.info("Sleep is paused, using timerEndTime for completion")
+        elif end_time_seconds is not None:
+            end_ms = end_time_seconds * 1000
+            # Only guard the caller supplied value; the implicit "now" path keeps its
+            # previous behaviour.
+            if end_ms <= float(timer_start_ms):
+                raise ValueError("end_time must be after the sleep start time")
         else:
             end_ms = now_ms
 
@@ -727,6 +797,46 @@ class HuckleberryAPI:
         )
 
         _LOGGER.info("Sleep completed for child %s (duration %ss)", child_uid, duration_sec)
+
+    async def set_sleep_start_time(self, child_uid: str, start_time: datetime) -> None:
+        """Adjust the start time of a sleep timer that is already running.
+
+        Args:
+            child_uid: Child unique identifier
+            start_time: Timezone-aware moment the child actually fell asleep.
+
+        Raises:
+            ValueError: If ``start_time`` is naive, too far in the future, or no sleep
+                timer is active.
+        """
+        _LOGGER.info("Adjusting sleep start time for child %s", child_uid)
+
+        now = time.time()
+        # Validate before touching Firestore so a bad value never writes.
+        start_seconds = _validate_event_time(start_time, field_name="start_time", now=now)
+
+        client = await self._get_firestore_client()
+        sleep_ref = client.collection("sleep").document(child_uid)
+
+        sleep_doc = await sleep_ref.get(timeout=10.0)
+        if not sleep_doc.exists:
+            raise ValueError("no active sleep")
+
+        sleep_data = FirebaseSleepDocumentData.model_validate(sleep_doc.to_dict() or {})
+        timer = sleep_data.timer
+        if not timer or not timer.active:
+            raise ValueError("no active sleep")
+
+        # `timestamp`/`local_timestamp` are last-modified markers, so they stay "now".
+        await sleep_ref.update(
+            {
+                "timer.timerStartTime": start_seconds * 1000,
+                "timer.timestamp": {"seconds": now},
+                "timer.local_timestamp": now,
+            }
+        )
+
+        _LOGGER.info("Sleep start time adjusted for child %s", child_uid)
 
     async def log_sleep(
         self,

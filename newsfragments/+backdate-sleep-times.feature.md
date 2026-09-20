@@ -1,0 +1,1 @@
+Add optional explicit times to sleep logging: `start_sleep(start_time=...)`, `complete_sleep(end_time=...)`, and a new `set_sleep_start_time()` to correct a timer that is already running. Times must be timezone-aware and no more than 60 seconds in the future; invalid values raise `ValueError` before anything is written.
