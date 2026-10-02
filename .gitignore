@@ -47,5 +47,6 @@ credentials.json
 # Others
 jadx output*
 *.apk
+.parity-out/
 
 node_modules/
