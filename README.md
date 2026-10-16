@@ -270,6 +270,30 @@ Huckleberry's Firebase Security Rules block non-SDK requests. Direct REST API ca
 
 ## Development
 
+### Huckleberry app-control skill
+
+The repository includes a [Huckleberry app-control agent skill](.copilot/skills/controlling-huckleberry/SKILL.md)
+for using the Android app as the reference implementation when investigating API/Firebase parity.
+It provides guarded emulator startup, WebView UI control, screenshots, UI checkpoints, and a no-save smoke test.
+It does not bundle Firebase credentials or a backend observer, and UI evidence alone does not establish parity.
+
+The runtime requires **native Windows, Node.js 22.12+, an existing Android SDK/AVD, and an installed Huckleberry build exposing WebView debugging**.
+The default `config.json` targets `huck34` / `emulator-5580`; configure it for an existing emulator on your machine before use.
+The skill never creates/wipes an AVD, installs an APK, or selects a physical phone.
+
+From the repository root:
+
+```powershell
+$skill = (Resolve-Path './.copilot/skills/controlling-huckleberry').Path
+node "$skill/scripts/huckleberry.mjs" setup
+npm --prefix $skill test
+```
+
+`setup` installs the lockfile-pinned Playwright runtime under `%LOCALAPPDATA%/huckleberry-agent/runtime`,
+outside the skill-discovery tree; it does not download a desktop browser.
+The offline tests do not contact Android devices or Firebase. Follow the skill's quickstart for live control,
+and use its [parity protocol](.copilot/skills/controlling-huckleberry/references/api-parity.md) before performing backend-changing experiments.
+
 ### Running Tests
 
 Integration tests require Huckleberry account credentials:
