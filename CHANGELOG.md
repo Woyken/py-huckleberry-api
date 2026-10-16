@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [0.4.8] - 2026-10-16
+
+### Bugfixes
+
+- Fix health logging failing when the app's latest temperature references a batched measurement. ([#66](https://github.com/Woyken/py-huckleberry-api/issues/66))
+
+
 ## [0.4.7] - 2026-09-16
 
 ### Features
