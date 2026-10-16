@@ -15,7 +15,7 @@ Use the actual app UI as the reference implementation. This skill controls only 
 Use PowerShell and the loaded skill's base directory. From this repository's root:
 
 ```powershell
-$skill = (Resolve-Path './.copilot/skills/controlling-huckleberry').Path
+$skill = (Resolve-Path './.agents/skills/controlling-huckleberry').Path
 $hb = "$skill/scripts/huckleberry.mjs"
 node $hb status
 # First use / missing dependency only (requires no active skill session):

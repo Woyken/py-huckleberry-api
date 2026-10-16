@@ -272,7 +272,10 @@ Huckleberry's Firebase Security Rules block non-SDK requests. Direct REST API ca
 
 ### Huckleberry app-control skill
 
-The repository includes a [Huckleberry app-control agent skill](.copilot/skills/controlling-huckleberry/SKILL.md)
+Repository skills live in the shared `.agents/skills/` directory, rather than an agent-specific folder.
+The existing [APK reverse-engineering skill](.agents/skills/huckleberry-apk-reverse/SKILL.md) is available there too.
+
+The repository includes a [Huckleberry app-control agent skill](.agents/skills/controlling-huckleberry/SKILL.md)
 for using the Android app as the reference implementation when investigating API/Firebase parity.
 It provides guarded emulator startup, WebView UI control, screenshots, UI checkpoints, and a no-save smoke test.
 It does not bundle Firebase credentials or a backend observer, and UI evidence alone does not establish parity.
@@ -284,7 +287,7 @@ The skill never creates/wipes an AVD, installs an APK, or selects a physical pho
 From the repository root:
 
 ```powershell
-$skill = (Resolve-Path './.copilot/skills/controlling-huckleberry').Path
+$skill = (Resolve-Path './.agents/skills/controlling-huckleberry').Path
 node "$skill/scripts/huckleberry.mjs" setup
 npm --prefix $skill test
 ```
@@ -292,7 +295,7 @@ npm --prefix $skill test
 `setup` installs the lockfile-pinned Playwright runtime under `%LOCALAPPDATA%/huckleberry-agent/runtime`,
 outside the skill-discovery tree; it does not download a desktop browser.
 The offline tests do not contact Android devices or Firebase. Follow the skill's quickstart for live control,
-and use its [parity protocol](.copilot/skills/controlling-huckleberry/references/api-parity.md) before performing backend-changing experiments.
+and use its [parity protocol](.agents/skills/controlling-huckleberry/references/api-parity.md) before performing backend-changing experiments.
 
 ### Running Tests
 

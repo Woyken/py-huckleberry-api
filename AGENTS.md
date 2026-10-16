@@ -25,12 +25,12 @@
 
 ## Reverse-Engineering Workflow
 
-- Use: `.copilot/skills/huckleberry-apk-reverse/SKILL.md`
+- Use: `.agents/skills/huckleberry-apk-reverse/SKILL.md`
 - Current decompilation context: `jadx output latest/`
 
 ## Live App / API Parity Workflow
 
-- Use `.copilot/skills/controlling-huckleberry/SKILL.md` to start and control the Android app on Windows, inspect saved records, and collect UI evidence.
+- Use `.agents/skills/controlling-huckleberry/SKILL.md` to start and control the Android app on Windows, inspect saved records, and collect UI evidence.
 - Backend parity requires an authorized observer and captured backend before-state; the skill's UI checkpoints are not Firebase snapshots. Preserve before/action/after evidence before fixture cleanup.
 
 ## Maintenance

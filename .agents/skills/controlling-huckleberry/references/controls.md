@@ -84,7 +84,7 @@ When a task needs scoped markers or a longer sequence, import the provided modul
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 const { withHuckleberry, locate } = await import(pathToFileURL(
-  resolve('.copilot/skills/controlling-huckleberry/scripts/ui.mjs')
+  resolve('.agents/skills/controlling-huckleberry/scripts/ui.mjs')
 ).href);
 await withHuckleberry('the-same-task-session', async (page) => {
   const row = page.locator('[data-qa^="listView_slidingItem_"]').filter({ visible: true, hasText: 'the-exact-unique-note' });

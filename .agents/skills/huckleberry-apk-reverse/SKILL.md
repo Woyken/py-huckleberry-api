@@ -1,3 +1,8 @@
+---
+name: huckleberry-apk-reverse
+description: Analyzes Huckleberry Android APKs through acquisition, JADX decompilation, JavaScript deobfuscation, and schema evidence validation. Use when reverse engineering the Huckleberry app, inspecting APK resources or web chunks, or verifying Firebase payload values against app code.
+---
+
 # Huckleberry APK Reverse Engineering Skill
 
 ## Purpose
@@ -30,8 +35,8 @@ Core APK tooling:
 
 Optional JS tooling:
 - Node.js + npm
-- Deobf helper: `.copilot/skills/huckleberry-apk-reverse/scripts/deobf/`
-- Script: `.copilot/skills/huckleberry-apk-reverse/scripts/deobf/deobf-pretty.mjs`
+- Deobf helper: `.agents/skills/huckleberry-apk-reverse/scripts/deobf/`
+- Script: `.agents/skills/huckleberry-apk-reverse/scripts/deobf/deobf-pretty.mjs`
 
 Install commands:
 
@@ -40,7 +45,7 @@ Install commands:
 cargo install apkeep
 
 # JS deobf dependencies (one-time)
-npm --prefix ".copilot/skills/huckleberry-apk-reverse/scripts/deobf" install
+npm --prefix ".agents/skills/huckleberry-apk-reverse/scripts/deobf" install
 ```
 
 ## Recommended APK Workflow
@@ -83,7 +88,7 @@ Preflight:
 
 ```bash
 ls "jadx output <version>/resources/assets/www"
-npm --prefix ".copilot/skills/huckleberry-apk-reverse/scripts/deobf" install
+npm --prefix ".agents/skills/huckleberry-apk-reverse/scripts/deobf" install
 ```
 
 Optional clean run:
@@ -97,8 +102,8 @@ Get-ChildItem "jadx output <version>/resources/assets/www" -File -Filter "*.deob
 Run deobfuscation:
 
 ```bash
-npm --prefix ".copilot/skills/huckleberry-apk-reverse/scripts/deobf" run deobf -- "jadx output <version>/resources/assets/www" --parallel 10
-npm --prefix ".copilot/skills/huckleberry-apk-reverse/scripts/deobf" run deobf -- "jadx output <version>/resources/assets/www" --parallel 10 --recursive
+npm --prefix ".agents/skills/huckleberry-apk-reverse/scripts/deobf" run deobf -- "jadx output <version>/resources/assets/www" --parallel 10
+npm --prefix ".agents/skills/huckleberry-apk-reverse/scripts/deobf" run deobf -- "jadx output <version>/resources/assets/www" --parallel 10 --recursive
 ```
 
 Optional readability pass on raw chunks:
@@ -107,7 +112,7 @@ Optional readability pass on raw chunks:
 npx prettier --write --ignore-path "" "jadx output <version>/resources/assets/www/*.js"
 ```
 
-## Script Behavior (`.copilot/skills/huckleberry-apk-reverse/scripts/deobf/deobf-pretty.mjs`)
+## Script Behavior (`.agents/skills/huckleberry-apk-reverse/scripts/deobf/deobf-pretty.mjs`)
 
 - Processes all `*.js` chunks except generated outputs
 - Generates `*.deobf.js`
