@@ -1,0 +1,12 @@
+{
+  "name": "huckleberry-debug-control",
+  "private": true,
+  "type": "module",
+  "exports": "./index.mjs",
+  "description": "Repository-local Android accessibility debugging tools; not part of the API client",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test",
+    "build:bridge": "node scripts/build-bridge.mjs"
+  }
+}

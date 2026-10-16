@@ -297,6 +297,23 @@ outside the skill-discovery tree; it does not download a desktop browser.
 The offline tests do not contact Android devices or Firebase. Follow the skill's quickstart for live control,
 and use its [parity protocol](.agents/skills/controlling-huckleberry/references/api-parity.md) before performing backend-changing experiments.
 
+### Android accessibility debugging tools
+
+[`tools/huckleberry-control/`](tools/huckleberry-control/README.md) contains a
+shared Windows ADB / Termux Shizuku controller and a small Android accessibility
+bridge for authorized app debugging. These are **developer tools only**, separate
+from the Python API package and release product. No bridge APK or private signing
+key is shipped in the Python wheel.
+
+The initial scope is accessibility inspection and guarded Home/Reports navigation,
+without screenshots or coordinate input. Build/install and accessibility consent
+are explicit; read the tool's setup and target-safety instructions before use.
+
+```sh
+npm --prefix tools/huckleberry-control test
+node tools/huckleberry-control/cli.mjs --help
+```
+
 ### Running Tests
 
 Integration tests require Huckleberry account credentials:

@@ -33,6 +33,16 @@
 - Use `.agents/skills/controlling-huckleberry/SKILL.md` to start and control the Android app on Windows, inspect saved records, and collect UI evidence.
 - Backend parity requires an authorized observer and captured backend before-state; the skill's UI checkpoints are not Firebase snapshots. Preserve before/action/after evidence before fixture cleanup.
 
+## Android UI Debugging
+
+- Repository-only accessibility tooling lives in `tools/huckleberry-control/`.
+- Read its README before live use. The bridge is a developer tool, not part of
+  the Python API package or a replacement Huckleberry product.
+- Enroll the exact device/profile and test child. Never silently fall back to a
+  personal app, screenshots, coordinate input or backend writes.
+- The accessibility tool limits actions to Home/Reports navigation. Other controls require
+  separate evidence and explicit implementation; UI state does not prove Firebase parity.
+
 ## Maintenance
 
 When discovering new payload structures or semantics:
