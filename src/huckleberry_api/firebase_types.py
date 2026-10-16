@@ -798,6 +798,8 @@ class FirebaseLastTemperatureData(StrictModel):
 
     Live data includes the history document ID and health metadata that are
     absent from the corresponding health/{child_uid}/data row.
+    Live app data verified on 2026-10-16 uses a string `multientry_key` for
+    the batch document containing the `_id` row; standalone summaries use null.
     """
 
     id_: str = Field(alias="_id")
@@ -808,7 +810,7 @@ class FirebaseLastTemperatureData(StrictModel):
     offset: Number
     amount: Number
     units: TemperatureUnits
-    multientry_key: None = None
+    multientry_key: str | None = None
 
 
 HealthDataEntry: TypeAlias = FirebaseGrowthData | FirebaseMedicationData | FirebaseTemperatureData
