@@ -110,7 +110,9 @@ async def test_log_temperature_writes_health_data_and_latest_pref(websession, mo
     }
 
 
-async def test_log_temperature_does_not_replace_newer_latest_pref(websession, monkeypatch) -> None:
+@pytest.mark.parametrize("multientry_key", [None, "temperature-batch"])
+@pytest.mark.parametrize("newer", [False, True])
+async def test_log_temperature_handles_existing_latest_pref(websession, monkeypatch, multientry_key, newer) -> None:
     health_document = _HealthDocument(
         {
             "prefs": {
@@ -123,7 +125,7 @@ async def test_log_temperature_does_not_replace_newer_latest_pref(websession, mo
                     "offset": 0,
                     "amount": 99.1,
                     "units": "F",
-                    "multientry_key": None,
+                    "multientry_key": multientry_key,
                 }
             }
         }
@@ -134,13 +136,19 @@ async def test_log_temperature_does_not_replace_newer_latest_pref(websession, mo
 
     await api.log_temperature(
         "child",
-        start_time=datetime(2026, 8, 22, tzinfo=timezone.utc),
+        start_time=datetime(2026, 8, 24 if newer else 22, tzinfo=timezone.utc),
         amount=98.6,
         units="F",
     )
 
     assert len(health_document.data_writes) == 1
-    assert health_document.updates == []
+    if newer:
+        assert len(health_document.updates) == 1
+        latest = cast(dict[str, object], health_document.updates[0]["prefs.lastTemperature"])
+        assert latest["start"] == datetime(2026, 8, 24, tzinfo=timezone.utc).timestamp()
+        assert latest["multientry_key"] is None
+    else:
+        assert health_document.updates == []
 
 
 async def test_log_temperature_propagates_history_write_failure(websession, monkeypatch) -> None:
