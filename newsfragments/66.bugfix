@@ -1,1 +1,0 @@
-Fix health logging failing when the app's latest temperature references a batched measurement.
