@@ -7,6 +7,7 @@ This records tested/reported outcomes, not guarantees for another app build, hos
 - Shared baseline: `bd376c3`; Windows skill routing: `6837e23`.
 - Termux runner source: `29314f326048728d2f439ab97d943c92308bea16`; integrated unchanged with provenance as `be877cd`.
 - Integrated head checked by CI: `61a9a5b`.
+- Later explicitly authorized Windows live evidence: host fix `9ef9ebda53dd91d6a6c4d7c89ba0ae28136e4b4f`, using an explicitly built API-34 helper on Android 14 after manual service consent. See the Windows live record linked directly from SKILL.md. Earlier Windows-pending handoff statements are superseded for this tested setup, not for every host/build.
 - Fresh device outcomes are **reported by the Termux agent**, not independently exercised from Windows: [Termux acceptance and reconciliation](https://github.com/Woyken/py-huckleberry-api/pull/68#issuecomment-6234016918).
 - [Windows source review](https://github.com/Woyken/py-huckleberry-api/pull/68#issuecomment-6233923190) and [integrated CI results](https://github.com/Woyken/py-huckleberry-api/pull/68#issuecomment-6233966744).
 
@@ -21,7 +22,7 @@ This records tested/reported outcomes, not guarantees for another app build, hos
 | Termux common-controller navigation | Historical reported acceptance | Earlier Home/Reports/Home checks; not a fresh runner pass. |
 | New Termux runner, observation-only | Fresh **passed**, reported by Termux | Target/service/capability/child/complete-baseline checks and verified release; no navigation/launch/input. |
 | New Termux runner, full navigation | Fresh **uncertain / not passed** | Controller verified the first transition, but the runner's independent Reports readback failed. Home was not attempted; no automatic retry/release. |
-| Windows live accessibility bridge | Pending | No consented emulator live acceptance in this collaboration; local default SDK build prerequisites unavailable. |
+| Windows live accessibility bridge | Fresh supported workflow **passed** on Android 14 with explicit API-34 build | Includes inspection, navigation, guards/replay/journal/release; a separate clean cold-process case used one launch and two guarded reads after the narrow startup readback fix. Default API-35 local build was not performed. |
 | Forms, typing/keypad, Save/delete, timers or screenshots via accessibility | Unsupported / not established | Navigation code/tests do not confer these capabilities. |
 | Firebase persistence / app-vs-API parity in acceptance | Not tested | No backend observer/capture; UI results have `backendCaptured: false`. |
 

@@ -286,7 +286,9 @@ It does not bundle Firebase credentials or a backend observer, and UI evidence a
 Both routes require **Node.js 22.12+**. Accessibility additionally needs the matching repository tooling,
 an explicitly enrolled private profile, and a manually consented bridge; Termux uses rish with a managed profile,
 while ADB remains emulator-only. It currently has no form/typing/Save/delete/timer/screenshot support.
-Windows accessibility live acceptance is separate from its offline/CI tests and remains pending until performed with consent.
+The [Windows accessibility live record](.agents/skills/controlling-huckleberry/references/windows-accessibility-live.md)
+separately validates the supported workflow on an Android 14 emulator after manual consent,
+including an explicitly built API-34 helper. It does not establish every Windows setup or broader bridge capabilities.
 
 The CDP route requires **native Windows, an existing Android SDK/AVD, and an installed Huckleberry build exposing WebView debugging**.
 Its `config.json` defaults to `huck34` / `emulator-5580`; configure an existing emulator before use.
@@ -329,7 +331,9 @@ is not a completed acceptance round-trip. Do not use it with an ADB/Windows prof
 The [recorded acceptance evidence](.agents/skills/controlling-huckleberry/references/acceptance-status.md)
 distinguishes CI/build checks, historical controller tests and fresh runner results:
 Termux observation passed, but fresh full navigation remained uncertain and was
-explicitly reconciled/released. Windows live accessibility acceptance is still pending.
+explicitly reconciled/released. Separate fresh Windows/Android 14 acceptance passed its
+supported workflow, including a clean cold-process launch after a guarded readback fix;
+the default API-35 local build was not performed.
 Neither successful CI nor that recovery establishes full device or Firebase parity.
 
 ```sh

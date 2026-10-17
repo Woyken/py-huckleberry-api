@@ -33,8 +33,10 @@ protocol 1 stay unchanged; the skill routes to them rather than copying them.
 Node.js 22+ is required; the controller has no npm dependencies. The Android
 APK has minSdk 28, but task-correlation compatibility is established only for
 Android 14+; older targets are unsupported unless separately validated.
-The phone path has been exercised on Android 17. Windows command construction is
-tested offline; a real Windows/emulator smoke test remains necessary.
+The phone path has been exercised on Android 17. Native Windows/Android 14 live
+acceptance separately verified the supported workflow with an explicit API-34
+local build; see the versioned evidence record below. A different host/build/profile
+still needs its own consent/enrollment and acceptance; mocked CI alone is not proof.
 
 ## Build the debugging bridge
 
@@ -66,6 +68,11 @@ select other installed SDK versions if you have validated them.
 Local ARM64 validation used build-tools 34.0.0's Java D8/apksigner components
 with explicitly supplied newer native ARM64 aapt2/zipalign tools. The default
 Windows/Linux SDK-native build instead uses build-tools 35.0.0 for API-35 support.
+
+An explicitly selected Windows alternative (`--platform android-34 --build-tools 34.0.0`)
+was also compiled/signed/verified and live-tested on Android 14 with JDK 21.
+This does not change the API-35 defaults or claim a local default-SDK build. Use an
+alternative only with explicit selection and its own compilation/device evidence.
 
 Outputs refuse overwrite. No keystore, password, compiled APK, child data, profile
 configuration or evidence should be committed. The helper keeps the prototype
@@ -265,8 +272,8 @@ Historical common-controller acceptance covered building/signing the helper, exp
 consented helper, claiming/launching/inspecting the enrolled managed-profile app,
 Home → Reports → Home, duplicate suppression, rejecting another session and a
 changed child, and releasing without erasing consumed IDs. No screenshots,
-tracking writes or profile-policy changes were used. Windows live acceptance is
-still pending; the same request protocol/transport construction is tested offline.
+tracking writes or profile-policy changes were used. This historical Termux evidence
+is not a fresh runner pass or a substitute for the separate Windows live record.
 
 For the new runner, the fresh Termux report is **observation-only passed**, but
 **full navigation uncertain/not passed**: independent Reports readback failed after
@@ -277,3 +284,13 @@ The exact earlier readback failure is unknown; a later focus refusal is not proo
 of its cause. See the [versioned acceptance evidence record](../../.agents/skills/controlling-huckleberry/references/acceptance-status.md)
 for provenance and boundaries. Historical navigation, timeout/recovery and CI
 success must not be combined into a passed fresh runner round-trip or parity claim.
+
+The [Windows accessibility live record](../../.agents/skills/controlling-huckleberry/references/windows-accessibility-live.md)
+documents fresh native Windows/Android 14 acceptance after user-enabled service
+consent: complete inspection, Home/Reports/Home independent readbacks, competing
+claim/enrollment refusal, replay suppression, journal persistence and release. It
+also records the initial launch-readback race and the narrow host-only fix, followed
+by a clean cold-process launch with one launcher request and two guarded reads.
+The helper used an explicit API-34/build-tools-34 build, not a locally performed
+API-35 default build. No tracking writes, screenshots or backend observer were used.
+This does not change the separate Termux full-runner uncertainty.

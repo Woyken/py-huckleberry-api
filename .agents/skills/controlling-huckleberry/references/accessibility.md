@@ -76,7 +76,7 @@ Release does not erase the consumed-action journal. Do not automatically release
 ## Acceptance levels
 
 - `npm --prefix tools/huckleberry-control test` is offline/mock testing, not permission to install/run the service or proof of live UI behavior.
-- SDK-native CI compilation is build evidence, not Windows/emulator device acceptance. Local Windows default-SDK build and live bridge acceptance remain pending where prerequisites/manual consent are unavailable.
+- SDK-native CI compilation is build evidence, not Windows/emulator device acceptance. The Windows live record linked directly from SKILL.md separately validates an explicit API-34 build on Android 14 and the supported cold-launch/navigation/guard workflow after manual consent. The default API-35 local build was not performed; each other target still needs its own setup/consent and acceptance.
 - The repository documents historical managed-profile Termux acceptance of this narrow workflow. Fresh acceptance reports must identify their commit and explicitly separate observations from navigation and backend writes.
 - The recorded fresh Termux runner outcome is observation **passed**, full navigation **uncertain/not passed** after independent Reports readback failed. Its terminal run was explicitly reconciled and released without replay. Read the acceptance-status reference linked directly from SKILL.md; do not infer current device availability or retry historical actions from this record.
 - Do not use the Windows CDP no-save smoke runner on this backend. The matching checkout provides `tools/huckleberry-control/scripts/termux-smoke.mjs`; read `tools/huckleberry-control/references/termux-acceptance.md` before explicit acceptance.
