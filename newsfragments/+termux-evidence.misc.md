@@ -1,0 +1,1 @@
+Record the qualified cross-host acceptance evidence: fresh Termux observation passed and fresh full navigation remained uncertain and was explicitly reconciled/released. Keep host-specific live acceptance separate from historical navigation, CI/build success and Firebase parity without requesting a repeat merely to obtain a green report.

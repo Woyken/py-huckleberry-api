@@ -25,8 +25,27 @@
 
 ## Reverse-Engineering Workflow
 
-- Use: `.copilot/skills/huckleberry-apk-reverse/SKILL.md`
+- Use: `.agents/skills/huckleberry-apk-reverse/SKILL.md`
 - Current decompilation context: `jadx output latest/`
+
+## Live App / API Parity Workflow
+
+- Use `.agents/skills/controlling-huckleberry/SKILL.md` to explicitly select the shared Windows/Termux accessibility route or the preserved Windows CDP route, within that backend's documented capabilities.
+- Accessibility supports inspection and Home/Reports navigation only. Do not infer CDP form/typing/screenshot support on Termux or switch backends mid-investigation. The two backends' claims are independent, not unified locking.
+- Backend parity requires an authorized observer and captured backend before-state; the skill's UI checkpoints are not Firebase snapshots. Preserve before/action/after evidence before fixture cleanup.
+
+## Android UI Debugging
+
+- Repository-only accessibility tooling lives in `tools/huckleberry-control/`.
+- Read its README before live use. The bridge is a developer tool, not part of
+  the Python API package or a replacement Huckleberry product.
+- Enroll the exact device/profile and test child. Never silently fall back to a
+  personal app, screenshots, coordinate input or backend writes.
+- The accessibility tool limits actions to Home/Reports navigation. Other controls require
+  separate evidence and explicit implementation; UI state does not prove Firebase parity.
+- Termux's opt-in acceptance runner is `tools/huckleberry-control/scripts/termux-smoke.mjs`;
+  read its `references/termux-acceptance.md` guide first. It observes by default, never prepares
+  the app, and requires separate navigation opt-in. Do not count timeout/recovery as a passed run.
 
 ## Maintenance
 

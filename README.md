@@ -270,6 +270,77 @@ Huckleberry's Firebase Security Rules block non-SDK requests. Direct REST API ca
 
 ## Development
 
+### Huckleberry app-control skill
+
+Repository skills live in the shared `.agents/skills/` directory, rather than an agent-specific folder.
+The existing [APK reverse-engineering skill](.agents/skills/huckleberry-apk-reverse/SKILL.md) is available there too.
+
+The repository includes a [Huckleberry app-control agent skill](.agents/skills/controlling-huckleberry/SKILL.md)
+for using the Android app as the reference implementation when investigating API/Firebase parity.
+It provides one entry point with **explicit backend selection**: the shared Windows/Termux accessibility
+controller for inspection and Home/Reports navigation, or the preserved Windows CDP implementation for
+its broader WebView/form/screenshot/checkpoint capabilities. These are documentation routes to existing CLIs,
+not interchangeable drivers or a new `--backend` flag. No automatic fallback or mixed-driver investigation is supported.
+It does not bundle Firebase credentials or a backend observer, and UI evidence alone does not establish parity.
+
+Both routes require **Node.js 22.12+**. Accessibility additionally needs the matching repository tooling,
+an explicitly enrolled private profile, and a manually consented bridge; Termux uses rish with a managed profile,
+while ADB remains emulator-only. It currently has no form/typing/Save/delete/timer/screenshot support.
+The [Windows accessibility live record](.agents/skills/controlling-huckleberry/references/windows-accessibility-live.md)
+separately validates the supported workflow on an Android 14 emulator after manual consent,
+including an explicitly built API-34 helper. It does not establish every Windows setup or broader bridge capabilities.
+
+The CDP route requires **native Windows, an existing Android SDK/AVD, and an installed Huckleberry build exposing WebView debugging**.
+Its `config.json` defaults to `huck34` / `emulator-5580`; configure an existing emulator before use.
+The skill does not create/wipe AVDs or install/enable a bridge silently. Its CDP host claim and accessibility device claim
+are independent; do not drive the same app with both or advertise unified locking.
+
+For **Windows CDP** setup/offline tests, from the repository root:
+
+```powershell
+$skill = (Resolve-Path './.agents/skills/controlling-huckleberry').Path
+node "$skill/scripts/huckleberry.mjs" setup
+npm --prefix $skill test
+```
+
+`setup` installs the lockfile-pinned Playwright runtime under `%LOCALAPPDATA%/huckleberry-agent/runtime`,
+outside the skill-discovery tree; it does not download a desktop browser.
+The offline tests do not contact Android devices or Firebase. Follow the skill's selected-backend guide for live control,
+and use its [parity protocol](.agents/skills/controlling-huckleberry/references/api-parity.md) before performing backend-changing experiments.
+
+### Android accessibility debugging tools
+
+[`tools/huckleberry-control/`](tools/huckleberry-control/README.md) contains a
+shared Windows ADB / Termux Shizuku controller and a small Android accessibility
+bridge for authorized app debugging. These are **developer tools only**, separate
+from the Python API package and release product. No bridge APK or private signing
+key is shipped in the Python wheel.
+
+The initial scope is accessibility inspection and guarded Home/Reports navigation,
+without screenshots or coordinate input. Build/install and accessibility consent
+are explicit; read the tool's setup and target-safety instructions before use.
+The skill's [accessibility route guide](.agents/skills/controlling-huckleberry/references/accessibility.md)
+invokes this common controller without duplicating transport logic or changing protocol 1.
+
+The [opt-in Termux acceptance runner](tools/huckleberry-control/references/termux-acceptance.md)
+checks an already-foreground enrolled managed-profile app. Its default is observation-only;
+navigation requires explicit opt-in and retained action IDs. It never launches/prepares the app,
+changes service consent, or auto-releases an uncertain run. A timed-out run plus operator recovery
+is not a completed acceptance round-trip. Do not use it with an ADB/Windows profile.
+
+The [recorded acceptance evidence](.agents/skills/controlling-huckleberry/references/acceptance-status.md)
+distinguishes CI/build checks, historical controller tests and fresh runner results:
+Termux observation passed, but fresh full navigation remained uncertain and was
+explicitly reconciled/released. Separate fresh Windows/Android 14 acceptance passed its
+supported workflow, including a clean cold-process launch after a guarded readback fix;
+the default API-35 local build was not performed.
+Neither successful CI nor that recovery establishes full device or Firebase parity.
+
+```sh
+npm --prefix tools/huckleberry-control test
+node tools/huckleberry-control/cli.mjs --help
+```
+
 ### Running Tests
 
 Integration tests require Huckleberry account credentials:

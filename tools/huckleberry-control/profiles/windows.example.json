@@ -1,0 +1,7 @@
+{
+  "transport": "adb",
+  "serial": "emulator-5580",
+  "avd": "YOUR_EXISTING_AVD",
+  "androidUser": 0,
+  "expectedChild": "YOUR_TEST_CHILD"
+}

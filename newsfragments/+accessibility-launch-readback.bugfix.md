@@ -1,0 +1,1 @@
+Handle the accessibility window-cache race observed during Windows live launch acceptance by retrying only the exact transient focused-task readback refusal, with at most three guarded inspections. Dispatch the launcher once, preserve other refusals and ownership after uncertainty, and add regression coverage without changing the bridge protocol or permissions.

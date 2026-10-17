@@ -1,0 +1,10 @@
+/android/build/
+/profiles/*.json
+!/profiles/*.example.json
+/evidence/
+*.apk
+*.dex
+*.class
+*.jks
+*.p12
+*.keystore

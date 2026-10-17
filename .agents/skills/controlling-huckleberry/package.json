@@ -1,0 +1,11 @@
+{
+  "name": "controlling-huckleberry",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "test": "node --test tests/offline.test.mjs",
+    "smoke": "node scripts/smoke.mjs"
+  }
+}
