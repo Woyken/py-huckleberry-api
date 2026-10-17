@@ -43,6 +43,9 @@
   personal app, screenshots, coordinate input or backend writes.
 - The accessibility tool limits actions to Home/Reports navigation. Other controls require
   separate evidence and explicit implementation; UI state does not prove Firebase parity.
+- Termux's opt-in acceptance runner is `tools/huckleberry-control/scripts/termux-smoke.mjs`;
+  read its `references/termux-acceptance.md` guide first. It observes by default, never prepares
+  the app, and requires separate navigation opt-in. Do not count timeout/recovery as a passed run.
 
 ## Maintenance
 

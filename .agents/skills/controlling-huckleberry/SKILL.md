@@ -44,6 +44,8 @@ ADB remains **emulator-only**; Termux/rish targets only the explicitly enrolled 
 
 Only if navigation is requested, use the documented `navigate` command with the observed source tab and a unique **retained action ID**. After uncertain output, use the original ID with `action-status` and a fresh inspection. Consumption means at-most-once dispatch, not success. Never generate another ID to repeat an uncertain input.
 
+For explicit Termux acceptance, the matching checkout includes `tools/huckleberry-control/scripts/termux-smoke.mjs` and its `references/termux-acceptance.md` guide. It observes an already-foreground target by default, requires `--exclusive-access`, and refuses any existing claim. Navigation needs separate `--navigate`/retained action-prefix opt-in; the runner never auto-launches/prepares the app. Read the guide before invoking it. A timeout followed by operator recovery is not a passed runner result.
+
 Release with the same accessibility CLI/profile/session **after reconciliation**; do not automatically release/reset after errors. The consumed-action journal survives release.
 
 ## Windows CDP route

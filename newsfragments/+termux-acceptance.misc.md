@@ -1,0 +1,1 @@
+Add an opt-in Termux accessibility acceptance runner with observation-only defaults, retained navigation action IDs, conservative ownership recovery and sanitized result reports. Document its capability and evidence boundaries separately from Windows live acceptance and backend parity.

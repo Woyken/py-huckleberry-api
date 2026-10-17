@@ -220,6 +220,22 @@ Passwords and editable values are redacted; other text is clipped to 256 chars.
   readback, and cleanup recorded separately. Current commands do not create such
   fixtures or mutate the backend intentionally.
 
+## Opt-in Termux acceptance
+
+The [Termux acceptance guide](references/termux-acceptance.md) documents
+`scripts/termux-smoke.mjs`, an opt-in runner over the unchanged common controller.
+It is **observation-only by default**, requires private rish managed-profile
+enrollment and `--exclusive-access`, and refuses existing claims. It does not
+launch/prepare the app, install/update the helper, enable services, or change policy.
+
+Only add `--navigate --action-prefix <retained-unique-prefix>` for an explicitly
+authorized Home/Reports/Home acceptance. Keep the original session/action IDs after
+interruption; never change them merely to replay uncertain input. The runner does
+not auto-release on failure. Read the guide's timeout and reconciliation procedure
+first, and distinguish observation, interrupted-run recovery, and completed fresh
+navigation reports. This Termux-only runner rejects ADB profiles; mocked Windows
+execution is not a Windows/emulator live test.
+
 ## Tests and implementation boundaries
 
 ```sh

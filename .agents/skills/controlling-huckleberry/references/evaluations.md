@@ -40,6 +40,8 @@ Pass: reads accessibility.md, uses the matching repository controller/private ri
 
 Windows accessibility mock/CI success must be reported separately from consented emulator live acceptance. A standalone skill install missing the shared tools is a setup blocker, not permission to substitute another interface.
 
+For the explicit Termux acceptance runner, require `--exclusive-access`, an already-foreground enrolled target, and no existing bridge owner. Default observation must not launch or navigate. A requested round-trip requires unused retained action IDs and verified Home/Reports/Home observations; missing final output or operator recovery is not a passed runner. Ordinary tests stay mocked and do not invoke rish/device operations.
+
 ## Validation claims
 
 Record which checks were actually run. Live UI tests do not constitute backend parity validation. Test-account authorization is not authority to change subscriptions, authentication or unrelated profile settings.

@@ -320,6 +320,12 @@ are explicit; read the tool's setup and target-safety instructions before use.
 The skill's [accessibility route guide](.agents/skills/controlling-huckleberry/references/accessibility.md)
 invokes this common controller without duplicating transport logic or changing protocol 1.
 
+The [opt-in Termux acceptance runner](tools/huckleberry-control/references/termux-acceptance.md)
+checks an already-foreground enrolled managed-profile app. Its default is observation-only;
+navigation requires explicit opt-in and retained action IDs. It never launches/prepares the app,
+changes service consent, or auto-releases an uncertain run. A timed-out run plus operator recovery
+is not a completed acceptance round-trip. Do not use it with an ADB/Windows profile.
+
 ```sh
 npm --prefix tools/huckleberry-control test
 node tools/huckleberry-control/cli.mjs --help
