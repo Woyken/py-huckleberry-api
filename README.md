@@ -326,6 +326,12 @@ navigation requires explicit opt-in and retained action IDs. It never launches/p
 changes service consent, or auto-releases an uncertain run. A timed-out run plus operator recovery
 is not a completed acceptance round-trip. Do not use it with an ADB/Windows profile.
 
+The [recorded acceptance evidence](.agents/skills/controlling-huckleberry/references/acceptance-status.md)
+distinguishes CI/build checks, historical controller tests and fresh runner results:
+Termux observation passed, but fresh full navigation remained uncertain and was
+explicitly reconciled/released. Windows live accessibility acceptance is still pending.
+Neither successful CI nor that recovery establishes full device or Firebase parity.
+
 ```sh
 npm --prefix tools/huckleberry-control test
 node tools/huckleberry-control/cli.mjs --help

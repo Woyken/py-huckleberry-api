@@ -253,9 +253,19 @@ under `android/`. Platform-specific launcher/transport details stay below the
 common CLI. This package is private, dependency-free and outside
 `src/huckleberry_api/`; it is not included in Python wheels or release workflows.
 
-Local acceptance covered building/signing the helper, explicit update of the
+Historical common-controller acceptance covered building/signing the helper, explicit update of the
 consented helper, claiming/launching/inspecting the enrolled managed-profile app,
 Home → Reports → Home, duplicate suppression, rejecting another session and a
 changed child, and releasing without erasing consumed IDs. No screenshots,
 tracking writes or profile-policy changes were used. Windows live acceptance is
 still pending; the same request protocol/transport construction is tested offline.
+
+For the new runner, the fresh Termux report is **observation-only passed**, but
+**full navigation uncertain/not passed**: independent Reports readback failed after
+the common controller verified the first transition. The operator reconciled the
+original IDs, read back Reports and explicitly released without replay or Home
+navigation. No run or claim from those attempts remained at that handoff.
+The exact earlier readback failure is unknown; a later focus refusal is not proof
+of its cause. See the [versioned acceptance evidence record](../../.agents/skills/controlling-huckleberry/references/acceptance-status.md)
+for provenance and boundaries. Historical navigation, timeout/recovery and CI
+success must not be combined into a passed fresh runner round-trip or parity claim.

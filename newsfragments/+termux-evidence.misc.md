@@ -1,0 +1,1 @@
+Record the qualified cross-host acceptance evidence: fresh Termux observation passed, fresh full navigation remained uncertain and was explicitly reconciled/released, and Windows live accessibility acceptance remains pending. Keep these outcomes distinct from historical navigation, CI/build success and Firebase parity without requesting another device run.
