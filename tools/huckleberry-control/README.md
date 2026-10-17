@@ -153,6 +153,14 @@ node "$hb" release --profile "$profile" --session "$session"
 requires an existing matching claim and never logs in or chooses a child for you.
 If the child is wrong, stop and have the user choose the authorized child manually.
 
+After its one launcher request, `launch` may repeat the fresh inspection up to
+three times only for the transient `focused_task_not_found` bridge refusal seen
+while Android's accessibility window cache catches up with the resumed task.
+Each inspection retains identity/ownership guards. Launcher/input dispatch is
+never repeated; wrong user/app/focus, permissions, corruption and other failures
+still stop immediately. This does not add general navigation retry or diagnose
+an unrelated later observation failure.
+
 Other repository scripts can reuse the controller rather than rebuilding the
 connection/identity checks. The same code works with either profile transport:
 

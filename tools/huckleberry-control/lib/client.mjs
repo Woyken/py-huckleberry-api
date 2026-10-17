@@ -4,6 +4,11 @@ import { validateProfile } from './config.mjs';
 import { parseIdentity } from './identity.mjs';
 import { BRIDGE, PACKAGE, TABS, contentArguments, identifier, parseReply, quote, requireOk, validateSnapshot } from './protocol.mjs';
 
+// Android's accessibility window cache can briefly lag the newly resumed task.
+// Bound fresh reads, never launcher/input dispatches, and preserve other refusals.
+const LAUNCH_READBACK_ATTEMPTS = 3;
+const LAUNCH_READBACK_DELAY_MS = 200;
+
 export class Controller {
   constructor(profile, transport) {
     this.profile = validateProfile(profile);
@@ -55,7 +60,14 @@ export class Controller {
     const path = (await this.transport.shell(`/system/bin/pm path ${quote(BRIDGE)}`)).trim();
     if (!/^package:\/data\/app\/[^\r\n]+\/base\.apk$/.test(path)) throw new Error('Unable to identify the installed bridge APK');
     await this.transport.shell(`CLASSPATH=${quote(path.slice(8))} /system/bin/app_process /system/bin ${BRIDGE}.ProfileLauncher ${this.profile.androidUser}`);
-    return this.inspect(session);
+    for (let attempt = 1; ; attempt++) {
+      try { return await this.inspect(session); }
+      catch (error) {
+        if (!(error instanceof Error) || error.message !== 'Bridge refused request: focused_task_not_found'
+            || attempt >= LAUNCH_READBACK_ATTEMPTS) throw error;
+        await new Promise(resolve => setTimeout(resolve, LAUNCH_READBACK_DELAY_MS));
+      }
+    }
   }
 
   async inspect(session) {
