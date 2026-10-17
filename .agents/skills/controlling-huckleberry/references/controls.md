@@ -1,5 +1,7 @@
 # Controls and recipes
 
+**Windows CDP route only.** These selectors, form/typing/screenshot commands and checkpoint format do not apply to the shared accessibility CLI. Choose the route in SKILL.md before starting; do not switch mid-investigation.
+
 ## Contents
 - Scope and selectors
 - Bottle form and readback
@@ -11,7 +13,7 @@
 
 ## Scope and selectors
 
-Use the `node $hb ... --session $session` prefix from SKILL.md. Commands return JSON. Observations are read-only; `click`/`fill` can change app state. Commands never automatically retry a UI action.
+Use the `node $hb ... --session $session` prefix established in the Windows CDP setup reference linked directly from SKILL.md. Commands return JSON. Observations are read-only; `click`/`fill` can change app state. Commands never automatically retry a UI action.
 
 `inspect` lists visible controls, scoped to the top open Ionic overlay when present. `snapshot` always includes QA controls alongside accessibility to expose omissions caused by stale `aria-hidden`. Inspect output may still contain clipped/offscreen controls. Playwright scrolls before clicking and rejects intercepted clicks; do not force them.
 

@@ -7,7 +7,15 @@ Neither modifies Huckleberry's APK or reads its credentials/backend traffic.
 
 The same bridge protocol is used by Windows ADB and Termux/Shizuku `rish`.
 No Playwright, WebView debugging socket, HTTP server, screenshots or coordinates
-are needed. The existing Windows/CDP draft skill is not replaced by this tool.
+are needed. The shared `.agents/skills/controlling-huckleberry/` skill entry
+explicitly routes agents here or to the preserved Windows/CDP implementation;
+this tool does not replace that implementation or acquire its form capabilities.
+
+Choose one backend before an investigation. There is no automatic fallback,
+generic `--backend` wrapper or mixed-driver workflow. The CDP host lease and
+this bridge's device lease are independent, not unified cross-driver locking;
+do not operate the same app through both tools concurrently. The common CLI and
+protocol 1 stay unchanged; the skill routes to them rather than copying them.
 
 ## Supported scope
 

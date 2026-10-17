@@ -30,7 +30,8 @@
 
 ## Live App / API Parity Workflow
 
-- Use `.agents/skills/controlling-huckleberry/SKILL.md` to start and control the Android app on Windows, inspect saved records, and collect UI evidence.
+- Use `.agents/skills/controlling-huckleberry/SKILL.md` to explicitly select the shared Windows/Termux accessibility route or the preserved Windows CDP route, within that backend's documented capabilities.
+- Accessibility supports inspection and Home/Reports navigation only. Do not infer CDP form/typing/screenshot support on Termux or switch backends mid-investigation. The two backends' claims are independent, not unified locking.
 - Backend parity requires an authorized observer and captured backend before-state; the skill's UI checkpoints are not Firebase snapshots. Preserve before/action/after evidence before fixture cleanup.
 
 ## Android UI Debugging

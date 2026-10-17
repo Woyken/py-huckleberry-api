@@ -1,0 +1,1 @@
+Add explicit shared accessibility and Windows CDP routes to the Huckleberry agent skill, with backend-specific setup, capabilities, evidence formats and independent-claim limitations. Preserve the existing controller protocol and CDP implementation without automatic fallback or mixed-driver workflows.

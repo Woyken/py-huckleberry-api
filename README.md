@@ -277,14 +277,23 @@ The existing [APK reverse-engineering skill](.agents/skills/huckleberry-apk-reve
 
 The repository includes a [Huckleberry app-control agent skill](.agents/skills/controlling-huckleberry/SKILL.md)
 for using the Android app as the reference implementation when investigating API/Firebase parity.
-It provides guarded emulator startup, WebView UI control, screenshots, UI checkpoints, and a no-save smoke test.
+It provides one entry point with **explicit backend selection**: the shared Windows/Termux accessibility
+controller for inspection and Home/Reports navigation, or the preserved Windows CDP implementation for
+its broader WebView/form/screenshot/checkpoint capabilities. These are documentation routes to existing CLIs,
+not interchangeable drivers or a new `--backend` flag. No automatic fallback or mixed-driver investigation is supported.
 It does not bundle Firebase credentials or a backend observer, and UI evidence alone does not establish parity.
 
-The runtime requires **native Windows, Node.js 22.12+, an existing Android SDK/AVD, and an installed Huckleberry build exposing WebView debugging**.
-The default `config.json` targets `huck34` / `emulator-5580`; configure it for an existing emulator on your machine before use.
-The skill never creates/wipes an AVD, installs an APK, or selects a physical phone.
+Both routes require **Node.js 22.12+**. Accessibility additionally needs the matching repository tooling,
+an explicitly enrolled private profile, and a manually consented bridge; Termux uses rish with a managed profile,
+while ADB remains emulator-only. It currently has no form/typing/Save/delete/timer/screenshot support.
+Windows accessibility live acceptance is separate from its offline/CI tests and remains pending until performed with consent.
 
-From the repository root:
+The CDP route requires **native Windows, an existing Android SDK/AVD, and an installed Huckleberry build exposing WebView debugging**.
+Its `config.json` defaults to `huck34` / `emulator-5580`; configure an existing emulator before use.
+The skill does not create/wipe AVDs or install/enable a bridge silently. Its CDP host claim and accessibility device claim
+are independent; do not drive the same app with both or advertise unified locking.
+
+For **Windows CDP** setup/offline tests, from the repository root:
 
 ```powershell
 $skill = (Resolve-Path './.agents/skills/controlling-huckleberry').Path
@@ -294,7 +303,7 @@ npm --prefix $skill test
 
 `setup` installs the lockfile-pinned Playwright runtime under `%LOCALAPPDATA%/huckleberry-agent/runtime`,
 outside the skill-discovery tree; it does not download a desktop browser.
-The offline tests do not contact Android devices or Firebase. Follow the skill's quickstart for live control,
+The offline tests do not contact Android devices or Firebase. Follow the skill's selected-backend guide for live control,
 and use its [parity protocol](.agents/skills/controlling-huckleberry/references/api-parity.md) before performing backend-changing experiments.
 
 ### Android accessibility debugging tools
@@ -308,6 +317,8 @@ key is shipped in the Python wheel.
 The initial scope is accessibility inspection and guarded Home/Reports navigation,
 without screenshots or coordinate input. Build/install and accessibility consent
 are explicit; read the tool's setup and target-safety instructions before use.
+The skill's [accessibility route guide](.agents/skills/controlling-huckleberry/references/accessibility.md)
+invokes this common controller without duplicating transport logic or changing protocol 1.
 
 ```sh
 npm --prefix tools/huckleberry-control test

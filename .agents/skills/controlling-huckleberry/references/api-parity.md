@@ -4,6 +4,8 @@
 
 The app is the UI reference. This skill does not know whether a particular feature writes Firestore, Realtime Database, native storage or another service. It supplies **UI control and evidence**, not a Firebase observer or schema. Never claim backend equivalence from UI similarity alone.
 
+Choose one explicitly supported backend before the experiment. The shared accessibility route currently supports inspection and Home/Reports navigation only, not form writes; Windows CDP's broader commands must not be inferred for Termux. Keep backend/protocol/source and evidence coverage in the report. CDP checkpoints and accessibility trees have different schemas and independent claims; no mixed-driver workflow or unified cross-driver lock is supported.
+
 Use the investigation project's already-authorized observer/client or a user-provided server-side read mechanism. Keep secrets in that project's approved secret handling; do not add them to this skill, command arguments, notes, screenshots or reports. Do not extract app tokens from preferences, WebView storage, CDP Network/headers, or native files. Missing observer authorization is a blocker for **backend verification**, not for read-only app exploration.
 
 **In a parity investigation, do not Save, start a timer, delete, or perform another backend-changing action until an authorized observer is available and a server before-state has been captured.** If either is missing, stop and offer unsaved exploration only. If the observer fails after an already-authorized action, preserve the fixture and report the after-state as unverified—never blindly repeat the write. Explicit standalone UI-only tests are a different task and cannot establish parity.
