@@ -107,6 +107,50 @@ async def test_log_growth_writes_distinct_history_and_latest_payloads(websession
     assert latest_payload["multientry_key"] is None
 
 
+@pytest.mark.parametrize("existing_delta", [None, -1, 0, 1])
+async def test_imperial_growth_latest_respects_event_order(websession, monkeypatch, existing_delta: int | None) -> None:
+    """Imperial history is always saved; only a non-older event replaces latest."""
+    measured_at = datetime(2026, 9, 15, tzinfo=timezone.utc)
+    root_payload: dict[str, object] = {}
+    if existing_delta is not None:
+        root_payload = {
+            "prefs": {
+                "lastGrowthEntry": {
+                    "_id": "existing-growth-entry",
+                    "type": "health",
+                    "mode": "growth",
+                    "start": measured_at.timestamp() + existing_delta,
+                    "offset": 0,
+                    "weight": 5.2,
+                    "weightUnits": "kg",
+                }
+            }
+        }
+    api, health_document, history_document = _mock_api(websession, monkeypatch, root_payload)
+
+    await api.log_growth("child", start_time=measured_at, weight=11.5, head=13.8, units="imperial")
+
+    history_document.set.assert_awaited_once()
+    history = history_document.set.await_args.args[0]
+    assert history == {
+        "mode": "growth",
+        "start": measured_at.timestamp(),
+        "lastUpdated": history["lastUpdated"],
+        "offset": 0,
+        "weight": 11.5,
+        "weightUnits": "lbs.oz",
+        "head": 13.8,
+        "headUnits": "hin",
+    }
+    if existing_delta is not None and existing_delta > 0:
+        health_document.update.assert_not_awaited()
+    else:
+        health_document.update.assert_awaited_once()
+        latest = health_document.update.await_args.args[0]["prefs.lastGrowthEntry"]
+        created_id = health_document.collection.return_value.document.call_args.args[0]
+        assert latest == {**history, "_id": created_id, "type": "health", "isNight": False, "multientry_key": None}
+
+
 async def test_log_growth_rejects_unknown_units_before_accessing_firebase(websession, monkeypatch) -> None:
     api = HuckleberryAPI(email="test", password="test", timezone="UTC", websession=websession)
     get_client = AsyncMock()
