@@ -875,7 +875,13 @@ class HuckleberryAPI:
             shift = requested_start - previous_start
             segment_start = float(existing_timer.timerStartTime or previous_start) + shift
             if not existing_timer.paused and segment_start > current_time:
-                raise ValueError("start_time would move the current nursing segment into the future")
+                # Moving the session start later must not push the running segment
+                # past now. Keep its start so the elapsed time stays valid.
+                segment_start = float(existing_timer.timerStartTime or previous_start)
+                _LOGGER.warning(
+                    "start_time would move the current nursing segment past now; keeping segment start for %s",
+                    child_uid,
+                )
             await feed_ref.update(
                 {
                     "timer.feedStartTime": requested_start,
