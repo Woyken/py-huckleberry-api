@@ -279,6 +279,28 @@ class TestNursingExplicitTimes:
 
         assert store.writes == []
 
+    async def test_start_while_paused_can_shift_session_start(self, api: HuckleberryAPI, store: _Store) -> None:
+        store.documents[f"feed/{CHILD}"] = {
+            "timer": {
+                "active": True,
+                "paused": True,
+                "feedStartTime": NOW - 600,
+                "timerStartTime": NOW - 120,
+                "leftDuration": 360.0,
+                "rightDuration": 0.0,
+                "lastSide": "left",
+                "uuid": "keepme",
+            }
+        }
+        start_time = _event(300)
+
+        await api.start_nursing(CHILD, start_time=start_time)
+
+        payload = store.writes_to(f"feed/{CHILD}")[0][2]
+        assert payload["timer.feedStartTime"] == pytest.approx(start_time.timestamp())
+        # A paused segment is not running, so a future retained start is harmless.
+        assert payload["timer.timerStartTime"] == pytest.approx(start_time.timestamp() + 480)
+
     async def test_complete_with_end_time_uses_segment_end(self, api: HuckleberryAPI, store: _Store) -> None:
         store.documents[f"feed/{CHILD}"] = {
             "timer": {

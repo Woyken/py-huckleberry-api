@@ -874,7 +874,7 @@ class HuckleberryAPI:
             previous_start = float(existing_timer.feedStartTime or existing_timer.timerStartTime or requested_start)
             shift = requested_start - previous_start
             segment_start = float(existing_timer.timerStartTime or previous_start) + shift
-            if segment_start > current_time:
+            if not existing_timer.paused and segment_start > current_time:
                 raise ValueError("start_time would move the current nursing segment into the future")
             await feed_ref.update(
                 {
