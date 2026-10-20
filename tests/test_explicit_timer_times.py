@@ -260,6 +260,25 @@ class TestNursingExplicitTimes:
         # The whole timeline shifts by the same delta, so the segment keeps its width.
         assert payload["timer.timerStartTime"] == pytest.approx(start_time.timestamp() + 480)
 
+    async def test_start_while_active_rejects_segment_shift_past_now(self, api: HuckleberryAPI, store: _Store) -> None:
+        store.documents[f"feed/{CHILD}"] = {
+            "timer": {
+                "active": True,
+                "paused": False,
+                "feedStartTime": NOW - 600,
+                "timerStartTime": NOW - 120,
+                "leftDuration": 360.0,
+                "rightDuration": 0.0,
+                "activeSide": "left",
+                "uuid": "keepme",
+            }
+        }
+
+        with pytest.raises(ValueError, match="current nursing segment"):
+            await api.start_nursing(CHILD, start_time=_event(300))
+
+        assert store.writes == []
+
     async def test_complete_with_end_time_uses_segment_end(self, api: HuckleberryAPI, store: _Store) -> None:
         store.documents[f"feed/{CHILD}"] = {
             "timer": {

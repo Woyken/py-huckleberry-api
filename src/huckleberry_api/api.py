@@ -874,6 +874,8 @@ class HuckleberryAPI:
             previous_start = float(existing_timer.feedStartTime or existing_timer.timerStartTime or requested_start)
             shift = requested_start - previous_start
             segment_start = float(existing_timer.timerStartTime or previous_start) + shift
+            if segment_start > current_time:
+                raise ValueError("start_time would move the current nursing segment into the future")
             await feed_ref.update(
                 {
                     "timer.feedStartTime": requested_start,
@@ -2884,6 +2886,9 @@ class HuckleberryAPI:
         fallback_start_time_ms: float | None = None,
     ) -> None:
         """Write the inactive timer shape shared by save and reset."""
+        # Keep the original timer start for the stored inactive timer when present,
+        # matching the app's frozen timer timeline. The saved interval uses the
+        # resolved start; the fallback only covers malformed timers without one.
         resolved_start_ms = timer.startTime if timer.startTime is not None else fallback_start_time_ms
         assert resolved_start_ms is not None
         now = now_ms / 1000
