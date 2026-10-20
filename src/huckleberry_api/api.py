@@ -1127,11 +1127,7 @@ class HuckleberryAPI:
         right_duration: float | int | None = None,
         notes: str | None = None,
     ) -> None:
-        """Log a completed nursing interval without using the live timer.
-
-        Args:
-            notes: Optional notes attached to the interval.
-        """
+        """Log a completed nursing interval without using the live timer."""
         start_timestamp = start_time.timestamp()
         end_timestamp = end_time.timestamp()
         if end_timestamp < start_timestamp:
