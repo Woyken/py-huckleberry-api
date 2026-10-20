@@ -476,15 +476,49 @@ class HuckleberryAPI:
             return None
         return FirebaseFeedDocumentData.model_validate(feed_data)
 
-    async def start_sleep(self, child_uid: str) -> None:
-        """Start sleep tracking for a child."""
+    async def start_sleep(self, child_uid: str, *, start_time: datetime | None = None) -> None:
+        """Start sleep tracking, or adjust an already running sleep timer.
+
+        Args:
+            child_uid: Child unique identifier.
+            start_time: Optional moment the child fell asleep. Defaults to now. When a
+                sleep timer is already active, this moves its start instead of
+                starting a new session.
+        """
         _LOGGER.info("Starting sleep tracking for child %s", child_uid)
 
         client = await self._get_firestore_client()
         sleep_ref = client.collection("sleep").document(child_uid)
 
         current_time = time.time()
-        current_time_ms = current_time * 1000  # Milliseconds for timerStartTime
+        requested_start = start_time.timestamp() if start_time is not None else None
+
+        existing_doc = await sleep_ref.get(timeout=10.0)
+        existing_timer = (
+            FirebaseSleepDocumentData.model_validate(existing_doc.to_dict() or {}).timer
+            if existing_doc.exists
+            else None
+        )
+        if existing_timer is not None and existing_timer.active:
+            if requested_start is None:
+                _LOGGER.info("Sleep is already active for %s, ignoring start request", child_uid)
+                return
+            start_ms = requested_start * 1000
+            if existing_timer.paused and existing_timer.timerEndTime is not None:
+                if start_ms > float(existing_timer.timerEndTime):
+                    raise ValueError("start_time must not be after the paused sleep end time")
+            await sleep_ref.update(
+                {
+                    "timer.timerStartTime": start_ms,
+                    "timer.timestamp": {"seconds": current_time},
+                    "timer.local_timestamp": current_time,
+                }
+            )
+            _LOGGER.info("Sleep start adjusted for child %s", child_uid)
+            return
+
+        # Milliseconds for timerStartTime
+        current_time_ms = (requested_start if requested_start is not None else current_time) * 1000
 
         # Generate a unique session UUID (16 hex characters like the app)
         session_uuid = uuid.uuid4().hex[:16]
@@ -644,10 +678,26 @@ class HuckleberryAPI:
 
         _LOGGER.info("Sleep cancelled for child %s", child_uid)
 
-    async def complete_sleep(self, child_uid: str) -> None:
-        """Complete current sleep session and save interval."""
+    async def complete_sleep(
+        self,
+        child_uid: str,
+        *,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        details: FirebaseSleepDetails | None = None,
+    ) -> None:
+        """Complete current sleep session and save interval.
+
+        Args:
+            child_uid: Child unique identifier.
+            start_time: Optional start override for the saved interval.
+            end_time: Optional end override for the saved interval. Defaults to the
+                paused timer end when paused, otherwise now.
+            details: Optional details override. Defaults to the timer details.
+        """
         _LOGGER.info("Completing sleep for child %s", child_uid)
 
+        now = time.time()
         client = await self._get_firestore_client()
         sleep_ref = client.collection("sleep").document(child_uid)
 
@@ -665,7 +715,9 @@ class HuckleberryAPI:
             return
 
         timer_start_ms = timer.timerStartTime
-        if not timer_start_ms:
+        if start_time is not None:
+            timer_start_ms = start_time.timestamp() * 1000
+        elif not timer_start_ms:
             # Attempt fallback: reconstruct using timestamp.seconds if available
             ts_seconds = timer.timestamp.seconds if timer.timestamp else None
             if ts_seconds:
@@ -676,14 +728,20 @@ class HuckleberryAPI:
                 await sleep_ref.update({"timer": firestore.DELETE_FIELD})
                 return
 
-        now_ms = time.time() * 1000
+        now_ms = now * 1000
 
-        # If sleep is paused, use timerEndTime as the end time (not current time)
-        if timer.paused and timer.timerEndTime is not None:
+        # A caller supplied end wins over the paused timer end, because it is an
+        # explicit correction. Otherwise a paused timer keeps its own end time.
+        if end_time is not None:
+            end_ms = end_time.timestamp() * 1000
+        elif timer.paused and timer.timerEndTime is not None:
             end_ms = timer.timerEndTime
             _LOGGER.info("Sleep is paused, using timerEndTime for completion")
         else:
             end_ms = now_ms
+
+        if float(end_ms) < float(timer_start_ms):
+            raise ValueError("end_time must not precede start_time")
 
         duration_sec = int((end_ms - float(timer_start_ms)) / 1000)
         start_sec = int(float(timer_start_ms) / 1000)
@@ -695,7 +753,7 @@ class HuckleberryAPI:
             duration=duration_sec,
             offset=await self._get_timezone_offset_minutes(),
             end_offset=await self._get_timezone_offset_minutes(),
-            details=timer.details,
+            details=details if details is not None else timer.details,
             lastUpdated=time.time(),
         )
         await intervals_ref.document(interval_id).set(to_firebase_dict(sleep_interval))
@@ -787,14 +845,47 @@ class HuckleberryAPI:
 
         _LOGGER.info("Sleep logged for child %s (updated_last=%s)", child_uid, should_update_last_sleep)
 
-    async def start_nursing(self, child_uid: str, side: FeedSide = "left") -> None:
-        """Start nursing tracking."""
+    async def start_nursing(
+        self, child_uid: str, side: FeedSide = "left", *, start_time: datetime | None = None
+    ) -> None:
+        """Start nursing tracking, or adjust an already running session.
+
+        Args:
+            child_uid: Child unique identifier.
+            side: Side to start on.
+            start_time: Optional session start. Defaults to now. When nursing is
+                already active, this shifts the session start instead of starting a
+                new session.
+        """
         _LOGGER.info("Starting nursing for child %s on %s side", child_uid, side)
 
         client = await self._get_firestore_client()
         feed_ref = client.collection("feed").document(child_uid)
 
         current_time = time.time()
+        requested_start = start_time.timestamp() if start_time is not None else None
+
+        doc = await feed_ref.get(timeout=10.0)
+        existing_timer = FirebaseFeedDocumentData.model_validate(doc.to_dict() or {}).timer if doc.exists else None
+        if existing_timer is not None and existing_timer.active:
+            if requested_start is None:
+                _LOGGER.info("Nursing is already active for %s, ignoring start request", child_uid)
+                return
+            previous_start = float(existing_timer.feedStartTime or existing_timer.timerStartTime or requested_start)
+            shift = requested_start - previous_start
+            segment_start = float(existing_timer.timerStartTime or previous_start) + shift
+            await feed_ref.update(
+                {
+                    "timer.feedStartTime": requested_start,
+                    "timer.timerStartTime": segment_start,
+                    "timer.timestamp": {"seconds": current_time},
+                    "timer.local_timestamp": current_time,
+                }
+            )
+            _LOGGER.info("Nursing start adjusted for child %s", child_uid)
+            return
+
+        session_start = requested_start if requested_start is not None else current_time
 
         session_uuid = uuid.uuid4().hex[:16]
 
@@ -804,8 +895,8 @@ class HuckleberryAPI:
                 paused=False,
                 timestamp=FirebaseTimestamp(seconds=current_time),
                 local_timestamp=current_time,
-                feedStartTime=current_time,
-                timerStartTime=current_time,
+                feedStartTime=session_start,
+                timerStartTime=session_start,
                 uuid=session_uuid,
                 leftDuration=0.0,
                 rightDuration=0.0,
@@ -1008,8 +1099,20 @@ class HuckleberryAPI:
 
         _LOGGER.info("Nursing cancelled")
 
-    async def complete_nursing(self, child_uid: str) -> None:
-        """Complete current nursing and save to history."""
+    async def complete_nursing(
+        self,
+        child_uid: str,
+        *,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> None:
+        """Complete current nursing and save to history.
+
+        Args:
+            child_uid: Child unique identifier.
+            start_time: Optional session start override for the saved interval.
+            end_time: Optional end of the current nursing segment. Defaults to now.
+        """
         _LOGGER.info("Completing nursing for child %s", child_uid)
 
         client = await self._get_firestore_client()
@@ -1034,6 +1137,7 @@ class HuckleberryAPI:
             return
 
         now_time = time.time()
+        end_timestamp = end_time.timestamp() if end_time is not None else now_time
         # timerStartTime is in seconds for feeding
         timer_start_sec = float(timer_start)
 
@@ -1042,7 +1146,9 @@ class HuckleberryAPI:
 
         # Add elapsed time on current side if not paused
         if not timer.paused:
-            elapsed = now_time - timer_start_sec
+            elapsed = end_timestamp - timer_start_sec
+            if elapsed < 0:
+                raise ValueError("end_time must not precede the current nursing segment start")
             current_side = timer.activeSide or timer.lastSide or "left"
 
             if current_side == "left":
@@ -1053,7 +1159,11 @@ class HuckleberryAPI:
         # Calculate total duration from accumulated durations
         total_duration = left_duration + right_duration
 
-        feed_start_time = timer.feedStartTime or timer_start_sec
+        feed_start_time = (
+            start_time.timestamp() if start_time is not None else float(timer.feedStartTime or timer_start_sec)
+        )
+        if feed_start_time > end_timestamp:
+            raise ValueError("start_time must not be after end_time")
 
         # Determine last side for history
         last_side_value = timer.activeSide or timer.lastSide or "right"
@@ -2084,22 +2194,43 @@ class HuckleberryAPI:
                 }
             )
 
-    async def start_pump(self, child_uid: str) -> None:
-        """Start a pumping timer."""
-        pump_ref, existing_timer = await self._get_pump_timer(child_uid)
-        if existing_timer and existing_timer.active:
-            _LOGGER.info("Pump timer is already active for %s", child_uid)
-            return
+    async def start_pump(self, child_uid: str, *, start_time: datetime | None = None) -> None:
+        """Start a pumping timer, or adjust an already running one.
 
+        Args:
+            child_uid: Child unique identifier.
+            start_time: Optional timer start. Defaults to now. When a pump timer is
+                already active, this moves its start instead of starting a new
+                session.
+        """
+        pump_ref, existing_timer = await self._get_pump_timer(child_uid)
         now_ms = int(time.time() * 1000)
         now = now_ms / 1000
+        requested_start_ms = start_time.timestamp() * 1000 if start_time is not None else None
+
+        if existing_timer and existing_timer.active:
+            if requested_start_ms is None:
+                _LOGGER.info("Pump timer is already active for %s", child_uid)
+                return
+            if existing_timer.paused and existing_timer.endTime is not None:
+                if requested_start_ms > float(existing_timer.endTime):
+                    raise ValueError("start_time must not be after the paused pump end time")
+            await pump_ref.update(
+                {
+                    "timer.startTime": requested_start_ms,
+                    "timer.timestamp": {"seconds": now},
+                    "timer.local_timestamp": now,
+                }
+            )
+            return
+
         session_uuid = existing_timer.uuid if existing_timer else uuid.uuid4().hex[:16]
         timer = FirebasePumpTimerData(
             active=True,
             paused=False,
             timestamp=FirebaseTimestamp(seconds=now),
             local_timestamp=now,
-            startTime=float(now_ms),
+            startTime=float(requested_start_ms if requested_start_ms is not None else now_ms),
             uuid=session_uuid,
         )
         await pump_ref.set({"timer": to_firebase_dict(timer)}, merge=True)
@@ -2154,13 +2285,27 @@ class HuckleberryAPI:
         self,
         child_uid: str,
         *,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         left_amount: float | int | None = None,
         right_amount: float | int | None = None,
         total_amount: float | int | None = None,
         units: VolumeUnits | None = None,
         notes: str | None = None,
     ) -> None:
-        """Complete the active pumping timer and save its amounts."""
+        """Complete the active pumping timer and save its amounts.
+
+        Args:
+            child_uid: Child unique identifier.
+            start_time: Optional start override for the saved interval.
+            end_time: Optional end override. Defaults to the paused timer end when
+                paused, otherwise now.
+            left_amount: Left-side amount for `leftright` entries.
+            right_amount: Right-side amount for `leftright` entries.
+            total_amount: Total amount for `total` entries.
+            units: Volume units ("ml" or "oz").
+            notes: Optional notes attached to the interval.
+        """
         _resolve_pump_amounts(
             left_amount=left_amount,
             right_amount=right_amount,
@@ -2172,18 +2317,29 @@ class HuckleberryAPI:
         pump_ref, timer = await self._get_pump_timer(child_uid)
         if not timer or not timer.active:
             return
-        if timer.startTime is None:
+
+        timer_start_ms = timer.startTime
+        if start_time is not None:
+            start_ms = start_time.timestamp() * 1000
+        elif timer_start_ms is not None:
+            start_ms = float(timer_start_ms)
+        else:
             raise ValueError("Active pump timer is missing startTime")
 
         now_ms = int(time.time() * 1000)
-        end_time_ms = timer.endTime if timer.paused and timer.endTime is not None else now_ms
-        duration = (float(end_time_ms) - float(timer.startTime)) / 1000
+        if end_time is not None:
+            end_ms = end_time.timestamp() * 1000
+        elif timer.paused and timer.endTime is not None:
+            end_ms = float(timer.endTime)
+        else:
+            end_ms = float(now_ms)
+        duration = (end_ms - start_ms) / 1000
         if duration < 0:
-            raise ValueError("Pump timer endTime must not precede startTime")
+            raise ValueError("end_time must not precede start_time")
 
         await self._log_pump(
             child_uid,
-            start_time=datetime.fromtimestamp(float(timer.startTime) / 1000, tz=dt_timezone.utc),
+            start_time=datetime.fromtimestamp(start_ms / 1000, tz=dt_timezone.utc),
             duration=duration,
             left_amount=left_amount,
             right_amount=right_amount,
@@ -2438,24 +2594,51 @@ class HuckleberryAPI:
             should_update_last_activity,
         )
 
-    async def start_activity(self, child_uid: str, mode: ActivityMode) -> None:
-        """Start an activity timer."""
+    async def start_activity(self, child_uid: str, mode: ActivityMode, *, start_time: datetime | None = None) -> None:
+        """Start an activity timer, or adjust an already running one.
+
+        Args:
+            child_uid: Child unique identifier.
+            mode: Activity mode.
+            start_time: Optional timer start. Defaults to now. When the same mode is
+                already active, this moves its start instead of starting a new
+                session.
+        """
         mode = _ACTIVITY_MODE_ADAPTER.validate_python(mode)
         activities_ref, activities = await self._get_activity_document(child_uid)
         active_mode = self._active_activity_mode(activities)
+        now_ms = int(time.time() * 1000)
+        now = now_ms / 1000
+        requested_start_ms = start_time.timestamp() * 1000 if start_time is not None else None
+
         if active_mode == mode:
+            if requested_start_ms is None:
+                return
+            timer = self._activity_timer(activities, mode)
+            assert timer is not None
+            if timer.paused and timer.endTime is not None:
+                if requested_start_ms > float(timer.endTime):
+                    raise ValueError("start_time must not be after the paused activity end time")
+            update_data: dict[str, object] = {
+                f"timer.{mode}.startTime": float(requested_start_ms),
+                f"timer.{mode}.timestamp": {"seconds": now},
+                f"timer.{mode}.local_timestamp": now,
+            }
+            if timer.paused and timer.endTime is not None:
+                update_data[f"timer.{mode}.duration"] = _activity_duration(
+                    float(requested_start_ms), int(float(timer.endTime))
+                )
+            await activities_ref.update(update_data)
             return
         if active_mode is not None:
             raise ValueError(f"{active_mode} is already active; use switch_activity()")
 
-        now_ms = int(time.time() * 1000)
-        now = now_ms / 1000
         timer = FirebaseActivityTimerEntryData(
             active=True,
             paused=False,
             timestamp=FirebaseTimestamp(seconds=now),
             local_timestamp=now,
-            startTime=float(now_ms),
+            startTime=float(requested_start_ms if requested_start_ms is not None else now_ms),
             duration=0,
             notes="",
             uuid=self._activity_uuid(activities),
@@ -2547,11 +2730,24 @@ class HuckleberryAPI:
         mode: ActivityMode,
         *,
         start_time: datetime | None = None,
+        end_time: datetime | None = None,
         duration: float | int | None = None,
         notes: str | None = None,
     ) -> None:
-        """Complete an activity timer, optionally applying edits from the save form."""
+        """Complete an activity timer, optionally applying edits from the save form.
+
+        Args:
+            child_uid: Child unique identifier.
+            mode: Activity mode.
+            start_time: Optional start override for the saved interval.
+            end_time: Optional end override. Derived into a whole-second duration.
+            duration: Optional duration override in seconds. Cannot be combined with
+                ``end_time``.
+            notes: Optional notes attached to the interval.
+        """
         mode = _ACTIVITY_MODE_ADAPTER.validate_python(mode)
+        if end_time is not None and duration is not None:
+            raise ValueError("Provide either end_time or duration, not both")
         if duration is not None and (not math.isfinite(float(duration)) or float(duration) < 0):
             raise ValueError("duration must be a non-negative finite number")
 
@@ -2559,18 +2755,25 @@ class HuckleberryAPI:
         timer = self._activity_timer(activities, mode)
         if not timer or not timer.active:
             return
-        if timer.startTime is None:
+
+        timer_start_ms = timer.startTime
+        if start_time is not None:
+            resolved_start = start_time
+        elif timer_start_ms is not None:
+            resolved_start = datetime.fromtimestamp(float(timer_start_ms) / 1000, tz=dt_timezone.utc)
+        else:
             raise ValueError("Active activity timer is missing startTime")
 
         now_ms = int(time.time() * 1000)
-        resolved_duration = (
-            float(duration)
-            if duration is not None
-            else float(timer.duration or 0)
-            if timer.paused
-            else float(_activity_duration(float(timer.startTime), now_ms))
-        )
-        resolved_start = start_time or datetime.fromtimestamp(float(timer.startTime) / 1000, tz=dt_timezone.utc)
+        resolved_start_ms = resolved_start.timestamp() * 1000
+        if end_time is not None:
+            resolved_duration = float(_activity_duration(resolved_start_ms, int(end_time.timestamp() * 1000)))
+        elif duration is not None:
+            resolved_duration = float(duration)
+        elif timer.paused:
+            resolved_duration = float(timer.duration or 0)
+        else:
+            resolved_duration = float(_activity_duration(resolved_start_ms, now_ms))
         await self._log_activity(
             child_uid,
             mode=mode,
@@ -2585,6 +2788,7 @@ class HuckleberryAPI:
             timer,
             now_ms=now_ms,
             duration=resolved_duration,
+            fallback_start_time_ms=resolved_start_ms,
         )
 
     async def switch_activity(self, child_uid: str, mode: ActivityMode) -> None:
@@ -2677,9 +2881,11 @@ class HuckleberryAPI:
         *,
         now_ms: int,
         duration: float | int,
+        fallback_start_time_ms: float | None = None,
     ) -> None:
         """Write the inactive timer shape shared by save and reset."""
-        assert timer.startTime is not None
+        resolved_start_ms = timer.startTime if timer.startTime is not None else fallback_start_time_ms
+        assert resolved_start_ms is not None
         now = now_ms / 1000
         await activities_ref.set(
             {
@@ -2690,7 +2896,7 @@ class HuckleberryAPI:
                         "timestamp": {"seconds": now},
                         "local_timestamp": now,
                         "startTime": float(now_ms),
-                        "endTime": float(timer.startTime) + float(duration) * 1000,
+                        "endTime": float(resolved_start_ms) + float(duration) * 1000,
                         "duration": duration,
                         "notes": timer.notes or "",
                         "uuid": timer.uuid,
