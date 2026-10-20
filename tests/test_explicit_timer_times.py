@@ -159,8 +159,11 @@ class TestSleepExplicitTimes:
         assert (kind, path) == ("update", f"sleep/{CHILD}")
         assert payload["timer.timerStartTime"] == pytest.approx(start_time.timestamp() * 1000)
         assert "timer.timerStartTime" in payload
-        # The session identity is preserved because it is a partial update.
-        assert store.documents[f"sleep/{CHILD}"]["timer"]["uuid"] == "keepme"
+        # The running session keeps its identity and active state; only its start moves.
+        stored = store.documents[f"sleep/{CHILD}"]["timer"]
+        assert stored["active"] is True
+        assert stored["timerStartTime"] == pytest.approx(start_time.timestamp() * 1000)
+        assert stored["uuid"] == "keepme"
 
     async def test_start_while_active_without_time_is_noop(self, api: HuckleberryAPI, store: _Store) -> None:
         store.documents[f"sleep/{CHILD}"] = {
@@ -362,6 +365,23 @@ class TestPumpExplicitTimes:
         timer = store.writes_to(f"pump/{CHILD}")[0][2]["timer"]
         assert timer["startTime"] == pytest.approx(start_time.timestamp() * 1000)
 
+    async def test_start_while_active_moves_start(self, api: HuckleberryAPI, store: _Store) -> None:
+        store.documents[f"pump/{CHILD}"] = {
+            "timer": {"active": True, "paused": False, "startTime": (NOW - 900) * 1000, "uuid": "keepme"}
+        }
+        start_time = _event(1200)
+
+        await api.start_pump(CHILD, start_time=start_time)
+
+        assert len(store.writes) == 1
+        kind, path, payload = store.writes[0]
+        assert (kind, path) == ("update", f"pump/{CHILD}")
+        assert payload["timer.startTime"] == pytest.approx(start_time.timestamp() * 1000)
+        stored = store.documents[f"pump/{CHILD}"]["timer"]
+        assert stored["active"] is True
+        assert stored["startTime"] == pytest.approx(start_time.timestamp() * 1000)
+        assert stored["uuid"] == "keepme"
+
     async def test_complete_with_start_and_end_overrides(self, api: HuckleberryAPI, store: _Store) -> None:
         store.documents[f"pump/{CHILD}"] = {
             "timer": {"active": True, "paused": False, "startTime": (NOW - 900) * 1000, "uuid": "keepme"}
@@ -394,6 +414,23 @@ class TestActivityExplicitTimes:
 
         timer = store.writes_to(f"activities/{CHILD}")[0][2]["timer"]["bath"]
         assert timer["startTime"] == pytest.approx(start_time.timestamp() * 1000)
+
+    async def test_start_while_active_moves_start(self, api: HuckleberryAPI, store: _Store) -> None:
+        store.documents[f"activities/{CHILD}"] = {
+            "timer": {"bath": {"active": True, "paused": False, "startTime": (NOW - 900) * 1000, "uuid": "keepme"}}
+        }
+        start_time = _event(1200)
+
+        await api.start_activity(CHILD, "bath", start_time=start_time)
+
+        assert len(store.writes) == 1
+        kind, path, payload = store.writes[0]
+        assert (kind, path) == ("update", f"activities/{CHILD}")
+        assert payload["timer.bath.startTime"] == pytest.approx(start_time.timestamp() * 1000)
+        stored = store.documents[f"activities/{CHILD}"]["timer"]["bath"]
+        assert stored["active"] is True
+        assert stored["startTime"] == pytest.approx(start_time.timestamp() * 1000)
+        assert stored["uuid"] == "keepme"
 
     async def test_complete_with_end_time_derives_duration(self, api: HuckleberryAPI, store: _Store) -> None:
         store.documents[f"activities/{CHILD}"] = {
