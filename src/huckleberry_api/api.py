@@ -1173,6 +1173,34 @@ class HuckleberryAPI:
         if feed_start_time > end_timestamp:
             raise ValueError("start_time must not be after end_time")
 
+        # A corrected start can make the accumulated side durations exceed the
+        # corrected session span (for example, when a running start is moved
+        # forward and the segment start is kept). Trim the active side first so
+        # the saved interval stays internally consistent.
+        max_duration = max(0.0, end_timestamp - feed_start_time)
+        if total_duration > max_duration:
+            original_total = total_duration
+            excess = total_duration - max_duration
+            trim_side = timer.activeSide or timer.lastSide or "left"
+            if trim_side == "left":
+                trim = min(excess, left_duration)
+                left_duration -= trim
+                excess -= trim
+                if excess > 0:
+                    right_duration = max(0.0, right_duration - excess)
+            else:
+                trim = min(excess, right_duration)
+                right_duration -= trim
+                excess -= trim
+                if excess > 0:
+                    left_duration = max(0.0, left_duration - excess)
+            total_duration = left_duration + right_duration
+            _LOGGER.warning(
+                "Trimmed %.1fs from nursing durations to fit the corrected session for %s",
+                original_total - total_duration,
+                child_uid,
+            )
+
         # Determine last side for history
         last_side_value = timer.activeSide or timer.lastSide or "right"
         if last_side_value == "none":

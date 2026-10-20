@@ -284,6 +284,29 @@ class TestNursingExplicitTimes:
         # The running segment cannot move past now, so it keeps its original start.
         assert payload["timer.timerStartTime"] == pytest.approx(NOW - 120)
 
+    async def test_complete_reconciles_durations_with_corrected_start(self, api: HuckleberryAPI, store: _Store) -> None:
+        store.documents[f"feed/{CHILD}"] = {
+            "timer": {
+                "active": True,
+                "paused": False,
+                "feedStartTime": NOW - 600,
+                "timerStartTime": NOW - 120,
+                "leftDuration": 360.0,
+                "rightDuration": 0.0,
+                "activeSide": "left",
+                "uuid": "keepme",
+            }
+        }
+
+        await api.start_nursing(CHILD, start_time=_event(300))
+        await api.complete_nursing(CHILD)
+
+        interval = store.writes_under(f"feed/{CHILD}/intervals")[0][2]
+        assert interval["start"] == pytest.approx(NOW - 300)
+        # 480s would exceed the corrected 300s session, so the side is trimmed.
+        assert interval["leftDuration"] == pytest.approx(300.0)
+        assert interval["rightDuration"] == pytest.approx(0.0)
+
     async def test_start_while_paused_can_shift_session_start(self, api: HuckleberryAPI, store: _Store) -> None:
         store.documents[f"feed/{CHILD}"] = {
             "timer": {
