@@ -228,6 +228,7 @@ class TestBottleFeeding:
             amount=75.0,
             bottle_type="Formula",
             units="ml",
+            notes="Left 1.5 oz",
         )
         await asyncio.sleep(1)
 
@@ -243,6 +244,7 @@ class TestBottleFeeding:
         assert interval_data is not None
         assert interval_data["amount"] == 75.0
         assert interval_data["bottleType"] == "Formula"
+        assert interval_data["notes"] == "Left 1.5 oz"
 
     async def test_older_bottle_entry_does_not_replace_latest_summary(
         self, api: HuckleberryAPI, child_uid: str

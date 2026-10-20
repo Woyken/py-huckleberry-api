@@ -1125,6 +1125,7 @@ class HuckleberryAPI:
         side: FeedSide = "left",
         left_duration: float | int | None = None,
         right_duration: float | int | None = None,
+        notes: str | None = None,
     ) -> None:
         """Log a completed nursing interval without using the live timer."""
         start_timestamp = start_time.timestamp()
@@ -1159,6 +1160,7 @@ class HuckleberryAPI:
             rightDuration=resolved_right_duration,
             offset=offset,
             end_offset=end_offset,
+            notes=notes,
         )
         last_nursing_data = FirebaseLastNursingData(
             mode="breast",
@@ -1205,6 +1207,7 @@ class HuckleberryAPI:
         amount: float,
         bottle_type: BottleType = "Formula",
         units: VolumeUnits = "ml",
+        notes: str | None = None,
     ) -> None:
         """Log bottle feeding as instant event.
 
@@ -1214,6 +1217,7 @@ class HuckleberryAPI:
             bottle_type: Type of bottle contents ("Breast Milk", "Formula", "Cow Milk", etc.)
             amount: Amount fed in specified units
             units: Volume units ("ml" or "oz")
+            notes: Optional notes attached to the interval.
         """
         _LOGGER.info("Logging bottle feeding for child %s: %s %s of %s", child_uid, amount, units, bottle_type)
 
@@ -1242,6 +1246,7 @@ class HuckleberryAPI:
             units=units,
             offset=offset,
             end_offset=offset,
+            notes=notes,
         )
 
         # Create interval document
