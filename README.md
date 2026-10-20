@@ -162,21 +162,21 @@ async def main() -> None:
 
 ### Sleep Tracking
 - `await get_sleep(child_uid)` - Get the typed sleep document and current timer state
-- `await start_sleep(child_uid)` - Start sleep session
+- `await start_sleep(child_uid, start_time=None)` - Start sleep session; on an active timer, moves its start instead of restarting
 - `await pause_sleep(child_uid)` - Pause active session
 - `await resume_sleep(child_uid)` - Resume paused session
 - `await cancel_sleep(child_uid)` - Cancel without saving
-- `await complete_sleep(child_uid)` - Complete and save to history
+- `await complete_sleep(child_uid, start_time=None, end_time=None, details=None)` - Complete and save to history with optional interval overrides
 - `await log_sleep(child_uid, start_time=..., end_time=..., details=None)` - Log a completed sleep interval with explicit timestamps
 
 ### Feeding Tracking
 - `await get_nursing(child_uid)` - Get the typed feeding document and current nursing timer state
-- `await start_nursing(child_uid, side)` - Start breastfeeding session
+- `await start_nursing(child_uid, side, start_time=None)` - Start breastfeeding session; on an active session, shifts its start
 - `await pause_nursing(child_uid)` - Pause active session
 - `await resume_nursing(child_uid, side)` - Resume paused session
 - `await switch_nursing_side(child_uid)` - Switch left/right
 - `await cancel_nursing(child_uid)` - Cancel without saving
-- `await complete_nursing(child_uid)` - Complete and save to history
+- `await complete_nursing(child_uid, start_time=None, end_time=None)` - Complete and save to history with optional interval overrides
 - `await log_nursing(child_uid, start_time=..., end_time=..., side="left", notes=None)` - Log a completed breastfeeding interval with explicit timestamps
 - `await log_bottle(child_uid, start_time=..., amount=..., bottle_type=..., units=..., notes=None)` - Log bottle feeding with an explicit event timestamp
   - `bottle_type`: "Breast Milk", "Formula", "Cow Milk", "Soy Milk", etc.
@@ -184,18 +184,18 @@ async def main() -> None:
   - `units`: "ml" or "oz"
 
 ### Pumping Tracking
-- `await start_pump(child_uid)` - Start a pumping timer
+- `await start_pump(child_uid, start_time=None)` - Start a pumping timer; on an active timer, moves its start
 - `await pause_pump(child_uid)` / `await resume_pump(child_uid)` - Pause or resume pumping
-- `await complete_pump(child_uid, total_amount=..., units=..., notes=...)` - Save the active timer with total or left/right amounts
+- `await complete_pump(child_uid, start_time=None, end_time=None, total_amount=..., units=..., notes=...)` - Save the active timer with total or left/right amounts and optional interval overrides
 - `await cancel_pump(child_uid)` - Cancel the active timer without saving
 - `await log_pump(child_uid, start_time=..., total_amount=..., duration=..., units=...)` - Log pumping entry; total entries are stored split evenly across `leftAmount` and `rightAmount`
 - `await list_pump_intervals(child_uid, start_time, end_time)` - List pump history for a range using `datetime` objects
 
 ### Activity Tracking
-- `await start_activity(child_uid, mode)` - Start an activity timer
+- `await start_activity(child_uid, mode, start_time=None)` - Start an activity timer; on the same active mode, moves its start
 - `await pause_activity(child_uid, mode)` / `await resume_activity(child_uid, mode)` - Pause or resume an activity timer
 - `await switch_activity(child_uid, mode)` - Associate the active timer with another activity type
-- `await complete_activity(child_uid, mode, start_time=..., duration=..., notes=...)` - Save the active timer with optional edit-form overrides
+- `await complete_activity(child_uid, mode, start_time=..., end_time=..., duration=..., notes=...)` - Save the active timer with optional edit-form overrides (`end_time` and `duration` are mutually exclusive)
 - `await cancel_activity(child_uid, mode)` - Reset the active timer without saving
 - `await log_activity(child_uid, mode=..., start_time=..., duration=..., notes=...)` - Save an activity directly without running a timer
 - `await list_activity_intervals(child_uid, start_time, end_time)` - List activity history for a range
