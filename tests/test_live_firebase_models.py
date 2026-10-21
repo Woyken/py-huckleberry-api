@@ -34,6 +34,7 @@ from huckleberry_api.firebase_types import (
     FirebaseFeedMultiContainer,
     FirebaseGrowthData,
     FirebaseHealthDocumentData,
+    FirebaseHealthMultiContainer,
     FirebaseLastPumpData,
     FirebaseMedicationData,
     FirebasePumpDocumentData,
@@ -276,6 +277,9 @@ async def test_live_latest_health_pump_activities_and_foods(api: HuckleberryAPI)
             payload = _doc_to_dict(doc)
             if not payload:
                 continue
+            if _is_multi_wrapper(payload):
+                FirebaseHealthMultiContainer.model_validate(payload)
+                continue
             mode = payload.get("mode")
             if mode == "growth":
                 FirebaseGrowthData.model_validate(payload)
@@ -283,6 +287,14 @@ async def test_live_latest_health_pump_activities_and_foods(api: HuckleberryAPI)
                 FirebaseMedicationData.model_validate(payload)
             elif mode == "temperature":
                 FirebaseTemperatureData.model_validate(payload)
+
+        # Batch documents can fall outside the latest-by-ID sample (the ordered
+        # query requires a composite index), so validate every health batch.
+        # The app writes these documents and the wrapper only ever reads them.
+        async for doc in health_ref.where(filter=firestore.FieldFilter("multi", "==", True)).stream():
+            payload = _doc_to_dict(doc)
+            if payload:
+                FirebaseHealthMultiContainer.model_validate(payload)
 
         custom_ref = db.collection("types").document(child_uid).collection("custom")
         async for doc in _iter_latest_by_field(custom_ref, _max_docs(), "updated_at"):

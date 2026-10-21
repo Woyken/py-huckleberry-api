@@ -1,0 +1,1 @@
+Accept batched `health/{child_uid}/data` temperature rows that omit `lastUpdated`. The app writes these entries without the field, so `list_health_entries` previously rejected the entire batch document.

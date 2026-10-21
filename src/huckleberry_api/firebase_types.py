@@ -779,14 +779,16 @@ class FirebaseLastMedicationData(FirebaseMedicationData):
 class FirebaseTemperatureData(StrictModel):
     """health/{child_uid}/data temperature entry payload.
 
-    Live app write observed with amount, timestamps, units, and optional notes.
-    Unlike prefs.lastTemperature, history rows omit `_id`, `type`, and
-    `multientry_key`.
+    Standalone app writes include amount, timestamps, units, and optional notes.
+    Batched app rows (`multi` document entries) omit `lastUpdated`; verified on
+    2026-10-21 against a live 256-entry batch whose `prefs.lastTemperature`
+    referenced that document via `multientry_key`. Unlike prefs.lastTemperature,
+    history rows omit `_id`, `type`, and `multientry_key`.
     """
 
     mode: Literal["temperature"]
     start: Number
-    lastUpdated: Number
+    lastUpdated: Number | None = None
     offset: Number
     amount: Number
     units: TemperatureUnits
