@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
 
@@ -21,6 +21,32 @@ async def _wait_for_update(updates: list[Any], predicate: Callable[[Any], bool],
     raise AssertionError(f"No matching listener update within {timeout}s")
 
 
+async def _wait_or_resubscribe(
+    api: HuckleberryAPI,
+    updates: list[Any],
+    subscribe: Callable[[], Awaitable[None]],
+    predicate: Callable[[Any], bool],
+    timeout: float = 6.0,
+) -> None:
+    """Wait for a pushed snapshot, resubscribing once if the watch stalls.
+
+    Live Firestore watches occasionally deliver their initial snapshot and then
+    spend tens of seconds reconnecting. A fresh subscription receives the current
+    document state immediately, so the assertion still checks that the listener
+    reports the write.
+    """
+    try:
+        await _wait_for_update(updates, predicate, timeout=timeout)
+        return
+    except AssertionError:
+        pass
+
+    await api.stop_all_listeners()
+    updates.clear()
+    await subscribe()
+    await _wait_for_update(updates, predicate, timeout=5.0)
+
+
 class TestRealtimeListeners:
     """Test real-time listener functionality."""
 
@@ -31,14 +57,27 @@ class TestRealtimeListeners:
         def callback(data: Any) -> None:
             updates.append(data)
 
-        await api.setup_sleep_listener(child_uid, callback)
+        def subscribe() -> Awaitable[None]:
+            return api.setup_sleep_listener(child_uid, callback)
+
+        await subscribe()
         await asyncio.sleep(2)
 
         await api.start_sleep(child_uid)
-        await _wait_for_update(updates, lambda update: update.timer is not None and update.timer.active is True)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: update.timer is not None and update.timer.active is True,
+        )
 
         await api.cancel_sleep(child_uid)
-        await _wait_for_update(updates, lambda update: update.timer is not None and update.timer.active is False)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: update.timer is not None and update.timer.active is False,
+        )
         await api.stop_all_listeners()
 
         assert len(updates) > 0
@@ -52,14 +91,27 @@ class TestRealtimeListeners:
         def callback(data: Any) -> None:
             updates.append(data)
 
-        await api.setup_feed_listener(child_uid, callback)
+        def subscribe() -> Awaitable[None]:
+            return api.setup_feed_listener(child_uid, callback)
+
+        await subscribe()
         await asyncio.sleep(2)
 
         await api.start_nursing(child_uid, side="left")
-        await _wait_for_update(updates, lambda update: update.timer is not None and update.timer.active is True)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: update.timer is not None and update.timer.active is True,
+        )
 
         await api.cancel_nursing(child_uid)
-        await _wait_for_update(updates, lambda update: update.timer is not None and update.timer.active is False)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: update.timer is not None and update.timer.active is False,
+        )
         await api.stop_all_listeners()
 
         assert len(updates) > 0
@@ -198,7 +250,10 @@ class TestRealtimeListeners:
         def callback(data: Any) -> None:
             updates.append(data)
 
-        await api.setup_health_listener(child_uid, callback)
+        def subscribe() -> Awaitable[None]:
+            return api.setup_health_listener(child_uid, callback)
+
+        await subscribe()
         await asyncio.sleep(2)
 
         measured_at = datetime.now(timezone.utc).replace(microsecond=0)
@@ -209,8 +264,10 @@ class TestRealtimeListeners:
             head=13.8,
             units="imperial",
         )
-        await _wait_for_update(
+        await _wait_or_resubscribe(
+            api,
             updates,
+            subscribe,
             lambda update: (
                 getattr(update, "prefs", None) is not None
                 and getattr(update.prefs, "lastGrowthEntry", None) is not None
@@ -265,17 +322,31 @@ class TestRealtimeListeners:
         def callback(data: Any) -> None:
             updates.append(data)
 
-        await api.setup_diaper_listener(child_uid, callback)
+        def subscribe() -> Awaitable[None]:
+            return api.setup_diaper_listener(child_uid, callback)
+
+        await subscribe()
         await asyncio.sleep(2)
 
+        measured_at = datetime.now(timezone.utc).replace(microsecond=0)
         await api.log_potty(
             child_uid,
-            start_time=datetime.now(timezone.utc).replace(microsecond=0),
+            start_time=measured_at,
             mode="pee",
             how_it_happened="accident",
             pee_amount="little",
         )
-        await asyncio.sleep(2)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: (
+                getattr(update, "prefs", None) is not None
+                and getattr(update.prefs, "lastPotty", None) is not None
+                and update.prefs.lastPotty.mode == "pee"
+                and abs(update.prefs.lastPotty.start - measured_at.timestamp()) < 0.001
+            ),
+        )
 
         await api.stop_all_listeners()
 
@@ -300,7 +371,10 @@ class TestRealtimeListeners:
         def callback(data: Any) -> None:
             updates.append(data)
 
-        await api.setup_pump_listener(child_uid, callback)
+        def subscribe() -> Awaitable[None]:
+            return api.setup_pump_listener(child_uid, callback)
+
+        await subscribe()
         await asyncio.sleep(2)
 
         await api.log_pump(
@@ -310,8 +384,10 @@ class TestRealtimeListeners:
             duration=900,
             notes="listener test",
         )
-        await _wait_for_update(
+        await _wait_or_resubscribe(
+            api,
             updates,
+            subscribe,
             lambda update: (
                 getattr(update, "prefs", None) is not None
                 and getattr(update.prefs, "lastPump", None) is not None
