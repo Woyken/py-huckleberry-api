@@ -344,6 +344,7 @@ class TestRealtimeListeners:
                 getattr(update, "prefs", None) is not None
                 and getattr(update.prefs, "lastPotty", None) is not None
                 and update.prefs.lastPotty.mode == "pee"
+                and update.prefs.lastPotty.start is not None
                 and abs(update.prefs.lastPotty.start - measured_at.timestamp()) < 0.001
             ),
         )
@@ -391,6 +392,7 @@ class TestRealtimeListeners:
             lambda update: (
                 getattr(update, "prefs", None) is not None
                 and getattr(update.prefs, "lastPump", None) is not None
+                and update.prefs.lastPump.start is not None
                 and abs(update.prefs.lastPump.start - minimum_start) < 0.001
             ),
         )
