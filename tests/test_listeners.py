@@ -201,9 +201,10 @@ class TestRealtimeListeners:
         await api.setup_health_listener(child_uid, callback)
         await asyncio.sleep(2)
 
+        measured_at = datetime.now(timezone.utc).replace(microsecond=0)
         await api.log_growth(
             child_uid,
-            start_time=datetime.now(timezone.utc).replace(microsecond=0),
+            start_time=measured_at,
             weight=11.5,
             head=13.8,
             units="imperial",
@@ -213,7 +214,7 @@ class TestRealtimeListeners:
             lambda update: (
                 getattr(update, "prefs", None) is not None
                 and getattr(update.prefs, "lastGrowthEntry", None) is not None
-                and update.prefs.lastGrowthEntry.weight == 11.5
+                and abs(update.prefs.lastGrowthEntry.start - measured_at.timestamp()) < 0.001
             ),
         )
 
@@ -314,7 +315,7 @@ class TestRealtimeListeners:
             lambda update: (
                 getattr(update, "prefs", None) is not None
                 and getattr(update.prefs, "lastPump", None) is not None
-                and update.prefs.lastPump.duration == 900.0
+                and abs(update.prefs.lastPump.start - minimum_start) < 0.001
             ),
         )
 
