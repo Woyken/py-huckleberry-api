@@ -2,12 +2,23 @@
 
 import asyncio
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
 from huckleberry_api import HuckleberryAPI
 from huckleberry_api.firebase_types import FirebaseActivityDocumentData, FirebasePumpDocumentData
 from huckleberry_api.models import SolidsFoodReference
+
+
+async def _wait_for_update(updates: list[Any], predicate: Callable[[Any], bool], timeout: float = 10.0) -> None:
+    """Wait until the latest snapshot satisfies the predicate instead of assuming a fixed delay."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if updates and predicate(updates[-1]):
+            return
+        await asyncio.sleep(0.2)
+    raise AssertionError(f"No matching listener update within {timeout}s")
 
 
 class TestRealtimeListeners:
@@ -24,14 +35,15 @@ class TestRealtimeListeners:
         await asyncio.sleep(2)
 
         await api.start_sleep(child_uid)
-        await asyncio.sleep(2)
+        await _wait_for_update(updates, lambda update: update.timer is not None and update.timer.active is True)
 
         await api.cancel_sleep(child_uid)
+        await _wait_for_update(updates, lambda update: update.timer is not None and update.timer.active is False)
         await api.stop_all_listeners()
 
         assert len(updates) > 0
         assert updates[-1].timer is not None
-        assert updates[-1].timer.active is True
+        assert updates[-1].timer.active is False
 
     async def test_feed_listener(self, api: HuckleberryAPI, child_uid: str) -> None:
         """Test feeding real-time listener."""
@@ -44,14 +56,15 @@ class TestRealtimeListeners:
         await asyncio.sleep(2)
 
         await api.start_nursing(child_uid, side="left")
-        await asyncio.sleep(2)
+        await _wait_for_update(updates, lambda update: update.timer is not None and update.timer.active is True)
 
         await api.cancel_nursing(child_uid)
+        await _wait_for_update(updates, lambda update: update.timer is not None and update.timer.active is False)
         await api.stop_all_listeners()
 
         assert len(updates) > 0
         assert updates[-1].timer is not None
-        assert updates[-1].timer.active is True
+        assert updates[-1].timer.active is False
 
     async def test_feed_listener_emits_nursing_and_solids_updates(self, api: HuckleberryAPI, child_uid: str) -> None:
         """Test feed listener emissions across nursing and solids updates."""
@@ -195,7 +208,14 @@ class TestRealtimeListeners:
             head=13.8,
             units="imperial",
         )
-        await asyncio.sleep(2)
+        await _wait_for_update(
+            updates,
+            lambda update: (
+                getattr(update, "prefs", None) is not None
+                and getattr(update.prefs, "lastGrowthEntry", None) is not None
+                and update.prefs.lastGrowthEntry.weight == 11.5
+            ),
+        )
 
         await api.stop_all_listeners()
 
@@ -289,7 +309,14 @@ class TestRealtimeListeners:
             duration=900,
             notes="listener test",
         )
-        await asyncio.sleep(2)
+        await _wait_for_update(
+            updates,
+            lambda update: (
+                getattr(update, "prefs", None) is not None
+                and getattr(update.prefs, "lastPump", None) is not None
+                and update.prefs.lastPump.duration == 900.0
+            ),
+        )
 
         await api.stop_all_listeners()
 
