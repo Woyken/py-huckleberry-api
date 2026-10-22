@@ -28,6 +28,8 @@ test('device implementation retains semantic actions and final replay boundary',
   assert.match(source, /expectation_failed/);
   assert.match(source, /result\.form/);
   assert.match(source, /child_not_verified/);
+  assert.match(source, /"tab-button-child-info"\.equals\(id\)\) return "child"/);
+  assert.match(source, /selectedTabs\.contains\("child"\)\) clearChild/);
   assert.match(source, /AccessibilityNodeInfo\.obtain\(node\)/);
   assert.match(source, /resetChild/);
   const state = await readFile(new URL('src/dev/local/huckleberry/a11yprobe/BridgeState.java', android), 'utf8');

@@ -88,7 +88,7 @@ export function validateSnapshot(reply, expectedTask) {
   requireOk(reply);
   if (reply.task !== expectedTask || !Number.isInteger(reply.window) || !Array.isArray(reply.nodes)
       || typeof reply.truncated !== 'boolean' || typeof reply.childVerified !== 'boolean'
-      || typeof reply.guardComplete !== 'boolean' || !['home', 'reports', null].includes(reply.selectedTab)) {
+      || typeof reply.guardComplete !== 'boolean' || !['home', 'reports', 'child', null].includes(reply.selectedTab)) {
     throw new Error('Malformed accessibility snapshot');
   }
   for (const node of reply.nodes) {

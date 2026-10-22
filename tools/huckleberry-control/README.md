@@ -27,8 +27,10 @@ semantic node actions; the skill routes to the common CLI rather than copying it
   Id/text selectors resolve to the nearest clickable ancestor; paths are also
   supported but are capture-specific. Before data-changing actions, inspect a
   Home/Reports screen until `childVerified` is true; the bridge caches that proof
-  for the exact task because forms hide the child label. Claim/release or the
-  Child tab clears it.
+  for the exact task because forms hide the child label. A new claim or release,
+  observing another child or the Child tab, or a new Huckleberry task clears it;
+  a later guarded action returns `child_not_verified` until a verified
+  Home/Reports screen is inspected again.
 - A machine-readable control/selector map in `controls.json`. It covers Home,
   settings, child profile, reports, sleep, feeding, solids, diaper/potty, pump,
   medicine, growth, temperature, activity, milestones and home customization.

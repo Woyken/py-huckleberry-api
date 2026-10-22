@@ -68,8 +68,10 @@ test('snapshot validation does not treat malformed or partial data as confirmati
   const snapshot = { protocol: 2, status: 'ok', task: 123, window: 4, nodes: [node], truncated: false,
     childVerified: false, guardComplete: true, selectedTab: null };
   assert.equal(validateSnapshot(snapshot, 123), snapshot);
+  assert.equal(validateSnapshot({ ...snapshot, selectedTab: 'child' }, 123).selectedTab, 'child');
   assert.throws(() => validateSnapshot(snapshot, 124));
   assert.throws(() => validateSnapshot({ ...snapshot, childVerified: 'true' }, 123));
+  assert.throws(() => validateSnapshot({ ...snapshot, selectedTab: 'sleep' }, 123));
   assert.throws(() => validateSnapshot({ ...snapshot, nodes: [{}] }, 123));
   assert.throws(() => validateSnapshot({ ...snapshot, nodes: [{ ...node, visible: 'true' }] }, 123));
 });

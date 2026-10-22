@@ -67,6 +67,7 @@ public final class ProbeService extends AccessibilityService {
     private static String tab(String id) {
         if ("tab-button-home".equals(id)) return "home";
         if ("tab-button-stat-tabs".equals(id)) return "reports";
+        if ("tab-button-child-info".equals(id)) return "child";
         return null;
     }
     private static String clipped(CharSequence text) {
@@ -161,14 +162,14 @@ public final class ProbeService extends AccessibilityService {
             JSONArray nodes = new JSONArray();
             for (JSONObject row : result.navigation) if (nodes.length() < MAX_EXPORTED) nodes.put(row);
             for (JSONObject row : result.content) if (nodes.length() < MAX_EXPORTED) nodes.put(row);
-            if (result.childMatches == 1) markChild(expectedTask, child);
-            else if (!result.incomplete && ("child".equals(result.selectedTab())
-                    || (result.homeScreen && "home".equals(result.selectedTab()))
+            if (result.selectedTabs.contains("child")) clearChild();
+            else if (result.childMatches == 1) markChild(expectedTask, child);
+            else if (!result.incomplete && ((result.homeScreen && "home".equals(result.selectedTab()))
                     || (result.reportsScreen && "reports".equals(result.selectedTab())))) clearChild();
             return BridgeState.reply("ok").put("task", expectedTask).put("window", selected.getId())
                 .put("nodes", nodes).put("exported", result.exported)
                 .put("truncated", result.incomplete || result.exported > nodes.length())
-                .put("guardComplete", !result.incomplete).put("childVerified", result.childMatches == 1)
+                .put("guardComplete", !result.incomplete).put("childVerified", childVerified(expectedTask, child))
                 .put("selectedTab", result.selectedTab() == null ? JSONObject.NULL : result.selectedTab());
         } finally { root.recycle(); }
     }
@@ -279,7 +280,6 @@ public final class ProbeService extends AccessibilityService {
         if (selectors > 1) return BridgeState.reply("ambiguous_target_selector");
         if (value.length() > 4096) return BridgeState.reply("value_too_long");
         boolean changesData = "click".equals(action) || "long-click".equals(action) || "set-text".equals(action);
-        if (changesData && !childVerified(expectedTask, child)) return BridgeState.reply("child_not_verified");
 
         AccessibilityWindowInfo selected = window(expectedTask);
         AccessibilityNodeInfo root = root(selected);
@@ -322,6 +322,9 @@ public final class ProbeService extends AccessibilityService {
                     default: break;
                 }
             }
+            boolean navigationTab = target != null && ("tab-button-home".equals(target.getViewIdResourceName())
+                    || "tab-button-stat-tabs".equals(target.getViewIdResourceName()));
+            if (changesData && !navigationTab && !childVerified(expectedTask, child)) return BridgeState.reply("child_not_verified");
             if (window(expectedTask).getId() != selected.getId()) return BridgeState.reply("focus_changed");
             if (SystemClock.uptimeMillis() >= deadline) return BridgeState.reply("request_expired");
             if (target != null && "click".equals(action) && "tab-button-child-info".equals(target.getViewIdResourceName())) clearChild();
