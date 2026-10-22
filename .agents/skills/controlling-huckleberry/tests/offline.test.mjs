@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import { join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
-import { ROOT, validateConfig, validateSession, parseForwards, sameForward, pendingForwardRemovals } from '../scripts/runtime.mjs';
+import { ROOT, validateConfig, validateSession, parseForwards, sameForward, pendingForwardRemovals, pendingForwardCandidates } from '../scripts/runtime.mjs';
 import { main } from '../scripts/huckleberry.mjs';
 import { protocolNumber, verifyProtocols, readServerProtocol, validateAdbEnvironment } from '../scripts/adb-safety.mjs';
 
@@ -54,21 +54,26 @@ test('forward ownership matches all three fields, not merely the port', () => {
   }
 });
 
-test('pending forward cleanup removes only rules absent from the pre-allocation baseline', () => {
+test('pending forward cleanup removes only its recorded allocation, never the baseline or other clients', () => {
   const state = {
     serial: 'emulator-5580',
     pendingForward: {
       socket: 'webview_devtools_remote_123',
       before: [{ serial: 'emulator-5580', local: 'tcp:61234', remote: 'localabstract:webview_devtools_remote_123' }],
+      port: 61235,
     },
   };
   const rules = parseForwards([
     'emulator-5580 tcp:61234 localabstract:webview_devtools_remote_123',
     'emulator-5580 tcp:61235 localabstract:webview_devtools_remote_123',
+    'emulator-5580 tcp:61238 localabstract:webview_devtools_remote_123',
     'emulator-5580 tcp:61236 localabstract:webview_devtools_remote_999',
     'phone tcp:61237 localabstract:webview_devtools_remote_123',
   ].join('\r\n'));
   assert.deepEqual(pendingForwardRemovals(rules, state).map((rule) => rule.local), ['tcp:61235']);
+  assert.deepEqual(pendingForwardRemovals(rules, { ...state, pendingForward: { ...state.pendingForward, port: null } }), []);
+  assert.deepEqual(pendingForwardCandidates(rules, { ...state, pendingForward: { ...state.pendingForward, port: null } }).map((rule) => rule.local),
+    ['tcp:61235', 'tcp:61238']);
   assert.deepEqual(pendingForwardRemovals(rules, { ...state, pendingForward: null }), []);
 });
 

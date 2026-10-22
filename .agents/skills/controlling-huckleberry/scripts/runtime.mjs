@@ -201,6 +201,16 @@ function forwardKey(rule) {
 
 export function pendingForwardRemovals(rules, state) {
   const pending = state.pendingForward;
+  if (!pending || !Number.isInteger(pending.port)) return [];
+  const baseline = new Set(pending.before.map(forwardKey));
+  return rules.filter((rule) => rule.serial === state.serial &&
+    rule.local === `tcp:${pending.port}` &&
+    rule.remote === `localabstract:${pending.socket}` &&
+    !baseline.has(forwardKey(rule)));
+}
+
+export function pendingForwardCandidates(rules, state) {
+  const pending = state.pendingForward;
   if (!pending) return [];
   const baseline = new Set(pending.before.map(forwardKey));
   return rules.filter((rule) => rule.serial === state.serial &&
@@ -209,12 +219,21 @@ export function pendingForwardRemovals(rules, state) {
 }
 
 async function reconcilePendingForward(state) {
-  if (!state.pendingForward) return;
+  const pending = state.pendingForward;
+  if (!pending) return;
   const rules = await forwardRules();
-  if (!rules.some((rule) => sameForward(rule, state))) {
-    for (const rule of pendingForwardRemovals(rules, state)) {
-      await adb(['-s', state.serial, 'forward', '--remove', rule.local]);
+  if (Number.isInteger(pending.port)) {
+    if (!rules.some((rule) => sameForward(rule, state))) {
+      for (const rule of pendingForwardRemovals(rules, state)) {
+        await adb(['-s', state.serial, 'forward', '--remove', rule.local]);
+      }
     }
+    state.pendingForward = null;
+    await saveState(state);
+    return;
+  }
+  if (pendingForwardCandidates(rules, state).length > 0) {
+    throw new Error(`Pending ADB forward for localabstract:${pending.socket} has no recorded port. Inspect "adb forward --list" and reconcile the matching rule before retrying; refusing to remove a forward this claim cannot identify.`);
   }
   state.pendingForward = null;
   await saveState(state);
@@ -286,6 +305,9 @@ export async function start(state) {
     await saveState(state);
     const port = Number(await adb(['-s', state.serial, 'forward', 'tcp:0', `localabstract:${socket}`]));
     if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('ADB did not return a valid local debugging port.');
+    state.pendingForward = { socket, before, port };
+    try { await saveState(state); }
+    catch (error) { await adb(['-s', state.serial, 'forward', '--remove', `tcp:${port}`], { allowFailure: true }); throw error; }
     state.forward = { port, socket };
     state.pendingForward = null;
     try { await saveState(state); }

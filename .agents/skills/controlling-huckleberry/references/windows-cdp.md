@@ -62,7 +62,7 @@ Checkpoints contain UI/device time evidence only (`backendCaptured: false`), not
 node $hb release --session $session
 ```
 
-Release removes only this claim's exact forwarding rule, leaving emulator/app/records intact. Errors retain the task claim. If the app process restarted, run `start` with the same session to reconnect, then reconcile in-flight writes before new input. If `start` is interrupted after ADB allocates a forward but before the claim records it, the persisted pending record makes the next `start` or `release` remove only the newly allocated matching rule; forwards present before allocation are preserved.
+Release removes only this claim's exact forwarding rule, leaving emulator/app/records intact. Errors retain the task claim. If the app process restarted, run `start` with the same session to reconnect, then reconcile in-flight writes before new input. If `start` is interrupted after ADB allocates a forward but before the claim records it, the persisted pending record makes the next `start` or `release` remove only the newly allocated matching rule; forwards present before allocation are preserved. If the interruption happened after ADB created the rule but before its exact port was recorded, `start`/`release` refuse to guess and retain the pending record for explicit reconciliation.
 
 The command mutex is released on a command-process crash. A fresh conversation may resume/release a previous task ID only after user confirmation that its owner ended (or a verified terminal owning delegated task). A live command cannot be overridden. Do not delete broad state directories or restart the shared ADB server.
 
