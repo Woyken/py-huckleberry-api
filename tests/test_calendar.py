@@ -67,7 +67,8 @@ class TestCalendarIntervals:
                 assert interval.leftDuration is None or isinstance(interval.leftDuration, (int, float))
                 assert interval.rightDuration is None or isinstance(interval.rightDuration, (int, float))
             elif isinstance(interval, FirebaseBottleFeedIntervalData):
-                assert isinstance(interval.amount, (int, float))
+                # The app can save a bottle feed without a volume.
+                assert interval.amount is None or isinstance(interval.amount, (int, float))
             elif isinstance(interval, FirebaseSolidsFeedIntervalData):
                 assert interval.foods is None or isinstance(interval.foods, dict)
 

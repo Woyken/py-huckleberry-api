@@ -204,6 +204,36 @@ def test_temperature_models_accept_distinct_live_history_and_latest_payloads() -
     assert health.prefs.lastTemperature.id_ == "1773640786119-a762313500b521fee51f"
 
 
+def test_batched_temperature_rows_accept_missing_last_updated() -> None:
+    """Batched app temperature rows omit `lastUpdated`.
+
+    Payloads copied from a live `health/{child_uid}/data` batch document
+    (verified 2026-10-21). `prefs.lastTemperature` referenced that batch via
+    `multientry_key`, so the app wrote these rows.
+    """
+    fahrenheit = FirebaseTemperatureData.model_validate(
+        {
+            "amount": 96.7,
+            "mode": "temperature",
+            "offset": -120,
+            "start": 1773640784.705,
+            "units": "F",
+        }
+    )
+    celsius = FirebaseTemperatureData.model_validate(
+        {
+            "amount": 36.3,
+            "mode": "temperature",
+            "offset": -180,
+            "start": 1789478720.089,
+            "units": "C",
+        }
+    )
+
+    assert fahrenheit.lastUpdated is None
+    assert celsius.lastUpdated is None
+
+
 def test_bottle_feed_interval_accepts_missing_amount() -> None:
     """Bottle rows saved without a volume omit `amount` entirely.
 
