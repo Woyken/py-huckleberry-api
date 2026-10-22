@@ -327,7 +327,9 @@ public final class ProbeService extends AccessibilityService {
             if (changesData && !navigationTab && !childVerified(expectedTask, child)) return BridgeState.reply("child_not_verified");
             if (window(expectedTask).getId() != selected.getId()) return BridgeState.reply("focus_changed");
             if (SystemClock.uptimeMillis() >= deadline) return BridgeState.reply("request_expired");
-            if (target != null && "click".equals(action) && "tab-button-child-info".equals(target.getViewIdResourceName())) clearChild();
+            if ("click".equals(action)
+                    && ((target != null && "tab-button-child-info".equals(target.getViewIdResourceName()))
+                    || (!verifiedChild.isEmpty() && verifiedChild.equals(text)))) clearChild();
             if (!state.consume(actionId)) return BridgeState.reply("duplicate_suppressed");
             if (SystemClock.uptimeMillis() >= deadline || window(expectedTask).getId() != selected.getId()) {
                 return BridgeState.reply("consumed_without_dispatch");
