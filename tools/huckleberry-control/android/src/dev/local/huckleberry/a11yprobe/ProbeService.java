@@ -382,7 +382,10 @@ public final class ProbeService extends AccessibilityService {
         AccessibilityNodeInfo root = root(selected);
         try (Scan result = new Scan()) {
             scan(root, "root", 0, null, false, child, to, result);
-            if (result.incomplete) return BridgeState.reply("incomplete_guard_tree");
+            if (result.incomplete) {
+                clearChild();
+                return BridgeState.reply("incomplete_guard_tree");
+            }
             if (result.childMatches != 1 || !from.equals(result.selectedTab()) || result.form) return BridgeState.reply("precondition_failed");
             markChild(expectedTask, child);
             if (result.targets.size() != 1) return BridgeState.reply("target_not_unique");
