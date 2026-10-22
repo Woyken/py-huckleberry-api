@@ -162,7 +162,7 @@ public final class ProbeService extends AccessibilityService {
             JSONArray nodes = new JSONArray();
             for (JSONObject row : result.navigation) if (nodes.length() < MAX_EXPORTED) nodes.put(row);
             for (JSONObject row : result.content) if (nodes.length() < MAX_EXPORTED) nodes.put(row);
-            if (result.selectedTabs.contains("child")) clearChild();
+            if (result.incomplete || result.selectedTabs.contains("child")) clearChild();
             else if (result.childMatches == 1) markChild(expectedTask, child);
             else if (!result.incomplete && ((result.homeScreen && "home".equals(result.selectedTab()))
                     || (result.reportsScreen && "reports".equals(result.selectedTab())))) clearChild();
