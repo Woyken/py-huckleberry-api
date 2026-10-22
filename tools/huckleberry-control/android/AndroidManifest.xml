@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="dev.local.huckleberry.a11yprobe" android:versionCode="12" android:versionName="0.1-debug-protocol1">
+    package="dev.local.huckleberry.a11yprobe" android:versionCode="13" android:versionName="0.2-debug-protocol2">
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="35" />
     <application android:label="Huckleberry Debug Bridge" android:allowBackup="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false">

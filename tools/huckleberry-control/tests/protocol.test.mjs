@@ -40,19 +40,38 @@ test('POSIX quoting keeps spaces, apostrophes and metacharacters literal', () =>
   assert.throws(() => quote('a\0b'));
 });
 
+test('semantic action requests require one allowlisted target and bounded values', () => {
+  const action = { method: 'action', session: 'test_session', user: 12, child: 'Test Child', task: 123,
+    action_id: 'action_123', action: 'click', text: 'Save' };
+  assert.ok(contentArguments(action).includes('action:s:click'));
+  assert.ok(contentArguments({ ...action, action: 'set-text', text: '', id: 'field', value: 'hello' }).includes('value:s:hello'));
+  assert.doesNotThrow(() => contentArguments({ ...action, action: 'back', text: '' }));
+  for (const change of [{ action: 'swipe' }, { text: 'Save', id: 'field' }, { text: '' },
+    { action: 'back', text: 'Save' }, { action: 'click', text: '', path: 'root/../1' },
+    { action: 'set-text', text: '', id: 'field', value: 'x'.repeat(4097) }]) {
+    assert.throws(() => contentArguments({ ...action, ...change }));
+  }
+});
+
 test('one versioned parser accepts Android replies and rejects old/truncated output', () => {
-  assert.deepEqual(parseReply('Result: Bundle[{result={"protocol":1,"status":"ok"}}]\r\n'), { protocol: 1, status: 'ok' });
+  assert.deepEqual(parseReply('Result: Bundle[{result={"protocol":2,"status":"ok"}}]\r\n'), { protocol: 2, status: 'ok' });
   for (const value of ['', 'usage: adb shell content', 'Result: Bundle[{result={"status":"ok"}}]',
-    'Result: Bundle[{result={"protocol":2,"status":"ok"}}]', 'Result: Bundle[{result=[]}]',
-    'Result: Bundle[{result={"protocol":1,"status":"ok"}']) assert.throws(() => parseReply(value));
+    'Result: Bundle[{result={"protocol":1,"status":"ok"}}]', 'Result: Bundle[{result=[]}]',
+    'Result: Bundle[{result={"protocol":2,"status":"ok"}']) assert.throws(() => parseReply(value));
 });
 
 test('snapshot validation does not treat malformed or partial data as confirmation', () => {
-  const snapshot = { protocol: 1, status: 'ok', task: 123, window: 4, nodes: [], truncated: false, childVerified: false, guardComplete: true, selectedTab: null };
+  const node = { path: 'root/0', depth: 0, className: 'android.widget.Button', id: 'save', text: 'Save',
+    description: null, hint: null, bounds: '[0,0][1,1]', visible: true, enabled: true, clickable: true,
+    longClickable: false, scrollable: false, checkable: false, checked: false, selected: false,
+    editable: false, focusable: true, focused: false, password: false, actions: [16] };
+  const snapshot = { protocol: 2, status: 'ok', task: 123, window: 4, nodes: [node], truncated: false,
+    childVerified: false, guardComplete: true, selectedTab: null };
   assert.equal(validateSnapshot(snapshot, 123), snapshot);
   assert.throws(() => validateSnapshot(snapshot, 124));
   assert.throws(() => validateSnapshot({ ...snapshot, childVerified: 'true' }, 123));
   assert.throws(() => validateSnapshot({ ...snapshot, nodes: [{}] }, 123));
+  assert.throws(() => validateSnapshot({ ...snapshot, nodes: [{ ...node, visible: 'true' }] }, 123));
 });
 
 test('invalid CLI commands fail before profile/device access', async () => {

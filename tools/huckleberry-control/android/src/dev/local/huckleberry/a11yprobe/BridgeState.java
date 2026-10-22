@@ -4,6 +4,7 @@ import android.content.Context;
 import android.system.Os;
 import android.system.OsConstants;
 import android.util.AtomicFile;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.File;
 import java.io.FileDescriptor;
@@ -16,12 +17,12 @@ final class BridgeState {
     private final File directory;
     private final AtomicFile session;
     BridgeState(Context context) {
-        directory = new File(context.getFilesDir(), "bridge-protocol1");
+        directory = new File(context.getFilesDir(), "bridge-protocol2");
         if (!directory.isDirectory() && !directory.mkdir()) throw new IllegalStateException("state_unavailable");
         session = new AtomicFile(new File(directory, "session.json"));
     }
     static JSONObject reply(String status) throws Exception {
-        return new JSONObject().put("protocol", 1).put("status", status);
+        return new JSONObject().put("protocol", 2).put("status", status);
     }
     static String id(String value, int minimum) {
         if (value == null || value.length() < minimum || value.length() > 80
@@ -39,8 +40,10 @@ final class BridgeState {
         JSONObject owner = owner();
         return reply("ok").put("serviceConnected", ProbeService.instance != null)
             .put("owner", owner == null ? JSONObject.NULL : owner.getString("session"))
-            .put("capabilities", new JSONObject().put("inspect", true).put("navigationOnly", true)
-                .put("trackingWrites", false).put("screenshots", false).put("typing", false));
+            .put("capabilities", new JSONObject().put("inspect", true).put("semanticActions", true)
+                .put("actions", new JSONArray().put("click").put("long-click").put("set-text")
+                    .put("scroll-forward").put("scroll-backward").put("focus").put("select").put("back"))
+                .put("setText", true).put("trackingWrites", false).put("screenshots", false).put("gestures", false));
     }
     JSONObject claim(String name, int user, String child) throws Exception {
         id(name, 3);
@@ -73,9 +76,12 @@ final class BridgeState {
         return reply("ok").put("released", name).put("appLeftRunning", true);
     }
     boolean consumed(String actionId) throws Exception {
-        // Preserve suppression when upgrading the earlier local navigation probe.
-        return actionFile(actionId).exists()
-            || new File(directory.getParentFile(), "navigation-journal/" + id(actionId, 8)).exists();
+        // Preserve suppression across the protocol-1 upgrade and the earlier
+        // local navigation probe. A new state directory must not make old IDs reusable.
+        id(actionId, 8);
+        File legacy = new File(directory.getParentFile(), "bridge-protocol1");
+        return actionFile(actionId).exists() || actionFile(legacy, actionId).exists()
+            || new File(directory.getParentFile(), "navigation-journal/" + actionId).exists();
     }
     boolean consume(String actionId) throws Exception {
         File file = actionFile(actionId);
@@ -88,11 +94,14 @@ final class BridgeState {
         return true;
     }
     private File actionFile(String actionId) throws Exception {
+        return actionFile(directory, actionId);
+    }
+    private File actionFile(File root, String actionId) throws Exception {
         id(actionId, 8);
         byte[] digest = MessageDigest.getInstance("SHA-256").digest(actionId.getBytes(StandardCharsets.UTF_8));
         StringBuilder hex = new StringBuilder();
         for (byte value : digest) hex.append(String.format("%02x", value & 255));
-        return new File(directory, "action-" + hex);
+        return new File(root, "action-" + hex);
     }
     private void syncDirectory() throws Exception {
         FileDescriptor descriptor = Os.open(directory.getPath(), OsConstants.O_RDONLY, 0);

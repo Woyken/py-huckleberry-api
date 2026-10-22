@@ -30,6 +30,8 @@ public final class ProbeProvider extends ContentProvider {
             case "release": keys = new HashSet<>(Arrays.asList("session")); break;
             case "action-status": keys = new HashSet<>(Arrays.asList("session", "action_id")); break;
             case "tree": keys = new HashSet<>(Arrays.asList("session", "user", "child", "task")); break;
+            case "action": keys = new HashSet<>(Arrays.asList("session", "user", "child", "task", "action_id",
+                "path", "id", "text", "action", "expect_id", "expect_text", "value")); break;
             case "navigate": keys = new HashSet<>(Arrays.asList("session", "user", "child", "task", "action_id", "from", "to")); break;
             default: throw new IllegalArgumentException("Unsupported method");
         }
@@ -61,6 +63,10 @@ public final class ProbeProvider extends ContentProvider {
                         ProbeService service = ProbeService.instance;
                         if (service == null) reply = BridgeState.reply("service_not_enabled");
                         else if ("tree".equals(method)) reply = service.snapshot(request.getInt("task", -1), enrollment.getString("child"));
+                        else if ("action".equals(method)) reply = service.action(request.getInt("task", -1), enrollment.getString("child"),
+                            request.getString("action_id"), request.getString("path"), request.getString("id"), request.getString("text"),
+                            request.getString("action"), request.getString("expect_id"), request.getString("expect_text"),
+                            request.getString("value"), state, deadline);
                         else reply = service.navigate(request.getInt("task", -1), enrollment.getString("child"),
                             request.getString("action_id"), request.getString("from"), request.getString("to"), state, deadline);
                     }
@@ -69,18 +75,18 @@ public final class ProbeProvider extends ContentProvider {
             } catch (Exception error) {
                 try { result.set(BridgeState.reply(error instanceof IllegalArgumentException || error instanceof IllegalStateException
                     ? error.getMessage() : "bridge_error").toString()); }
-                catch (Exception ignored) { result.set("{\"protocol\":1,\"status\":\"bridge_error\"}"); }
+                catch (Exception ignored) { result.set("{\"protocol\":2,\"status\":\"bridge_error\"}"); }
             } finally { done.countDown(); }
         });
         try {
             if (!done.await(10, TimeUnit.SECONDS)) {
                 cancelled.set(true);
-                result.compareAndSet(null, "{\"protocol\":1,\"status\":\"timeout_uncertain\"}");
+                result.compareAndSet(null, "{\"protocol\":2,\"status\":\"timeout_uncertain\"}");
             }
         } catch (InterruptedException error) {
             cancelled.set(true);
             Thread.currentThread().interrupt();
-            result.compareAndSet(null, "{\"protocol\":1,\"status\":\"interrupted_uncertain\"}");
+            result.compareAndSet(null, "{\"protocol\":2,\"status\":\"interrupted_uncertain\"}");
         }
         Bundle response = new Bundle();
         response.putString("result", result.get());

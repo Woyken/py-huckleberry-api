@@ -19,9 +19,9 @@ public final class ProbeActivity extends Activity {
         text.setText("Huckleberry developer debugging tool\n\n"
             + "This is not a Huckleberry product or API client. Enable this service only for an authorized debugging session.\n\n"
             + "Android shell may claim a session, read the enrolled Huckleberry task's accessibility nodes, "
-            + "and navigate only between Home and Reports for the configured test child. "
-            + "It cannot type, save/delete tracking records, take screenshots, or inject coordinate gestures. "
-            + "It has no network permission. Passwords and editable values are not exported.\n\n"
+            + "and perform semantic node actions (click, long-click, set text, scroll, focus, select, back) for the configured test child. "
+            + "Actions can change app or backend state. It cannot take screenshots or inject coordinate gestures. "
+            + "It has no network permission. Password fields are not exported.\n\n"
             + "Private session and consumed-action records persist to prevent accidental replay. "
             + "The host must verify the exact device, Android user and task. Disable this service when finished.");
         layout.addView(text);

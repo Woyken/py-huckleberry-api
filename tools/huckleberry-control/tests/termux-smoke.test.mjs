@@ -11,7 +11,7 @@ function harness(overrides = {}) {
   const calls = [];
   let tab = 'home';
   const snapshot = selectedTab => ({
-    protocol: 1, status: 'ok', source: 'android-accessibility', backendCaptured: false,
+    protocol: 2, status: 'ok', source: 'android-accessibility', backendCaptured: false,
     selectedTab, childVerified: true, guardComplete: true, truncated: false,
     identity: { user: 12, task: 987654, device: 'SYNTHETIC_PRIVATE_DEVICE' },
     nodes: [{ text: 'SYNTHETIC_PRIVATE_RECORD' }],
@@ -20,13 +20,13 @@ function harness(overrides = {}) {
     async connect() { calls.push(['connect']); return this; },
     async status() {
       calls.push(['status']);
-      return { protocol: 1, status: 'ok', serviceConnected: true, owner: null,
-        capabilities: { inspect: true, navigationOnly: true, trackingWrites: false, screenshots: false, typing: false } };
+      return { protocol: 2, status: 'ok', serviceConnected: true, owner: null,
+        capabilities: { inspect: true, semanticActions: true, actions: ['click'], trackingWrites: false, screenshots: false, gestures: false } };
     },
     async identity() { calls.push(['identity']); return { user: 12, task: 987654 }; },
     async claim(session) { calls.push(['claim', session]); return { status: 'ok', owner: session }; },
     async inspect(session) { calls.push(['inspect', session]); return snapshot(tab); },
-    async actionStatus(session, id) { calls.push(['actionStatus', session, id]); return { protocol: 1, status: 'ok', consumed: false }; },
+    async actionStatus(session, id) { calls.push(['actionStatus', session, id]); return { protocol: 2, status: 'ok', consumed: false }; },
     async navigate(session, from, to, id) {
       calls.push(['navigate', session, from, to, id]); tab = to; return { status: 'verified' };
     },
@@ -155,7 +155,7 @@ test('observation may inspect Reports, but navigation never automatically resets
 });
 
 test('consumed or malformed action-status preflight stops before either navigation', async () => {
-  for (const action of [{ protocol: 1, status: 'ok', consumed: true }, { protocol: 1, status: 'ok' }]) {
+  for (const action of [{ protocol: 2, status: 'ok', consumed: true }, { protocol: 2, status: 'ok' }]) {
     const h = harness({ async actionStatus() { return action; } });
     const report = await runTermuxSmoke(navigation, h.dependencies);
     assert.equal(report.status, 'blocked');

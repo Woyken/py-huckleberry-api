@@ -29,21 +29,22 @@ test('bounded rish transfers verify length, SHA-256 and canonical base64', async
   const original = randomBytes(10000).toString('hex');
   const bytes = gzipSync(original);
   const hash = createHash('sha256').update(bytes).digest('hex');
+  const chunk = 4096;
   const transport = new Transport({ transport: 'rish' });
   const commands = [];
   transport.shell = async script => {
     commands.push(script);
-    if (script.includes('wc -c')) return `${/HB_FILE_[a-f0-9]+/.exec(script)[0]} ${Buffer.byteLength(original)} ${bytes.length} ${hash}\n`;
-    if (script.includes('/system/bin/dd')) {
-      const marker = /HB_FRAME_[a-f0-9]+/.exec(script)[0];
-      return Array.from({ length: Math.ceil(bytes.length / 384) }, (_, index) =>
-        `${marker} ${index} ${bytes.subarray(index * 384, (index + 1) * 384).toString('base64')}\n`).reverse().join('');
-    }
-    return '';
+    if (!script.includes('wc -c') || !script.includes('/system/bin/dd')) return '';
+    const marker = /HB_FRAME_[a-f0-9]+/.exec(script)[0];
+    const metadata = `${/HB_FILE_[a-f0-9]+/.exec(script)[0]} ${Buffer.byteLength(original)} ${bytes.length} ${hash}\n`;
+    return metadata + Array.from({ length: Math.ceil(bytes.length / chunk) }, (_, index) =>
+      `${marker} ${index} ${bytes.subarray(index * chunk, (index + 1) * chunk).toString('base64')}\n`).reverse().join('');
   };
   assert.equal(await transport.capture('content call'), original);
+  assert.equal(commands.length, 1);
   assert.equal(commands.filter(command => command.includes('/system/bin/dd')).length, 1);
-  assert.match(commands.at(-1), /^\/system\/bin\/rm -f '\/data\/local\/tmp\/hb-debug-[a-f0-9-]+\.txt' '\/data\/local\/tmp\/hb-debug-[a-f0-9-]+\.txt.gz'$/);
+  assert.match(commands[0], /\/system\/bin\/base64 -w 0/);
+  assert.match(commands[0], /\/system\/bin\/rm -f .*hb-debug-[a-f0-9-]+\.txt.*hb-debug-[a-f0-9-]+\.txt\.gz/);
   assert.throws(() => verifyTransfer(bytes.subarray(1), bytes.length, hash));
   assert.throws(() => verifyTransfer(bytes, bytes.length, '0'.repeat(64)));
 });

@@ -101,46 +101,75 @@ export class Transport {
     const remote = `/data/local/tmp/hb-debug-${randomUUID()}.txt`;
     const packed = `${remote}.gz`;
     const transferMarker = `HB_FILE_${randomUUID().replaceAll('-', '')}`;
+    const frameMarker = `HB_FRAME_${randomUUID().replaceAll('-', '')}`;
+    const chunkSize = 4096;
     try {
-      const metadata = await this.shell(`umask 077\n${script} > ${quote(remote)}\nresult=$?\nif [ "$result" -ne 0 ]; then exit "$result"; fi\n/system/bin/gzip -c ${quote(remote)} > ${quote(packed)} || exit 1\nrawsize=$(wc -c < ${quote(remote)})\nsize=$(wc -c < ${quote(packed)})\nhash=$(sha256sum ${quote(packed)})\nprintf '${transferMarker} %s %s %s\\n' "$rawsize" "$size" "\${hash%% *}"`, 20000);
-      const match = new RegExp(`^${transferMarker}\\s+(\\d+)\\s+(\\d+)\\s+([0-9a-f]{64})\\s*$`, 'm').exec(metadata);
-      if (!match || Number(match[1]) > LIMIT || Number(match[2]) > LIMIT) throw new Error('Invalid or oversized Android result');
-      const size = Number(match[2]);
-      let bytes;
-      if (this.profile.transport === 'adb') {
-        const directory = await mkdtemp(join(tmpdir(), 'hb-debug-'));
-        const path = join(directory, 'reply.txt');
-        try {
-          await this.command(['-s', this.profile.serial, 'pull', packed, path], 20000);
-          bytes = await readFile(path);
-        } finally {
-          await unlink(path).catch(error => { if (error.code !== 'ENOENT') throw error; });
-          await rmdir(directory);
-        }
-      } else {
-        // One shell session emits small self-identifying frames. Shell command
-        // substitution keeps external base64 output out of the forwarding pipes;
-        // every complete frame is emitted by one printf. Frame order is irrelevant.
-        const chunkSize = 384;
-        const count = Math.ceil(size / chunkSize);
-        const frameMarker = `HB_FRAME_${randomUUID().replaceAll('-', '')}`;
-        const output = await this.shell(`i=0\nwhile [ "$i" -lt ${count} ]; do\npart=$(/system/bin/dd if=${quote(packed)} bs=${chunkSize} skip="$i" count=1 2>/dev/null | /system/bin/base64 -w 0)\nprintf '${frameMarker} %s %s\\n' "$i" "$part"\ni=$((i+1))\ndone`, 60000);
+      if (this.profile.transport === 'rish') {
+        // One shell session emits metadata and self-identifying frames. Shell
+        // command substitution keeps external base64 output out of the
+        // forwarding pipes; every complete frame is emitted by one printf.
+        const output = await this.shell(`umask 077
+trap '/system/bin/rm -f ${remote} ${packed}' EXIT
+${script} > ${quote(remote)}
+result=$?
+if [ "$result" -ne 0 ]; then /system/bin/rm -f ${quote(remote)}; exit "$result"; fi
+/system/bin/gzip -c ${quote(remote)} > ${quote(packed)} || exit 1
+rawsize=$(wc -c < ${quote(remote)})
+size=$(wc -c < ${quote(packed)})
+hash=$(sha256sum ${quote(packed)})
+printf '${transferMarker} %s %s %s\n' "$rawsize" "$size" "\${hash%% *}"
+count=$(( (size + ${chunkSize} - 1) / ${chunkSize} ))
+i=0
+while [ "$i" -lt "$count" ]; do
+part=$(/system/bin/dd if=${quote(packed)} bs=${chunkSize} skip="$i" count=1 2>/dev/null | /system/bin/base64 -w 0)
+printf '${frameMarker} %s %s\n' "$i" "$part"
+i=$((i+1))
+done`, 60000);
+        const match = new RegExp(`^${transferMarker}\\s+(\\d+)\\s+(\\d+)\\s+([0-9a-f]{64})\\s*$`, 'm').exec(output);
+        if (!match || Number(match[1]) > LIMIT || Number(match[2]) > LIMIT) throw new Error('Invalid or oversized Android result');
+        const size = Number(match[2]);
         const frames = [...output.matchAll(new RegExp(`^${frameMarker} (\\d+) ([A-Za-z0-9+/]*={0,2})\\r?$`, 'gm'))];
         const byIndex = new Map();
         for (const frame of frames) {
           const index = Number(frame[1]);
-          if (index >= count || byIndex.has(index)) throw new Error('Duplicate or invalid Android transfer frame');
+          if (index >= Math.ceil(size / chunkSize) || byIndex.has(index)) throw new Error('Duplicate or invalid Android transfer frame');
           byIndex.set(index, frame[2]);
         }
-        if (byIndex.size !== count) throw new Error('Missing Android transfer frames');
+        if (byIndex.size !== Math.ceil(size / chunkSize)) throw new Error('Missing Android transfer frames');
         const parts = [];
-        for (let index = 0; index < count; index++) {
+        for (let index = 0; index < byIndex.size; index++) {
           const encoded = byIndex.get(index);
           const part = Buffer.from(encoded, 'base64');
           if (part.toString('base64') !== encoded || part.length !== Math.min(chunkSize, size - index * chunkSize)) throw new Error('Truncated Android transfer chunk');
           parts.push(part);
         }
-        bytes = Buffer.concat(parts);
+        const bytes = Buffer.concat(parts);
+        verifyTransfer(bytes, size, match[3]);
+        const uncompressed = gunzipSync(bytes, { maxOutputLength: LIMIT });
+        if (uncompressed.length !== Number(match[1])) throw new Error('Android result decompressed length mismatch');
+        return uncompressed.toString('utf8');
+      }
+      const metadata = await this.shell(`umask 077
+${script} > ${quote(remote)}
+result=$?
+if [ "$result" -ne 0 ]; then exit "$result"; fi
+/system/bin/gzip -c ${quote(remote)} > ${quote(packed)} || exit 1
+rawsize=$(wc -c < ${quote(remote)})
+size=$(wc -c < ${quote(packed)})
+hash=$(sha256sum ${quote(packed)})
+printf '${transferMarker} %s %s %s\n' "$rawsize" "$size" "\${hash%% *}"`, 20000);
+      const match = new RegExp(`^${transferMarker}\\s+(\\d+)\\s+(\\d+)\\s+([0-9a-f]{64})\\s*$`, 'm').exec(metadata);
+      if (!match || Number(match[1]) > LIMIT || Number(match[2]) > LIMIT) throw new Error('Invalid or oversized Android result');
+      const size = Number(match[2]);
+      const directory = await mkdtemp(join(tmpdir(), 'hb-debug-'));
+      const path = join(directory, 'reply.txt');
+      let bytes;
+      try {
+        await this.command(['-s', this.profile.serial, 'pull', packed, path], 20000);
+        bytes = await readFile(path);
+      } finally {
+        await unlink(path).catch(error => { if (error.code !== 'ENOENT') throw error; });
+        await rmdir(directory);
       }
       verifyTransfer(bytes, size, match[3]);
       const uncompressed = gunzipSync(bytes, { maxOutputLength: LIMIT });
@@ -148,7 +177,7 @@ export class Transport {
       return uncompressed.toString('utf8');
     } finally {
       // Only remove the exact per-request file this instance generated.
-      await this.shell(`/system/bin/rm -f ${quote(remote)} ${quote(packed)}`).catch(() => {});
+      if (this.profile.transport === 'adb') await this.shell(`/system/bin/rm -f ${quote(remote)} ${quote(packed)}`).catch(() => {});
     }
   }
 }

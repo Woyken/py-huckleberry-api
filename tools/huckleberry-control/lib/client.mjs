@@ -79,6 +79,18 @@ export class Controller {
     return { ...snapshot, identity: after, source: 'android-accessibility', backendCaptured: false };
   }
 
+  async act(session, request) {
+    const { actionId, action, id = '', text = '', path = '', expectId = '', expectText = '', value = '' } = request;
+    // Validate every argument, including empties, before any device access.
+    contentArguments({ method: 'action', session, user: this.profile.androidUser,
+      child: this.profile.expectedChild, task: 1, action_id: actionId, path, id, text, action,
+      expect_id: expectId, expect_text: expectText, value });
+    const before = await this.identity();
+    return this.request({ method: 'action', session, user: this.profile.androidUser,
+      child: this.profile.expectedChild, task: before.task, action_id: actionId, path, id, text, action,
+      expect_id: expectId, expect_text: expectText, value });
+  }
+
   async navigate(session, from, to, actionId) {
     // Validate all arguments before any command. Never generate a fresh ID on retry.
     contentArguments({ method: 'navigate', session, user: this.profile.androidUser,
@@ -107,7 +119,8 @@ export function summary(snapshot) {
     childVerified: snapshot.childVerified, selectedTab: snapshot.selectedTab,
     nodeCount: snapshot.nodes.length, truncated: snapshot.truncated,
     controls: snapshot.nodes.filter(node => node.visible && node.id && node.id !== 'undefined')
-      .map(node => ({ id: node.id, text: node.text, clickable: node.clickable })),
+      .map(node => ({ id: node.id, path: node.path, text: node.text, className: node.className,
+        clickable: node.clickable, editable: node.editable, actions: node.actions })),
     navigationTabs: Object.keys(TABS), package: PACKAGE, backendCaptured: false,
   };
 }

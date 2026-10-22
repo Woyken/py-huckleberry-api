@@ -14,14 +14,25 @@ test('debug bridge does not request networking, screenshots or gestures', async 
   assert.doesNotMatch(service, /canPerformGestures|canTakeScreenshot/);
 });
 
-test('device implementation retains narrow navigation and final replay boundary', async () => {
+test('device implementation retains semantic actions and final replay boundary', async () => {
   const source = await readFile(new URL('src/dev/local/huckleberry/a11yprobe/ProbeService.java', android), 'utf8');
-  assert.doesNotMatch(source, /ACTION_SET_TEXT|dispatchGesture|takeScreenshot|injectInputEvent/);
+  assert.doesNotMatch(source, /dispatchGesture|takeScreenshot|injectInputEvent|GLOBAL_ACTION_HOME/);
+  assert.match(source, /ACTION_SET_TEXT/);
+  assert.match(source, /ACTION_SCROLL_FORWARD/);
+  assert.match(source, /GLOBAL_ACTION_BACK/);
   assert.match(source, /tab-button-home/);
   assert.match(source, /tab-button-stat-tabs/);
   assert.ok(source.indexOf('state.consume(actionId)') < source.indexOf('target.performAction('));
   assert.match(source, /result.incomplete/);
+  assert.match(source, /target_not_unique/);
+  assert.match(source, /expectation_failed/);
+  assert.match(source, /result\.form/);
+  const state = await readFile(new URL('src/dev/local/huckleberry/a11yprobe/BridgeState.java', android), 'utf8');
+  assert.match(state, /put\("protocol", 2\)/);
+  assert.match(state, /semanticActions/);
+  assert.match(state, /bridge-protocol1/);
   const provider = await readFile(new URL('src/dev/local/huckleberry/a11yprobe/ProbeProvider.java', android), 'utf8');
   assert.match(provider, /Binder.getCallingUid\(\) != 2000/);
   assert.match(provider, /keys.equals\(request.keySet\(\)\)/);
+  assert.doesNotMatch(provider, /"protocol":1/);
 });
