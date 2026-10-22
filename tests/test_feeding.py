@@ -161,7 +161,13 @@ class TestFeedingTracking:
         end_time = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(hours=3)
         start_time = end_time - timedelta(minutes=40)
 
-        await api.log_nursing(child_uid, start_time=start_time, end_time=end_time, side="right")
+        await api.log_nursing(
+            child_uid,
+            start_time=start_time,
+            end_time=end_time,
+            side="right",
+            notes="Fell asleep on the right",
+        )
         await asyncio.sleep(1)
 
         db = await api._get_firestore_client()
@@ -176,3 +182,4 @@ class TestFeedingTracking:
         assert interval_data is not None
         assert interval_data["lastSide"] == "right"
         assert interval_data["rightDuration"] == (end_time - start_time).total_seconds()
+        assert interval_data["notes"] == "Fell asleep on the right"

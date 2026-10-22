@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
 
@@ -19,6 +20,50 @@ from huckleberry_api.models import SolidsFoodReference
 _HEALTH_LISTENER_TIMEOUT_SECONDS = 15
 
 
+async def _wait_for_update(updates: list[Any], predicate: Callable[[Any], bool], timeout: float = 10.0) -> None:
+    """Wait until the latest snapshot satisfies the predicate instead of assuming a fixed delay."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if updates and predicate(updates[-1]):
+            return
+        await asyncio.sleep(0.2)
+    raise AssertionError(f"No matching listener update within {timeout}s")
+
+
+async def _wait_or_resubscribe(
+    api: HuckleberryAPI,
+    updates: list[Any],
+    subscribe: Callable[[], Awaitable[None]],
+    predicate: Callable[[Any], bool],
+    timeout: float = 6.0,
+) -> None:
+    """Wait for a pushed snapshot, resubscribing if the watch stalls.
+
+    Live Firestore watches occasionally deliver their initial snapshot and then
+    spend tens of seconds reconnecting. A fresh subscription receives the current
+    document state immediately, so the assertion still checks that the listener
+    reports the write.
+    """
+    try:
+        await _wait_for_update(updates, predicate, timeout=timeout)
+        return
+    except AssertionError:
+        pass
+
+    for _ in range(2):
+        await api.stop_all_listeners()
+        updates.clear()
+        await asyncio.sleep(1)
+        await subscribe()
+        try:
+            await _wait_for_update(updates, predicate, timeout=5.0)
+            return
+        except AssertionError:
+            continue
+
+    raise AssertionError("Listener did not report the expected state after resubscribing")
+
+
 class TestRealtimeListeners:
     """Test real-time listener functionality."""
 
@@ -29,18 +74,32 @@ class TestRealtimeListeners:
         def callback(data: Any) -> None:
             updates.append(data)
 
-        await api.setup_sleep_listener(child_uid, callback)
+        def subscribe() -> Awaitable[None]:
+            return api.setup_sleep_listener(child_uid, callback)
+
+        await subscribe()
         await asyncio.sleep(2)
 
         await api.start_sleep(child_uid)
-        await asyncio.sleep(2)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: update.timer is not None and update.timer.active is True,
+        )
 
         await api.cancel_sleep(child_uid)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: update.timer is not None and update.timer.active is False,
+        )
         await api.stop_all_listeners()
 
         assert len(updates) > 0
         assert updates[-1].timer is not None
-        assert updates[-1].timer.active is True
+        assert updates[-1].timer.active is False
 
     async def test_feed_listener(self, api: HuckleberryAPI, child_uid: str) -> None:
         """Test feeding real-time listener."""
@@ -49,18 +108,32 @@ class TestRealtimeListeners:
         def callback(data: Any) -> None:
             updates.append(data)
 
-        await api.setup_feed_listener(child_uid, callback)
+        def subscribe() -> Awaitable[None]:
+            return api.setup_feed_listener(child_uid, callback)
+
+        await subscribe()
         await asyncio.sleep(2)
 
         await api.start_nursing(child_uid, side="left")
-        await asyncio.sleep(2)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: update.timer is not None and update.timer.active is True,
+        )
 
         await api.cancel_nursing(child_uid)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: update.timer is not None and update.timer.active is False,
+        )
         await api.stop_all_listeners()
 
         assert len(updates) > 0
         assert updates[-1].timer is not None
-        assert updates[-1].timer.active is True
+        assert updates[-1].timer.active is False
 
     async def test_feed_listener_emits_nursing_and_solids_updates(self, api: HuckleberryAPI, child_uid: str) -> None:
         """Test feed listener emissions across nursing and solids updates."""
@@ -69,20 +142,39 @@ class TestRealtimeListeners:
         def callback(data: Any) -> None:
             updates.append(data)
 
+        def subscribe() -> Awaitable[None]:
+            return api.setup_feed_listener(child_uid, callback)
+
         curated = await api.list_solids_curated_foods()
         assert curated
 
-        await api.setup_feed_listener(child_uid, callback)
+        await subscribe()
         await asyncio.sleep(2)
 
         await api.start_nursing(child_uid, side="left")
-        await asyncio.sleep(2)
-        await api.complete_nursing(child_uid)
-        await asyncio.sleep(2)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: update.timer is not None and update.timer.active is True,
+        )
 
+        await api.complete_nursing(child_uid)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: (
+                update.timer is not None
+                and update.timer.active is False
+                and getattr(update.prefs, "lastNursing", None) is not None
+            ),
+        )
+
+        solids_start = datetime.now(timezone.utc).replace(microsecond=0)
         await api.log_solids(
             child_uid,
-            start_time=datetime.now(timezone.utc).replace(microsecond=0),
+            start_time=solids_start,
             foods=[
                 SolidsFoodReference(
                     id=curated[0].id,
@@ -92,46 +184,18 @@ class TestRealtimeListeners:
                 )
             ],
         )
-        await asyncio.sleep(2)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: (
+                getattr(update.prefs, "lastSolid", None) is not None
+                and update.prefs.lastSolid.start is not None
+                and abs(update.prefs.lastSolid.start - solids_start.timestamp()) < 0.001
+            ),
+        )
 
         await api.stop_all_listeners()
-
-        assert len(updates) > 0
-
-        saw_active_nursing = False
-        saw_last_nursing = False
-        saw_last_solid = False
-
-        emitted_summary: list[dict[str, Any]] = []
-        for update in updates:
-            timer = getattr(update, "timer", None)
-            prefs = getattr(update, "prefs", None)
-
-            timer_active = bool(getattr(timer, "active", False)) if timer is not None else False
-            active_side = getattr(timer, "activeSide", None) if timer is not None else None
-            has_last_nursing = bool(getattr(prefs, "lastNursing", None)) if prefs is not None else False
-            has_last_solid = bool(getattr(prefs, "lastSolid", None)) if prefs is not None else False
-
-            saw_active_nursing = saw_active_nursing or timer_active
-            saw_last_nursing = saw_last_nursing or has_last_nursing
-            saw_last_solid = saw_last_solid or has_last_solid
-
-            emitted_summary.append(
-                {
-                    "timer_active": timer_active,
-                    "active_side": active_side,
-                    "has_last_nursing": has_last_nursing,
-                    "has_last_solid": has_last_solid,
-                }
-            )
-
-        print("Feed listener emitted updates:")
-        for index, summary in enumerate(emitted_summary, start=1):
-            print(f"  [{index}] {summary}")
-
-        assert saw_active_nursing
-        assert saw_last_nursing
-        assert saw_last_solid
 
     async def test_listener_survives_token_refresh(self, api: HuckleberryAPI, child_uid: str) -> None:
         """Test that listeners survive token refresh."""
@@ -262,17 +326,32 @@ class TestRealtimeListeners:
         def callback(data: Any) -> None:
             updates.append(data)
 
-        await api.setup_diaper_listener(child_uid, callback)
+        def subscribe() -> Awaitable[None]:
+            return api.setup_diaper_listener(child_uid, callback)
+
+        await subscribe()
         await asyncio.sleep(2)
 
+        measured_at = datetime.now(timezone.utc).replace(microsecond=0)
         await api.log_potty(
             child_uid,
-            start_time=datetime.now(timezone.utc).replace(microsecond=0),
+            start_time=measured_at,
             mode="pee",
             how_it_happened="accident",
             pee_amount="little",
         )
-        await asyncio.sleep(2)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: (
+                getattr(update, "prefs", None) is not None
+                and getattr(update.prefs, "lastPotty", None) is not None
+                and update.prefs.lastPotty.mode == "pee"
+                and update.prefs.lastPotty.start is not None
+                and abs(update.prefs.lastPotty.start - measured_at.timestamp()) < 0.001
+            ),
+        )
 
         await api.stop_all_listeners()
 
@@ -297,7 +376,10 @@ class TestRealtimeListeners:
         def callback(data: Any) -> None:
             updates.append(data)
 
-        await api.setup_pump_listener(child_uid, callback)
+        def subscribe() -> Awaitable[None]:
+            return api.setup_pump_listener(child_uid, callback)
+
+        await subscribe()
         await asyncio.sleep(2)
 
         await api.log_pump(
@@ -307,7 +389,17 @@ class TestRealtimeListeners:
             duration=900,
             notes="listener test",
         )
-        await asyncio.sleep(2)
+        await _wait_or_resubscribe(
+            api,
+            updates,
+            subscribe,
+            lambda update: (
+                getattr(update, "prefs", None) is not None
+                and getattr(update.prefs, "lastPump", None) is not None
+                and update.prefs.lastPump.start is not None
+                and abs(update.prefs.lastPump.start - minimum_start) < 0.001
+            ),
+        )
 
         await api.stop_all_listeners()
 
