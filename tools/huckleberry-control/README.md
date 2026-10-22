@@ -9,23 +9,30 @@ The same bridge protocol is used by Windows ADB and Termux/Shizuku `rish`.
 No Playwright, WebView debugging socket, HTTP server, screenshots or coordinates
 are needed. The shared `.agents/skills/controlling-huckleberry/` skill entry
 explicitly routes agents here or to the preserved Windows/CDP implementation;
-this tool does not replace that implementation or acquire its form capabilities.
+this tool does not replace that implementation or acquire CDP screenshots/DOM
+tooling.
 
 Choose one backend before an investigation. There is no automatic fallback,
 generic `--backend` wrapper or mixed-driver workflow. The CDP host lease and
 this bridge's device lease are independent, not unified cross-driver locking;
-do not operate the same app through both tools concurrently. The common CLI and
-protocol 1 stay unchanged; the skill routes to them rather than copying them.
+do not operate the same app through both tools concurrently. Protocol 2 adds
+semantic node actions; the skill routes to the common CLI rather than copying it.
 
 ## Supported scope
 
 - Explicit target verification, persistent session claim/release, launcher API,
   accessibility inspection and private JSON evidence.
-- **Only Home ↔ Reports navigation**, via accessibility `ACTION_CLICK` on exact
-  tab IDs, with expected-child and selected-source-tab checks.
-- No generic click, form entry, keypad, Save/delete, timers, screenshot, gesture
-  injection or backend mutation commands. Those require separate investigation
-  and explicit capability changes; successful navigation does not prove parity.
+- Semantic node actions: `click`, `long-click`, `set-text`, `scroll-forward`,
+  `scroll-backward`, `focus`, `select` and `back`, plus Home ↔ Reports navigation.
+  Id/text selectors resolve to the nearest clickable ancestor; paths are also
+  supported but are capture-specific.
+- A machine-readable control/selector map in `controls.json`. It covers Home,
+  settings, child profile, reports, sleep, feeding, solids, diaper/potty, pump,
+  medicine, growth, temperature, activity, milestones and home customization.
+- No screenshots, coordinate gestures, generic IME/keypad injection or network
+  access. Actions can change app/backend state; Save/delete/timer use requires the
+  parity safeguards and an authorized observer. Successful UI action does not
+  prove Firebase parity.
 - ADB is **emulator-only**, with exact serial/AVD and emulator-property checks.
   Termux mode is **managed-work-profile-only**, never personal Android user 0.
   There is no automatic environment, device, profile or driver fallback.
@@ -104,12 +111,13 @@ settings from App info first. Never write secure settings to enable the service.
 The service has broad accessibility visibility inherently; enable it only for
 authorized debugging and disable it when finished.
 
-The bridge has no Internet permission, screenshot/gesture capability or input
-methods beyond the two navigation targets. Its ContentProvider declares DUMP
-permission and also explicitly accepts only shell UID 2000. All requests execute
-serially on the app main thread. Work-profile node retrieval is performed as the
-service app, not as shell UID; shell-only `no_debugging_features` restrictions
-therefore do not require a policy change for this path.
+The bridge has no Internet permission, screenshot capability, coordinate-gesture
+injection or generic input injection beyond accessibility actions. Its
+ContentProvider declares DUMP permission and also explicitly accepts only shell
+UID 2000. All requests execute serially on the app main thread. Work-profile node
+retrieval is performed as the service app, not as shell UID; shell-only
+`no_debugging_features` restrictions therefore do not require a policy change
+for this path.
 
 ## Configure a private target
 
@@ -147,6 +155,8 @@ node "$hb" inspect --profile "$profile" --session "$session" --out /private/befo
 
 # Each action ID describes one intended action. Never generate a replacement
 # merely because a command timed out or its result was lost.
+node "$hb" act --action click --id solidsV2SearchInput --profile "$profile" --session "$session" --action-id hb-focus-search-unique-id
+node "$hb" act --action set-text --id solidsV2SearchInput --value banana --profile "$profile" --session "$session" --action-id hb-type-search-unique-id
 node "$hb" navigate reports --from home --profile "$profile" --session "$session" --action-id hb-reports-unique-id
 node "$hb" navigate home --from reports --profile "$profile" --session "$session" --action-id hb-home-unique-id
 
@@ -176,7 +186,8 @@ import { Controller, loadProfile } from './tools/huckleberry-control/index.mjs';
 const controller = await new Controller(await loadProfile(privateProfilePath)).connect();
 await controller.claim(sessionId);
 const snapshot = await controller.inspect(sessionId);
-// If authorized, navigate with a unique, retained ID for this intended action:
+// If authorized, act/navigate with a unique, retained ID for this intended action:
+// await controller.act(sessionId, actionId, { action: 'click', id: 'someId' });
 // await controller.navigate(sessionId, 'home', 'reports', actionId);
 // Release only after reconciling any interrupted action:
 await controller.release(sessionId);
@@ -189,7 +200,7 @@ subtrees are pruned; their absence is not evidence that a record does not exist.
 `truncated` and `guardComplete` distinguish traversal limits from a complete
 visible observation. Inconsistent provider visibility causes missing controls
 and refusal, not an input fallback.
-Passwords and editable values are redacted; other text is clipped to 256 chars.
+Password fields are redacted; other editable values, child/UI text and identity fields may be present. Other text is clipped to 256 chars.
 
 ## Safety and recovery
 
@@ -206,15 +217,17 @@ Passwords and editable values are redacted; other text is clipped to 256 chars.
   between observation and dispatch. Do not operate the app manually during a
   command, and never interpret these guards as exactly-once delivery or a sandbox.
 - Navigation requires a fully scanned guard tree, the exact configured child
-  button, the selected source tab and one visible/enabled target. There is no
-  coordinate or arbitrary-first-match fallback. Long histories can legitimately
-  exceed the scan limit and cause refusal. Form checks are defensive, not a
-  general proof that no unsaved user work exists; run this only from Home/Reports
-  with no user-owned form open.
+  button, the selected source tab and one visible/enabled target. Semantic actions
+  require the exact focused task/window and one visible, unambiguous target. There
+  is no coordinate or arbitrary-first-match fallback. Long histories can
+  legitimately exceed the scan limit and cause refusal. Do not run actions while a
+  human is using the app; inspect again after any focus change.
 - Action IDs are atomically consumed and fsynced on device **before dispatch**,
-  including a directory fsync. They remain consumed across release, host loss,
-  app restarts and upgrades. An uncertain/failed action is not replayed. This is
-  at-most-once dispatch, not guaranteed delivery or exactly-once UI/backend work.
+  including a directory fsync. Protocol 2 also checks the protocol-1 journal, so
+  IDs remain consumed across the upgrade, release, host loss and app restarts.
+  The protocol-2 claim state is new; re-check ownership after upgrading. An
+  uncertain/failed action is not replayed. This is at-most-once dispatch, not
+  guaranteed delivery or exactly-once UI/backend work.
 - Missing/incomplete output is never success. Rish responses are captured in
   shell-private files, compressed, read as bounded unwrapped base64 frames and
   verified against size/SHA-256. Frames carry indices and are transferred in one
@@ -222,23 +235,25 @@ Passwords and editable values are redacted; other text is clipped to 256 chars.
   exact generated files are removed. ADB uses
   the same protocol and checksummed files through `adb pull`. No shared-storage
   permission or public response file is needed for runtime queries.
-- A click acknowledgment is not the postcondition. The common controller reads
-  again and verifies the selected destination. It retries observations only,
-  never actions. After an interrupted command inspect first; do not change the
-  action ID to bypass suppression. Release does not erase the action journal.
+- A click acknowledgment is not the postcondition. Navigation readback verifies
+  the selected destination; form actions require a fresh inspection/readback.
+  The controller retries observations only, never actions. After an interrupted
+  command inspect first; do not change the action ID to bypass suppression.
+  Release does not erase the action journal.
 - Termux startup and output forwarding can be slow. Allow a generous host-tool
   timeout (for example 180 seconds for one navigation command). An external
   timeout is not evidence of failure. `action-status` reports whether the ID was
   consumed, not whether navigation succeeded; pair it with a fresh inspection.
-- Do not infer Firebase persistence/parity from this tool. Any future parity test
-  needs an authorized backend observer, before/action/after evidence, exact app
-  readback, and cleanup recorded separately. Current commands do not create such
-  fixtures or mutate the backend intentionally.
+- Do not infer Firebase persistence/parity from this tool. A parity test needs an
+  authorized backend observer, before/action/after evidence, exact app readback,
+  and cleanup recorded separately. The command surface includes Save/delete/timer
+  actions but no observer, fixture marker or automatic cleanup; do not use those
+  actions without the documented parity preconditions.
 
 ## Opt-in Termux acceptance
 
 The [Termux acceptance guide](references/termux-acceptance.md) documents
-`scripts/termux-smoke.mjs`, an opt-in runner over the unchanged common controller.
+`scripts/termux-smoke.mjs`, an opt-in runner over the common controller.
 It is **observation-only by default**, requires private rish managed-profile
 enrollment and `--exclusive-access`, and refuses existing claims. It does not
 launch/prepare the app, install/update the helper, enable services, or change policy.
@@ -284,6 +299,7 @@ The exact earlier readback failure is unknown; a later focus refusal is not proo
 of its cause. See the [versioned acceptance evidence record](../../.agents/skills/controlling-huckleberry/references/acceptance-status.md)
 for provenance and boundaries. Historical navigation, timeout/recovery and CI
 success must not be combined into a passed fresh runner round-trip or parity claim.
+Protocol 2 control mapping is separate from the runner.
 
 The [Windows accessibility live record](../../.agents/skills/controlling-huckleberry/references/windows-accessibility-live.md)
 documents fresh native Windows/Android 14 acceptance after user-enabled service
@@ -293,4 +309,7 @@ also records the initial launch-readback race and the narrow host-only fix, foll
 by a clean cold-process launch with one launcher request and two guarded reads.
 The helper used an explicit API-34/build-tools-34 build, not a locally performed
 API-35 default build. No tracking writes, screenshots or backend observer were used.
-This does not change the separate Termux full-runner uncertainty.
+This does not change the separate Termux full-runner uncertainty. Protocol 2 was
+subsequently exercised live on the enrolled Termux work profile for control
+mapping (inspection, scroll, click, set-text and back) without saving records;
+that is selector evidence, not a new formal acceptance pass.

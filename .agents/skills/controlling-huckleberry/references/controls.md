@@ -1,6 +1,6 @@
 # Controls and recipes
 
-**Windows CDP route only.** These selectors, form/typing/screenshot commands and checkpoint format do not apply to the shared accessibility CLI. Choose the route in SKILL.md before starting; do not switch mid-investigation.
+**Windows CDP route only.** These selectors, form/typing/screenshot commands and checkpoint format do not apply to the shared accessibility CLI. For accessibility, use the semantic selector/action map in `tools/huckleberry-control/controls.json` and inspect the live tree; CDP QA/CSS selectors and screenshot commands are not portable to it. Choose the route in SKILL.md before starting; do not switch mid-investigation.
 
 ## Contents
 - Scope and selectors

@@ -278,14 +278,16 @@ The existing [APK reverse-engineering skill](.agents/skills/huckleberry-apk-reve
 The repository includes a [Huckleberry app-control agent skill](.agents/skills/controlling-huckleberry/SKILL.md)
 for using the Android app as the reference implementation when investigating API/Firebase parity.
 It provides one entry point with **explicit backend selection**: the shared Windows/Termux accessibility
-controller for inspection and Home/Reports navigation, or the preserved Windows CDP implementation for
-its broader WebView/form/screenshot/checkpoint capabilities. These are documentation routes to existing CLIs,
+controller for inspection, Home/Reports navigation and semantic node actions, or the preserved
+Windows CDP implementation for its broader WebView/form/screenshot/checkpoint capabilities. These are documentation routes to existing CLIs,
 not interchangeable drivers or a new `--backend` flag. No automatic fallback or mixed-driver investigation is supported.
 It does not bundle Firebase credentials or a backend observer, and UI evidence alone does not establish parity.
 
 Both routes require **Node.js 22.12+**. Accessibility additionally needs the matching repository tooling,
 an explicitly enrolled private profile, and a manually consented bridge; Termux uses rish with a managed profile,
-while ADB remains emulator-only. It currently has no form/typing/Save/delete/timer/screenshot support.
+while ADB remains emulator-only. It exposes semantic click/set-text/scroll/focus/select/back actions and a
+control catalog, but no screenshots or coordinate gestures; Save/delete/timer writes require an authorized
+observer and captured before-state.
 The [Windows accessibility live record](.agents/skills/controlling-huckleberry/references/windows-accessibility-live.md)
 separately validates the supported workflow on an Android 14 emulator after manual consent,
 including an explicitly built API-34 helper. It does not establish every Windows setup or broader bridge capabilities.
@@ -316,11 +318,15 @@ bridge for authorized app debugging. These are **developer tools only**, separat
 from the Python API package and release product. No bridge APK or private signing
 key is shipped in the Python wheel.
 
-The initial scope is accessibility inspection and guarded Home/Reports navigation,
-without screenshots or coordinate input. Build/install and accessibility consent
-are explicit; read the tool's setup and target-safety instructions before use.
-The skill's [accessibility route guide](.agents/skills/controlling-huckleberry/references/accessibility.md)
-invokes this common controller without duplicating transport logic or changing protocol 1.
+The scope is accessibility inspection, guarded Home/Reports navigation and
+semantic node actions (click, long-click, set-text, scroll, focus, select, back),
+with a machine-readable control catalog. There are no screenshots or coordinate
+gestures, and Save/delete/timer actions require the documented parity safeguards
+and an authorized observer. Build/install and accessibility consent are explicit;
+read the tool's setup and target-safety instructions before use. The skill's
+[accessibility route guide](.agents/skills/controlling-huckleberry/references/accessibility.md)
+invokes this common controller without duplicating transport logic or changing
+protocol 2.
 
 The [opt-in Termux acceptance runner](tools/huckleberry-control/references/termux-acceptance.md)
 checks an already-foreground enrolled managed-profile app. Its default is observation-only;

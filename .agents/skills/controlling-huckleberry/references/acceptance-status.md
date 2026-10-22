@@ -23,7 +23,8 @@ This records tested/reported outcomes, not guarantees for another app build, hos
 | New Termux runner, observation-only | Fresh **passed**, reported by Termux | Target/service/capability/child/complete-baseline checks and verified release; no navigation/launch/input. |
 | New Termux runner, full navigation | Fresh **uncertain / not passed** | Controller verified the first transition, but the runner's independent Reports readback failed. Home was not attempted; no automatic retry/release. |
 | Windows live accessibility bridge | Fresh supported workflow **passed** on Android 14 with explicit API-34 build | Includes inspection, navigation, guards/replay/journal/release; a separate clean cold-process case used one launch and two guarded reads after the narrow startup readback fix. Default API-35 local build was not performed. |
-| Forms, typing/keypad, Save/delete, timers or screenshots via accessibility | Unsupported / not established | Navigation code/tests do not confer these capabilities. |
+| Protocol 2 semantic control mapping | Live **exploration**, not a formal acceptance run | Inspection, scroll, click, set-text and back actions were used on the enrolled Termux work profile across Home, settings, child, reports, feeding, diaper/potty, pump, medicine, growth, temperature, activity, milestones and home customization. No record Save/delete, timer start or backend observer. Raw trees remained private. |
+| Forms, typing/keypad, Save/delete, timers or screenshots via accessibility | Semantic actions available; write parity not established | Protocol 2 exposes click/set-text/scroll/back and can operate form controls, but has no screenshots or observer. Do not claim backend persistence from UI. |
 | Firebase persistence / app-vs-API parity in acceptance | Not tested | No backend observer/capture; UI results have `backendCaptured: false`. |
 
 ## Fresh navigation uncertainty and reconciliation
@@ -42,4 +43,4 @@ An earlier 300-second external timeout and separately reported Home recovery are
 - No further run, install, policy/service change or historical fixture cleanup is requested here. Do not weaken guards to turn uncertainty green.
 - A later foreground-stable acceptance is a new explicitly planned/authorized investigation after reconciliation. New case IDs must not be replacement IDs chosen to replay an uncertain action.
 - Re-establish capability, consent, target identity, quiet conditions and current ownership for that investigation.
-- Passing CI or observation does not validate form entry, exactly-once input, unified cross-driver locking or Firebase parity.
+- Passing CI or observation does not validate protocol 2 form actions, exactly-once input, unified cross-driver locking or Firebase parity.

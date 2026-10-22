@@ -4,11 +4,11 @@
 
 The app is the UI reference. This skill does not know whether a particular feature writes Firestore, Realtime Database, native storage or another service. It supplies **UI control and evidence**, not a Firebase observer or schema. Never claim backend equivalence from UI similarity alone.
 
-Choose one explicitly supported backend before the experiment. The shared accessibility route currently supports inspection and Home/Reports navigation only, not form writes; Windows CDP's broader commands must not be inferred for Termux. Keep backend/protocol/source and evidence coverage in the report. CDP checkpoints and accessibility trees have different schemas and independent claims; no mixed-driver workflow or unified cross-driver lock is supported.
+Choose one explicitly supported backend before the experiment. The shared accessibility route supports inspection, Home/Reports navigation and semantic node actions, including form controls; Windows CDP's screenshots/DOM commands must not be inferred for Termux. Accessibility has no backend observer and no screenshots, so its UI state alone cannot verify persistence. Keep backend/protocol/source and evidence coverage in the report. CDP checkpoints and accessibility trees have different schemas and independent claims; no mixed-driver workflow or unified cross-driver lock is supported.
 
 Use the investigation project's already-authorized observer/client or a user-provided server-side read mechanism. Keep secrets in that project's approved secret handling; do not add them to this skill, command arguments, notes, screenshots or reports. Do not extract app tokens from preferences, WebView storage, CDP Network/headers, or native files. Missing observer authorization is a blocker for **backend verification**, not for read-only app exploration.
 
-**In a parity investigation, do not Save, start a timer, delete, or perform another backend-changing action until an authorized observer is available and a server before-state has been captured.** If either is missing, stop and offer unsaved exploration only. If the observer fails after an already-authorized action, preserve the fixture and report the after-state as unverified—never blindly repeat the write. Explicit standalone UI-only tests are a different task and cannot establish parity.
+**In a parity investigation, do not Save, start a timer, delete, or perform another backend-changing action until an authorized observer is available and a server before-state has been captured.** This applies to accessibility `click`/`set-text` actions as well as CDP. If either is missing, stop and offer unsaved exploration only. If the observer fails after an already-authorized action, preserve the fixture and report the after-state as unverified—never blindly repeat the write. Explicit standalone UI-only tests are a different task and cannot establish parity.
 
 ## Investigation checklist
 
@@ -17,7 +17,7 @@ Use the investigation project's already-authorized observer/client or a user-pro
 - [ ] Quiet the experiment: no other agent, phone/client or active timer is changing the same data. Do not stop existing timers merely to manufacture a baseline; account for them or ask.
 - [ ] Record host/device clocks, device timezone/offset and UI display units. Use host UTC checkpoints plus backend read timestamps; note observable skew and asynchronous ordering. Do not change clocks/timezones for convenience.
 - [ ] Measure baseline noise: observe backend before/after opening and cancelling an unsaved form. If changes occur, investigate rather than attributing every later change to Save.
-- [ ] Save a server **before** snapshot and a UI **before** checkpoint into the investigation directory. Define a unique `AGENT UI TEST <ISO timestamp> <case>` marker if the form supports notes.
+- [ ] Save a server **before** snapshot and a UI **before** checkpoint into the investigation directory. Define a unique `AGENT UI TEST <ISO timestamp> <case>` marker if the form supports notes. For accessibility, preserve the inspected tree and action ID; for CDP, preserve the checkpoint.
 - [ ] Fill the form and verify values, units, timestamps and note. Capture prepared UI state if useful. Separate all preparation effects from the one write being measured.
 - [ ] Perform exactly **one intended app write** (Save, timer start, edit or delete). Do not click twice because the screen looks slow. Record the action's time window.
 - [ ] Poll the observer within a declared bound until the intended marker/change is server-visible, preserving read times and errors. If unavailable/timeout, mark backend evidence **unverified**; retain the fixture and report it.
@@ -30,7 +30,7 @@ Use the investigation project's already-authorized observer/client or a user-pro
 
 ## Uncertain write recovery
 
-If a click times out, loses CDP, or the app restarts, the write may already have happened. Reconnect with the same session and consult the observer/Reports for the exact marker before retrying. A duplicate is not harmless merely because this is a test account. Don't automatically save or delete in a `finally` block.
+If a click/action times out, loses CDP, or the app restarts, the write may already have happened. Reconnect with the same session and action ID, check `action-status` on accessibility, and consult the observer/Reports for the exact marker before retrying. A duplicate is not harmless merely because this is a test account. Don't automatically save or delete in a `finally` block.
 
 If the feature has no notes, correlate with the exact child, type, event time, value and observer-produced ID. Avoid unrelated writes in the capture window. Insufficient correlation means **unknown**, not permission to delete the closest-looking pre-existing record.
 

@@ -1,7 +1,7 @@
 # Termux accessibility acceptance (UI-only)
 
 This is the Termux-owned acceptance slice for the shared `accessibility` route.
-It uses the existing `index.mjs` controller, protocol 1 and consented Android
+It uses the existing `index.mjs` controller, protocol 2 and consented Android
 bridge without copying transport/identity/selector logic or changing that protocol.
 It is a developer test, not a Huckleberry product or Firebase observer.
 
@@ -52,8 +52,8 @@ This performs target/service/capability checks, refuses **any** existing bridge
 owner (even the supplied session ID), verifies foreground identity, claims a new
 session, reads a complete visible Home/Reports observation and releases only
 after successful verification. Claim/release is private debug metadata, not app
-UI input. No navigation, launch, install, screenshot, typing or tracking mutation
-is performed by default. An unknown tab, missing child, wrong evidence source or
+UI input. No navigation, launch, install, screenshot, bridge action or tracking
+mutation is performed by default. An unknown tab, missing child, wrong evidence source or
 incomplete/truncated observation blocks acceptance.
 
 ## Explicit Home/Reports round-trip
@@ -125,9 +125,11 @@ acceptance, but **do not run this Termux-only runner with an ADB profile**:
   exact child, complete visible evidence, known Home/Reports tab and release.
 - **Live navigation:** all preceding conditions, unused retained IDs, Home →
   Reports → Home with independent postcondition observations, then release.
-- **Not established:** forms, Unicode/typing/keypad, Save/delete/timers,
-  screenshots, generic selectors, a coordinated CDP/bridge lock, Firebase
-  persistence or app/API parity. No backend observer runs in this test.
+- **Not established by this runner:** form actions, set-text/keypad behavior,
+  Save/delete/timers, screenshots, a coordinated CDP/bridge lock, Firebase
+  persistence or app/API parity. Protocol 2 exposes semantic actions including
+  `set-text`, but acceptance of those actions is a separate UI-control exercise,
+  not this navigation runner. No backend observer runs in this test.
 
 For a handoff, report the source branch/commit, exact test mode, mocked counts,
 redacted fresh live result or explicit blocker, and scope/consent limitations.

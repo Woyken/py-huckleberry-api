@@ -54,7 +54,7 @@ node $hb checkpoint --out './ui-before.json' --session $session
 node $hb checkpoint --out './ui-after.json' --session $session
 ```
 
-Checkpoints contain UI/device time evidence only (`backendCaptured: false`), not Firebase snapshots. Files refuse overwrite. Do not confuse their schema with accessibility protocol-1 trees or upload raw snapshots/screenshots/account data publicly.
+Checkpoints contain UI/device time evidence only (`backendCaptured: false`), not Firebase snapshots. Files refuse overwrite. Do not confuse their schema with accessibility protocol-versioned trees or upload raw snapshots/screenshots/account data publicly.
 
 ## Release and interrupted operations
 
