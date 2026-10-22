@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [0.4.9] - 2026-10-22
+
+### Features
+
+- Add optional `notes` to `log_bottle()` and `log_nursing()`, stored on the written feed interval.
+- Add optional explicit times to every live timer: `start_sleep`, `start_nursing`, `start_pump`, and `start_activity` accept `start_time`, while their `complete_*` counterparts accept `start_time`/`end_time` overrides (sleep also accepts `details`, activity derives `duration` from `end_time`). Starting a timer that is already active with `start_time` now moves its start instead of replacing the session, and an explicit end wins over a paused timer's stored end. Invalid intervals are rejected before anything is written.
+
+### Bugfixes
+
+- Accept batched `health/{child_uid}/data` temperature rows that omit `lastUpdated`. The app writes these entries without the field, so `list_health_entries` previously rejected the entire batch document.
+
+
 ## [0.4.8] - 2026-10-16
 
 ### Bugfixes
