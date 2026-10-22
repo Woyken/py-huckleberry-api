@@ -195,6 +195,31 @@ export async function withSession(session, action, { create = false } = {}) {
 
 async function forwardRules() { return parseForwards(await adb(['forward', '--list'])); }
 
+function forwardKey(rule) {
+  return `${rule.serial}\n${rule.local}\n${rule.remote}`;
+}
+
+export function pendingForwardRemovals(rules, state) {
+  const pending = state.pendingForward;
+  if (!pending) return [];
+  const baseline = new Set(pending.before.map(forwardKey));
+  return rules.filter((rule) => rule.serial === state.serial &&
+    rule.remote === `localabstract:${pending.socket}` &&
+    !baseline.has(forwardKey(rule)));
+}
+
+async function reconcilePendingForward(state) {
+  if (!state.pendingForward) return;
+  const rules = await forwardRules();
+  if (!rules.some((rule) => sameForward(rule, state))) {
+    for (const rule of pendingForwardRemovals(rules, state)) {
+      await adb(['-s', state.serial, 'forward', '--remove', rule.local]);
+    }
+  }
+  state.pendingForward = null;
+  await saveState(state);
+}
+
 export async function start(state) {
   if (process.platform !== 'win32') throw new Error('This profile skill requires native Windows Node/ADB, not WSL.');
   const expected = await config();
@@ -245,6 +270,7 @@ export async function start(state) {
     await delay(750);
   }
   if (!socket) throw new Error('No Huckleberry WebView CDP socket after 45s. This app build may disable debugging. Stop and report this limitation; never patch the APK or silently substitute backend writes.');
+  await reconcilePendingForward(state);
   if (state.forward) {
     const rule = (await forwardRules()).find((entry) => entry.local === `tcp:${state.forward.port}`);
     if (rule && !sameForward(rule, state)) throw new Error('Saved forwarding port is now owned by a different rule. Refusing to replace/remove it.');
@@ -255,9 +281,13 @@ export async function start(state) {
     }
   }
   if (!state.forward) {
+    const before = (await forwardRules()).filter((rule) => rule.serial === state.serial);
+    state.pendingForward = { socket, before };
+    await saveState(state);
     const port = Number(await adb(['-s', state.serial, 'forward', 'tcp:0', `localabstract:${socket}`]));
     if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('ADB did not return a valid local debugging port.');
     state.forward = { port, socket };
+    state.pendingForward = null;
     try { await saveState(state); }
     catch (error) { await adb(['-s', state.serial, 'forward', '--remove', `tcp:${port}`], { allowFailure: true }); throw error; }
   }
@@ -311,6 +341,7 @@ export async function status() {
 }
 
 export async function release(state) {
+  await reconcilePendingForward(state);
   if (state.forward) {
     const rule = (await forwardRules()).find((entry) => entry.local === `tcp:${state.forward.port}`);
     if (rule && !sameForward(rule, state)) throw new Error('Forward changed ownership. Refusing to remove it or silently release the claim.');
