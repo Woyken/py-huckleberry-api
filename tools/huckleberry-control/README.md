@@ -35,6 +35,13 @@ semantic node actions; the skill routes to the common CLI rather than copying it
 - A machine-readable control/selector map in `controls.json`. It covers Home,
   settings, child profile, reports, sleep, feeding, solids, diaper/potty, pump,
   medicine, growth, temperature, activity, milestones and home customization.
+- Page objects generated from that catalog: `pages` lists every known route (39
+  in the current catalog), `page <id>` returns the live control model for one
+  route, and `page-act` resolves a named control (or `page.cN` ref) to one
+  semantic action. The same layer is exported as `PageObject` for stateful
+  `observe()`/`act(ref)`/`close()` use. A page model reports `present`, `unique`,
+  `entryPresent` and `childVerified`; it does not claim the screen is the page
+  just because the catalog entry exists.
 - No screenshots, coordinate gestures, generic IME/keypad injection or network
   access. Actions can change app/backend state; Save/delete/timer use requires the
   parity safeguards and an authorized observer. Successful UI action does not
@@ -159,6 +166,13 @@ node "$hb" claim --profile "$profile" --session "$session"
 node "$hb" launch --profile "$profile" --session "$session"
 node "$hb" inspect --profile "$profile" --session "$session" --out /private/before.json
 
+# Page objects: list routes without a device, inspect one route, then act on a
+# named control. page-act re-inspects first; it never batches actions.
+node "$hb" pages
+node "$hb" page app-shell --profile "$profile" --session "$session"
+node "$hb" page-act app-shell --control "Reports tab" --action click \
+  --profile "$profile" --session "$session" --action-id hb-page-reports-unique-id
+
 # Each action ID describes one intended action. Never generate a replacement
 # merely because a command timed out or its result was lost.
 node "$hb" act --action click --id solidsV2SearchInput --profile "$profile" --session "$session" --action-id hb-focus-search-unique-id
@@ -198,6 +212,34 @@ const snapshot = await controller.inspect(sessionId);
 // Release only after reconciling any interrupted action:
 await controller.release(sessionId);
 ```
+
+For page-aware agent code, open a catalog page and use the refs from the current
+observation. Refs are intentionally short-lived: one action invalidates them, and
+a new `observe()` is required before the next action.
+
+```javascript
+import { Controller, PageObject, loadProfile } from './tools/huckleberry-control/index.mjs';
+const controller = await new Controller(await loadProfile(privateProfilePath)).connect();
+const page = await PageObject.open(controller, sessionId, 'app-shell');
+const model = page.model();
+const reports = model.controls.find(control => control.name === 'Reports tab');
+if (!reports?.unique) throw new Error('Reports control drifted; propose a catalog fix');
+await page.act(reports.ref, 'click', { actionId: retainedActionId });
+// Refs are now invalid; call await page.observe() before the next action.
+page.close(); // clears local refs; does not release the device claim
+await controller.release(sessionId); // only after reconciling the action
+```
+
+`page.rawAct({ acknowledgeUnmapped: true, ...request })` is the explicit escape
+hatch for a control that is not in the catalog. It still uses the bridge's
+focus/task/child guards; it is not permission to use coordinates or screenshots.
+`page.release()` closes the local page object and releases the device claim.
+
+If `page`, `page-act`, or `PageObject.act` reports a missing, ambiguous or stale
+control, do not guess another selector or fall back to coordinates. Re-observe;
+if the control is still missing, use raw `inspect`/`act` only to discover the new
+stable id/text/path, then propose a `controls.json` change (route id, app version,
+old/new selector and captured evidence) with a test update.
 
 Inspection prints a compact summary. `--out` saves the versioned visible tree with
 private POSIX permissions and refuses overwrite; Windows users should choose a

@@ -43,6 +43,41 @@ node $access inspect --profile $profilePath --session $session
 
 Use the actual checkout path if working elsewhere. ADB/rish profile transport is explicit, not selected automatically from the host. `launch` uses the launcher API, requires the existing claim and never logs in or chooses a child for you. Missing child/focus/task proof or an unexpected form means stop; the guards are not a general proof that no unsaved work exists.
 
+## Page objects and drift
+
+`controls.json` is exposed as page objects so an agent does not need to copy raw
+selectors. `pages` is offline; the other commands use the same claim/profile as
+`inspect`:
+
+```sh
+node "$access" pages
+node "$access" page app-shell --profile "$profile" --session "$session"
+node "$access" page-act app-shell --control "Reports tab" --action click \
+  --profile "$profile" --session "$session" --action-id hb-page-reports-unique-id
+```
+
+`page` returns the route's controls with `ref`, `present`, `unique`, declared
+`actions` and `mutates`/`warn` metadata, plus `entryPresent`, `missing` and
+`screen.childVerified`. It does not assert that the screen is that page; check the
+entry/control matches and identity before acting. `page-act` re-inspects, resolves
+one unique selector and dispatches one declared action. It accepts `--control
+"<name>"` or `--ref <page.cN>`; refs are a convenience and are revalidated against
+the fresh inspection, not persisted across CLI calls. The JavaScript API's
+`PageObject.observe()`/`act(ref)` makes refs snapshot-scoped: one action or
+`close()` invalidates them.
+
+In the JavaScript API, `rawAct({acknowledgeUnmapped: true, ...})` is the explicit
+unmapped-control escape hatch. It still requires the normal bridge
+focus/task/child guards and does not add coordinates or screenshots.
+
+**Control drift rule:** if a page/control is missing, ambiguous, or a ref is stale,
+stop the intended action. Re-observe; if it still fails, use raw `inspect`/`act`
+only to discover the new stable selector. Then propose a `controls.json` update
+with the route id, app version, old/new selector and private evidence, plus a
+page-object test. Do not guess another selector, use coordinates, or silently
+substitute a similar label. Report the drift even when the read-only discovery
+succeeds.
+
 ## Actions are explicit and at-most-once
 
 Use the [control catalog](https://github.com/Woyken/py-huckleberry-api/blob/feat/huckleberry-control-skill/tools/huckleberry-control/controls.json) as a selector map, then re-inspect the live tree before acting. Prefer stable ids and unique text labels; paths are capture-specific. The bridge resolves id/text selectors to the nearest clickable ancestor for `click`/`long-click`.

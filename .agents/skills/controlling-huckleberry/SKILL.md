@@ -3,7 +3,7 @@ name: controlling-huckleberry
 description: Controls the Huckleberry Android app through an explicitly selected Windows CDP or shared Windows/Termux accessibility backend. Use for supported app inspection, semantic control mapping/navigation, Windows CDP test-data entry, or API/Firebase parity investigations with a separately authorized observer. Not for parenting advice, generic Android setup, or bypassing device/profile consent.
 compatibility: Node 22.12+. Accessibility requires this repository's tools/huckleberry-control, a manually consented bridge and private enrollment (Windows ADB emulator or Termux/rish managed profile). CDP requires native Windows, an existing SDK/AVD and a debugging-enabled Huckleberry build; initial setup needs npm access.
 metadata:
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # Controlling Huckleberry
@@ -16,10 +16,10 @@ There are two explicit routes, not one interchangeable driver. The names below a
 
 | Route | Entry point | Supported scope |
 | --- | --- | --- |
-| `accessibility` | `tools/huckleberry-control/cli.mjs` | Shared Windows ADB / Termux rish controller: status, claim, launch, inspect, semantic node actions (click, long-click, set-text, scroll, focus, select, back), Home ↔ Reports navigation, action-status, release. |
+| `accessibility` | `tools/huckleberry-control/cli.mjs` | Shared Windows ADB / Termux rish controller: status, claim, launch, inspect, page catalog/page objects, semantic node actions (click, long-click, set-text, scroll, focus, select, back), Home ↔ Reports navigation, action-status, release. |
 | `windows-cdp` | This skill's `scripts/huckleberry.mjs` | Existing Windows/emulator WebView control: startup, DOM/ARIA inspection, clicks, form/keypad/text input, screenshots, UI checkpoints and release. |
 
-The shared accessibility backend has **no** screenshots, coordinate gestures, generic IME/keypad injection or network access. It does expose semantic node actions and can operate form controls, including Save/delete/timers, so state-changing use requires the parity safeguards below. Use the [control catalog](https://github.com/Woyken/py-huckleberry-api/blob/feat/huckleberry-control-skill/tools/huckleberry-control/controls.json) as a selector map, then re-inspect the live tree. The Windows CDP route does not work in Termux; no supported CDP socket was observed in the tested Termux environment.
+The shared accessibility backend has **no** screenshots, coordinate gestures, generic IME/keypad injection or network access. It does expose semantic node actions and can operate form controls, including Save/delete/timers, so state-changing use requires the parity safeguards below. Prefer the page-object commands below; use the [control catalog](https://github.com/Woyken/py-huckleberry-api/blob/feat/huckleberry-control-skill/tools/huckleberry-control/controls.json) as a selector map, then re-inspect the live tree. The Windows CDP route does not work in Termux; no supported CDP socket was observed in the tested Termux environment.
 
 **Keep one backend for the whole investigation. No mixed-driver workflows or automatic switching are supported.** CDP's host claim and the bridge's device claim are independent, **not a coordinated cross-driver lock**. Do not operate the same app with both tools, or run concurrent clients/writers against a parity capture. This operational restriction is not mechanically enforced across the two backends.
 
@@ -43,6 +43,35 @@ node "$access" inspect --profile "$profile" --session "$session"
 ADB remains **emulator-only**; Termux/rish targets only the explicitly enrolled **managed profile**, never the personal Huckleberry copy. Missing permissions/profile visibility means stop, not a policy change or fallback. Building/installing the separate helper and manually enabling its broad accessibility service require explicit consent. This route never boots an AVD or installs/enables anything automatically.
 
 Only perform navigation or semantic actions if requested, with a unique **retained action ID**. Use the documented `navigate` command for Home/Reports, or `act` with one inspected id/text/path target. Prefer stable ids and unique labels; paths are capture-specific. After uncertain output, use the original ID with `action-status` and a fresh inspection. Consumption means at-most-once dispatch, not success. Never generate another ID to repeat an uncertain input. Use in-app close/back controls where possible; global `back` from a root page can leave Huckleberry.
+
+### Page objects and control drift
+
+The catalog is exposed as page objects, not a second controller:
+
+```sh
+node "$access" pages
+node "$access" page <route-id> --profile "$profile" --session "$session"
+node "$access" page-act <route-id> --control "<control name>" --action <action> \
+  --profile "$profile" --session "$session" --action-id <retained-id>
+```
+
+`pages` is offline and lists every known route; `page` returns the route's controls
+with live `present`/`unique` matches and `screen.childVerified`. A page model is
+not proof that the screen is that page, and a catalog selector is not proof that an
+unmapped control exists. `page-act` re-inspects before one action and only permits
+actions declared in the catalog. In the JavaScript API, `PageObject.observe()`
+returns short-lived `page.cN` refs; one `act(ref)` invalidates them, so observe
+again before the next action. `rawAct({acknowledgeUnmapped: true, ...})` remains
+available for an unmapped control, but still requires the bridge guards.
+
+**If a control is missing, ambiguous or its ref is stale, stop and propose a fix.**
+Do not guess a replacement id/text/path, do not fall back to coordinates or
+screenshots, and do not silently treat a different label as the intended control.
+Re-observe first; if it still fails, use raw `inspect`/`act` only to discover the
+new stable selector. Then propose a `controls.json` change with the route id, app
+version, old/new selector and private evidence, plus a page-object test. Keep any
+intended write paused until the catalog is corrected. Report the drift even when a
+raw fallback completes the read-only discovery.
 
 For explicit Termux acceptance, the matching checkout includes `tools/huckleberry-control/scripts/termux-smoke.mjs` and its `references/termux-acceptance.md` guide. It observes an already-foreground target by default, requires `--exclusive-access`, and refuses any existing claim. Navigation needs separate `--navigate`/retained action-prefix opt-in; the runner never auto-launches/prepares the app. Read the guide before invoking it. A timeout followed by operator recovery is not a passed runner result.
 

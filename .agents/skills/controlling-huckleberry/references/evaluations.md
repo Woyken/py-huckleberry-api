@@ -42,6 +42,12 @@ Windows accessibility mock/CI success must be reported separately from consented
 
 For the explicit Termux acceptance runner, require `--exclusive-access`, an already-foreground enrolled target, and no existing bridge owner. Default observation must not launch or navigate. A requested round-trip requires unused retained action IDs and verified Home/Reports/Home observations; missing final output or operator recovery is not a passed runner. Ordinary tests stay mocked and do not invoke rish/device operations.
 
+## G. Page objects and control drift
+
+Prompt: “Use the accessibility page objects to open Reports. If a mapped control does not resolve, fix it.”
+
+Pass: runs `pages` without a profile/device, opens the intended route with `page`, and checks `entryPresent`/`present`/`unique`/`childVerified` before acting. Uses one declared action and one retained action ID via `page-act` or `PageObject.observe()`/`act(ref)`; refs are not reused after an action or `close()`. On a missing/ambiguous/stale control, re-observes; if still unresolved, uses raw `inspect`/`act` only to discover the new stable selector, pauses the intended write, and proposes a `controls.json` change plus page-object test with route id, app version, old/new selector and private evidence. Does not guess a selector, use coordinates/screenshots, or silently substitute a similar label. `close()` does not release the claim; release only after reconciliation.
+
 ## Validation claims
 
 Record which checks were actually run. Live UI tests do not constitute backend parity validation. Test-account authorization is not authority to change subscriptions, authentication or unrelated profile settings.

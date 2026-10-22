@@ -3,7 +3,8 @@ import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { loadProfile } from './lib/config.mjs';
 import { Controller, summary, saveEvidence } from './lib/client.mjs';
-import { identifier, TABS } from './lib/protocol.mjs';
+import { catalog, getPage, pageSummaries, PageObject } from './lib/pages.mjs';
+import { ACTIONS, identifier, TABS } from './lib/protocol.mjs';
 
 const HELP = `Huckleberry accessibility debugging tool (not part of the API product)
   node tools/huckleberry-control/cli.mjs <command> --profile <local.json>
@@ -11,6 +12,9 @@ const HELP = `Huckleberry accessibility debugging tool (not part of the API prod
   claim --session <id>                    Claim target with configured user/child
   launch --session <id>                   Open enrolled Huckleberry via launcher API
   inspect --session <id> [--out <new.json>] Read accessibility nodes; no screenshots
+  pages                                   List catalog pages; no profile or device access
+  page <id> --session <id>                Inspect current screen as a page object
+  page-act <id> (--control <name> | --ref <id.cN>) --action <action> --session <id> [--value <text>] [--action-id <unique-id>]
   navigate <home|reports> --from <tab> --session <id> --action-id <unique-id>
   act --action <action> --session <id> [--id <view-id> | --text <exact-text> | --path <node-path>]
       [--value <text>] [--expect-id <id>] [--expect-text <text>] [--action-id <unique-id>]
@@ -24,6 +28,8 @@ const HELP = `Huckleberry accessibility debugging tool (not part of the API prod
 Actions are semantic accessibility node actions, not coordinates or screenshots.
 They can change app/backend state. Every action requires a unique action id and is
 never retried automatically. Verify the intended child/profile before acting.
+Page objects resolve catalog selectors against a fresh snapshot; if a control has
+drifted or is ambiguous, use inspect/act and propose a controls.json fix.
 Enable the helper service manually. No AVD boot, APK install or policy changes are automatic.`;
 
 function actionId(value) {
@@ -47,14 +53,19 @@ export async function main(args = process.argv.slice(2)) {
     'action-id': { type: 'string' }, out: { type: 'string' }, help: { type: 'boolean', short: 'h' },
     id: { type: 'string' }, text: { type: 'string' }, path: { type: 'string' }, action: { type: 'string' },
     value: { type: 'string' }, 'expect-id': { type: 'string' }, 'expect-text': { type: 'string' },
-    direction: { type: 'string' },
+    direction: { type: 'string' }, control: { type: 'string' }, ref: { type: 'string' },
   } });
   const [command = 'help', destination] = positionals;
   if (values.help || command === 'help') { console.log(HELP); return; }
-  const commands = ['status', 'claim', 'launch', 'inspect', 'navigate', 'action-status', 'act', 'click', 'set-text', 'scroll', 'back', 'release'];
+  const commands = ['status', 'claim', 'launch', 'inspect', 'pages', 'page', 'page-act', 'navigate', 'action-status', 'act', 'click', 'set-text', 'scroll', 'back', 'release'];
   if (!commands.includes(command)) throw new Error('Unknown command');
-  if (positionals.length > (command === 'navigate' ? 2 : 1)) throw new Error('Unexpected positional arguments');
-  if (command !== 'status' || values.session) identifier(values.session);
+  if (positionals.length > (['navigate', 'page', 'page-act'].includes(command) ? 2 : 1)) throw new Error('Unexpected positional arguments');
+  if (command === 'pages') {
+    const supplied = values.profile || values.session || values.out || values.from || values['action-id'] ||
+      values.id || values.text || values.path || values.action || values.value || values.direction ||
+      values.control || values.ref || values['expect-id'] || values['expect-text'];
+    if (supplied) throw new Error('pages takes no profile, session or action flags');
+  } else if (command !== 'status' || values.session) identifier(values.session);
   if (values.out && command !== 'inspect') throw new Error('--out is only valid for inspect');
   if (command === 'navigate') {
     actionId(values['action-id']);
@@ -63,16 +74,43 @@ export async function main(args = process.argv.slice(2)) {
   } else if (command === 'action-status') {
     actionId(values['action-id']);
     if (values.from || values.id || values.text || values.path || values.action || values.value || values.direction || values['expect-id'] || values['expect-text']) throw new Error('action-status takes only --session and --action-id');
+  } else if (command === 'page') {
+    if (!destination) throw new Error('page requires a page id');
+    getPage(destination);
+    if (values.from || values['action-id'] || values.id || values.text || values.path || values.action || values.value || values.direction || values.control || values.ref || values['expect-id'] || values['expect-text']) {
+      throw new Error('page takes only --session');
+    }
+  } else if (command === 'page-act') {
+    if (!destination) throw new Error('page-act requires a page id');
+    getPage(destination);
+    if (!values.control && !values.ref) throw new Error('page-act requires --control or --ref');
+    if (values.control && values.ref) throw new Error('Choose exactly one of --control or --ref');
+    if (!values.action) throw new Error('page-act requires --action');
+    if (!Object.hasOwn(ACTIONS, values.action) || values.action === 'back') throw new Error('Unsupported page action');
+    if (values.from || values.id || values.text || values.path || values.direction || values['expect-id'] || values['expect-text']) {
+      throw new Error('page-act resolves selectors from the catalog; use act for raw selectors');
+    }
+    if (values.action === 'set-text' && values.value === undefined) throw new Error('set-text requires --value (empty string is allowed)');
   } else if (['act', 'click', 'set-text', 'scroll', 'back'].includes(command)) {
-    const supplied = values.id || values.text || values.path || values.action || values.value || values.direction || values['expect-id'] || values['expect-text'];
+    const supplied = values.id || values.text || values.path || values.action || values.value || values.direction || values['expect-id'] || values['expect-text'] || values.control || values.ref;
     if (command === 'back' && supplied) throw new Error('back takes no target or action flags');
     if (values.from) throw new Error('--from requires navigate');
-  } else if (values.from || values['action-id'] || values.id || values.text || values.path || values.action || values.value || values.direction) {
+  } else if (values.from || values['action-id'] || values.id || values.text || values.path || values.action || values.value || values.direction || values.control || values.ref) {
     throw new Error('Action flags require act/click/set-text/scroll/back');
   }
 
-  const controller = await new Controller(await loadProfile(values.profile)).connect();
   let result;
+  if (command === 'pages') {
+    const pages = pageSummaries();
+    result = {
+      schemaVersion: catalog().schemaVersion, bridgeProtocol: catalog().bridgeProtocol,
+      package: catalog().package, capturedAt: catalog().capturedAt, count: pages.length, pages,
+    };
+    console.log(JSON.stringify(result, null, 2));
+    return result;
+  }
+
+  const controller = await new Controller(await loadProfile(values.profile)).connect();
   if (command === 'status') result = await controller.status();
   if (command === 'claim') result = await controller.claim(values.session);
   if (command === 'release') result = await controller.release(values.session);
@@ -83,6 +121,14 @@ export async function main(args = process.argv.slice(2)) {
     result = { ...summary(snapshot), ...(values.out ? { saved: values.out } : {}) };
   }
   if (command === 'navigate') result = await controller.navigate(values.session, values.from, destination, values['action-id']);
+  if (command === 'page') {
+    result = (await PageObject.open(controller, values.session, destination)).model();
+  }
+  if (command === 'page-act') {
+    const page = await PageObject.open(controller, values.session, destination);
+    const id = values['action-id'] ? actionId(values['action-id']) : freshActionId();
+    result = { ...await page.act(values.control ?? values.ref, values.action, { value: values.value ?? '', actionId: id }), actionId: id };
+  }
   if (['act', 'click', 'set-text', 'scroll', 'back'].includes(command)) {
     const id = values['action-id'] ? actionId(values['action-id']) : freshActionId();
     const target = command === 'back' ? { id: '', text: '', path: '', expectId: '', expectText: '' } : targetArgs(values);
@@ -104,7 +150,10 @@ export async function main(args = process.argv.slice(2)) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch(error => {
-    console.error(JSON.stringify({ error: error.message, guidance: 'No action is automatically retried. Preserve the session/action ID and inspect uncertain outcomes.' }));
+    const payload = { error: error.message, guidance: 'No action is automatically retried. Preserve the session/action ID and inspect uncertain outcomes.' };
+    if (error.details) Object.assign(payload, error.details);
+    if (error.actionId) payload.actionId = error.actionId;
+    console.error(JSON.stringify(payload));
     process.exitCode = 1;
   });
 }
