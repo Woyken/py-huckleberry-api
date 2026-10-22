@@ -30,7 +30,7 @@ Use the investigation project's already-authorized observer/client or a user-pro
 
 ## Uncertain write recovery
 
-If a click/action times out, loses CDP, or the app restarts, the write may already have happened. Reconnect with the same session and action ID, check `action-status` on accessibility, and consult the observer/Reports for the exact marker before retrying. A duplicate is not harmless merely because this is a test account. Don't automatically save or delete in a `finally` block.
+If a click/action times out, loses CDP, or the app restarts, the write may already have happened. On accessibility, reconnect with the same session and action ID and use `action-status`; on Windows CDP, reconnect with the same session and inspect the exact marker, since there is no action journal. Consult the observer/Reports for the exact marker before retrying. A duplicate is not harmless merely because this is a test account. Don't automatically save or delete in a `finally` block.
 
 If the feature has no notes, correlate with the exact child, type, event time, value and observer-produced ID. Avoid unrelated writes in the capture window. Insufficient correlation means **unknown**, not permission to delete the closest-looking pre-existing record.
 

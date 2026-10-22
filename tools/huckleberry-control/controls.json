@@ -610,6 +610,8 @@
     }
   ],
   "limitations": [
+    "Private-use icon glyphs (close, back, notes and similar) may not survive shell text transport. Prefer a stable id or a captured path for those controls; the node path still points at the icon button.",
+    "Before click/long-click/set-text, inspect Home/Reports until childVerified is true. The bridge caches this for the exact task; claim/release or observing the Child tab clears it. Forms do not show the child label. A child_not_verified reply means re-verify, not retry blindly.",
     "Selection-wheel controls (bottle type, weight/head, temperature slider, duration/hour-minute scrollers) expose few or no option text nodes. Use visual evidence and re-inspect after each scroll; do not guess option values.",
     "The Reports Week view can exceed the bridge reply limit. A truncated/timeout reply is not evidence that the click failed.",
     "Paths are capture-specific. Ids and unique text labels are preferred; re-inspect before any path action.",

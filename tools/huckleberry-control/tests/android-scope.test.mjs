@@ -27,6 +27,9 @@ test('device implementation retains semantic actions and final replay boundary',
   assert.match(source, /target_not_unique/);
   assert.match(source, /expectation_failed/);
   assert.match(source, /result\.form/);
+  assert.match(source, /child_not_verified/);
+  assert.match(source, /AccessibilityNodeInfo\.obtain\(node\)/);
+  assert.match(source, /resetChild/);
   const state = await readFile(new URL('src/dev/local/huckleberry/a11yprobe/BridgeState.java', android), 'utf8');
   assert.match(state, /put\("protocol", 2\)/);
   assert.match(state, /semanticActions/);

@@ -49,8 +49,14 @@ public final class ProbeProvider extends ContentProvider {
                     BridgeState state = new BridgeState(getContext());
                     String owner = request.getString("session");
                     if ("status".equals(method)) reply = state.status();
-                    else if ("claim".equals(method)) reply = state.claim(owner, request.getInt("user", -1), request.getString("child"));
-                    else if ("release".equals(method)) reply = state.release(owner);
+                    else if ("claim".equals(method)) {
+                        reply = state.claim(owner, request.getInt("user", -1), request.getString("child"));
+                        if (ProbeService.instance != null) ProbeService.instance.resetChild();
+                    }
+                    else if ("release".equals(method)) {
+                        reply = state.release(owner);
+                        if (ProbeService.instance != null) ProbeService.instance.resetChild();
+                    }
                     else if ("action-status".equals(method)) {
                         state.requireOwner(owner);
                         reply = BridgeState.reply("ok").put("consumed", state.consumed(request.getString("action_id")))

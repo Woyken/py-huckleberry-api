@@ -47,7 +47,9 @@ Use the actual checkout path if working elsewhere. ADB/rish profile transport is
 
 Use the [control catalog](https://github.com/Woyken/py-huckleberry-api/blob/feat/huckleberry-control-skill/tools/huckleberry-control/controls.json) as a selector map, then re-inspect the live tree before acting. Prefer stable ids and unique text labels; paths are capture-specific. The bridge resolves id/text selectors to the nearest clickable ancestor for `click`/`long-click`.
 
-Only perform navigation or state-changing actions if requested, from the verified Home/Reports screen with no unsaved work. Set caller-supplied IDs once for each intended action; keep them across interruptions. Replace these illustrative values for a new intended action, not merely because a result was lost:
+Before the first `click`, `long-click` or `set-text`, inspect a Home/Reports screen until `childVerified` is true. The bridge caches that proof for the exact task because forms do not expose the child label. A new claim/release, observing the Child tab or another child, or an app restart clears it. Inspecting a form reports `childVerified: false` because the label is hidden, but it does not discard the cached Home/Reports proof. If an action returns `child_not_verified`, go back to a verified Home/Reports view and inspect again; do not bypass the guard. Private-use icon glyphs such as close/back may not survive shell text transport; use a stable id or the captured node path for those buttons.
+
+Only perform navigation if requested, from the verified Home/Reports screen with no unsaved work. State-changing actions require an inspected, unambiguous target and the parity/observer preconditions; they may occur on a form or modal. Do not use a global `back` from a form root, because it can leave Huckleberry. Set caller-supplied IDs once for each intended action; keep them across interruptions. Replace these illustrative values for a new intended action, not merely because a result was lost:
 
 ```sh
 reportsAction=hb-reports-unique-action-id

@@ -32,6 +32,8 @@ public final class ProbeService extends AccessibilityService {
     private static final int MAX_VISITED = 6000;
     private static final int MAX_EXPORTED = 3000;
     private static final int MAX_DEPTH = 60;
+    private int verifiedTask = -1;
+    private String verifiedChild = "";
 
     @Override protected void onServiceConnected() { instance = this; }
     @Override public void onAccessibilityEvent(AccessibilityEvent event) { /* Never log event contents. */ }
@@ -91,7 +93,7 @@ public final class ProbeService extends AccessibilityService {
         final ArrayList<AccessibilityNodeInfo> targets = new ArrayList<>();
         final Set<String> selectedTabs = new HashSet<>();
         int visited, exported, childMatches;
-        boolean incomplete, form;
+        boolean incomplete, form, homeScreen, reportsScreen;
         String selectedTab() { return selectedTabs.size() == 1 ? selectedTabs.iterator().next() : null; }
         @Override public void close() { for (AccessibilityNodeInfo target : targets) target.recycle(); }
     }
@@ -102,6 +104,8 @@ public final class ProbeService extends AccessibilityService {
         result.visited++;
         if (!PACKAGE.contentEquals(node.getPackageName() == null ? "" : node.getPackageName())) return;
         String id = node.getViewIdResourceName();
+        if ("home_sleep".equals(id) || "cats".equals(id)) result.homeScreen = true;
+        if ("mainContent".equals(id) || "reports_content".equals(id)) result.reportsScreen = true;
         String currentTab = tab(id);
         if (currentTab == null) currentTab = ancestorTab;
         boolean navigation = inNavigation || "mainTabs".equals(id);
@@ -157,6 +161,10 @@ public final class ProbeService extends AccessibilityService {
             JSONArray nodes = new JSONArray();
             for (JSONObject row : result.navigation) if (nodes.length() < MAX_EXPORTED) nodes.put(row);
             for (JSONObject row : result.content) if (nodes.length() < MAX_EXPORTED) nodes.put(row);
+            if (result.childMatches == 1) markChild(expectedTask, child);
+            else if (!result.incomplete && ("child".equals(result.selectedTab())
+                    || (result.homeScreen && "home".equals(result.selectedTab()))
+                    || (result.reportsScreen && "reports".equals(result.selectedTab())))) clearChild();
             return BridgeState.reply("ok").put("task", expectedTask).put("window", selected.getId())
                 .put("nodes", nodes).put("exported", result.exported)
                 .put("truncated", result.incomplete || result.exported > nodes.length())
@@ -211,7 +219,7 @@ public final class ProbeService extends AccessibilityService {
     }
 
     private static AccessibilityNodeInfo actionable(AccessibilityNodeInfo node, String action) {
-        if (!("click".equals(action) || "long-click".equals(action))) return node;
+        if (!("click".equals(action) || "long-click".equals(action))) return AccessibilityNodeInfo.obtain(node);
         AccessibilityNodeInfo current = node;
         boolean owned = false;
         try {
@@ -237,6 +245,19 @@ public final class ProbeService extends AccessibilityService {
         return expected == null || expected.isEmpty() || expected.equals(actual == null ? "" : actual);
     }
 
+    private void markChild(int task, String child) {
+        verifiedTask = task;
+        verifiedChild = child == null ? "" : child;
+    }
+    private void clearChild() {
+        verifiedTask = -1;
+        verifiedChild = "";
+    }
+    private boolean childVerified(int task, String child) {
+        return task == verifiedTask && child != null && child.equals(verifiedChild);
+    }
+    void resetChild() { clearChild(); }
+
     JSONObject action(int expectedTask, String child, String actionId, String path, String id, String text,
                       String action, String expectId, String expectText, String value,
                       BridgeState state, long deadline) throws Exception {
@@ -257,6 +278,8 @@ public final class ProbeService extends AccessibilityService {
         if (selectors == 0 && !"back".equals(action)) return BridgeState.reply("target_required");
         if (selectors > 1) return BridgeState.reply("ambiguous_target_selector");
         if (value.length() > 4096) return BridgeState.reply("value_too_long");
+        boolean changesData = "click".equals(action) || "long-click".equals(action) || "set-text".equals(action);
+        if (changesData && !childVerified(expectedTask, child)) return BridgeState.reply("child_not_verified");
 
         AccessibilityWindowInfo selected = window(expectedTask);
         AccessibilityNodeInfo root = root(selected);
@@ -301,6 +324,7 @@ public final class ProbeService extends AccessibilityService {
             }
             if (window(expectedTask).getId() != selected.getId()) return BridgeState.reply("focus_changed");
             if (SystemClock.uptimeMillis() >= deadline) return BridgeState.reply("request_expired");
+            if (target != null && "click".equals(action) && "tab-button-child-info".equals(target.getViewIdResourceName())) clearChild();
             if (!state.consume(actionId)) return BridgeState.reply("duplicate_suppressed");
             if (SystemClock.uptimeMillis() >= deadline || window(expectedTask).getId() != selected.getId()) {
                 return BridgeState.reply("consumed_without_dispatch");
@@ -357,6 +381,7 @@ public final class ProbeService extends AccessibilityService {
             scan(root, "root", 0, null, false, child, to, result);
             if (result.incomplete) return BridgeState.reply("incomplete_guard_tree");
             if (result.childMatches != 1 || !from.equals(result.selectedTab()) || result.form) return BridgeState.reply("precondition_failed");
+            markChild(expectedTask, child);
             if (result.targets.size() != 1) return BridgeState.reply("target_not_unique");
             AccessibilityNodeInfo target = result.targets.get(0);
             if (!target.refresh() || !target.isVisibleToUser() || !target.isEnabled() || !target.isClickable()) return BridgeState.reply("target_changed");

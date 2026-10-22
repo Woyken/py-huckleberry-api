@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, readdir, mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { promisify } from 'node:util';
 import { join, basename } from 'node:path';
+import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { ROOT, validateConfig, validateSession, parseForwards, sameForward } from '../scripts/runtime.mjs';
 import { main } from '../scripts/huckleberry.mjs';
@@ -67,11 +68,8 @@ test('script syntax valid and help has no dependency/device requirement', async 
   assert.match(result.stdout, /start --session/);
 });
 
-test('claim and command locks tested in isolated state, without ADB', async () => {
-  // Use the harness-approved temp area, not the real profile claim.
-  const parent = join(process.env.LOCALAPPDATA, 'Temp', 'opencode');
-  await mkdir(parent, { recursive: true });
-  const temporary = await mkdtemp(join(parent, 'huckleberry-offline-'));
+test('claim and command locks tested in isolated state, without ADB', { skip: process.platform !== 'win32' }, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'huckleberry-offline-'));
   try {
     const moduleURL = pathToFileURL(join(ROOT, 'scripts', 'runtime.mjs')).href;
     const source = `
@@ -120,10 +118,8 @@ test('read-only ADB server version query parses a mock server, without ADB clien
   } finally { server.close(); await once(server, 'close'); }
 });
 
-test('same-session command recovers after abrupt Node death; stale diagnostic PID is not lock authority', async () => {
-  const parent = join(process.env.LOCALAPPDATA, 'Temp', 'opencode');
-  await mkdir(parent, { recursive: true });
-  const temporary = await mkdtemp(join(parent, 'huckleberry-crash-'));
+test('same-session command recovers after abrupt Node death; stale diagnostic PID is not lock authority', { skip: process.platform !== 'win32' }, async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'huckleberry-crash-'));
   const moduleURL = pathToFileURL(join(ROOT, 'scripts', 'runtime.mjs')).href;
   let child;
   try {

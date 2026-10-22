@@ -62,6 +62,8 @@ def _harness(
 
     async def write(_child_uid, *, start_time, **_measurements) -> None:
         assert callback is not None
+        assert _child_uid == "synthetic-child"
+        assert _measurements == {"weight": 11.5, "head": 13.8, "units": "imperial"}
         if scenario == "write_error":
             raise RuntimeError("synthetic write failure")
         start = start_time.timestamp()

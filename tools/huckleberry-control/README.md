@@ -25,7 +25,10 @@ semantic node actions; the skill routes to the common CLI rather than copying it
 - Semantic node actions: `click`, `long-click`, `set-text`, `scroll-forward`,
   `scroll-backward`, `focus`, `select` and `back`, plus Home ↔ Reports navigation.
   Id/text selectors resolve to the nearest clickable ancestor; paths are also
-  supported but are capture-specific.
+  supported but are capture-specific. Before data-changing actions, inspect a
+  Home/Reports screen until `childVerified` is true; the bridge caches that proof
+  for the exact task because forms hide the child label. Claim/release or the
+  Child tab clears it.
 - A machine-readable control/selector map in `controls.json`. It covers Home,
   settings, child profile, reports, sleep, feeding, solids, diaper/potty, pump,
   medicine, growth, temperature, activity, milestones and home customization.
