@@ -1,0 +1,1 @@
+Correlate imperial growth listener acceptance with its own event timestamp and a bounded notification wait instead of a fixed sleep and the last unrelated callback. Add offline regressions for delayed/interleaved notifications, wrong values, missing events, unsafe future baselines and cleanup without changing production listener behavior.

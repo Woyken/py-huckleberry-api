@@ -7,8 +7,17 @@ from datetime import datetime, timezone
 from typing import Any
 
 from huckleberry_api import HuckleberryAPI
-from huckleberry_api.firebase_types import FirebaseActivityDocumentData, FirebasePumpDocumentData
+from huckleberry_api.firebase_types import (
+    FirebaseActivityDocumentData,
+    FirebaseHealthDocumentData,
+    FirebaseLastGrowthData,
+    FirebasePumpDocumentData,
+)
 from huckleberry_api.models import SolidsFoodReference
+
+# Firestore watch callbacks run on a worker thread and may arrive later than a
+# fixed sleep. Bound startup and the correlated write independently.
+_HEALTH_LISTENER_TIMEOUT_SECONDS = 15
 
 
 async def _wait_for_update(updates: list[Any], predicate: Callable[[Any], bool], timeout: float = 10.0) -> None:
@@ -243,49 +252,45 @@ class TestRealtimeListeners:
         assert last_update.prefs.lastGrowthEntry is not None
 
     async def test_health_listener_imperial_growth(self, api: HuckleberryAPI, child_uid: str) -> None:
-        """Test health listener emits imperial growth updates."""
-        updates: list[Any] = []
+        """Verify this write's callback, not an unrelated initial/latest snapshot."""
+        loop = asyncio.get_running_loop()
+        initial: asyncio.Future[FirebaseHealthDocumentData] = loop.create_future()
+        observed: asyncio.Future[FirebaseLastGrowthData] = loop.create_future()
+        expected_start: float | None = None
 
-        def callback(data: Any) -> None:
-            updates.append(data)
+        def accept(data: FirebaseHealthDocumentData) -> None:
+            if not initial.done():
+                initial.set_result(data)
+            latest = data.prefs.lastGrowthEntry if data.prefs else None
+            if (
+                latest is not None
+                and expected_start is not None
+                and latest.start == expected_start
+                and not observed.done()
+            ):
+                observed.set_result(latest)
 
-        def subscribe() -> Awaitable[None]:
-            return api.setup_health_listener(child_uid, callback)
+        def callback(data: FirebaseHealthDocumentData) -> None:
+            loop.call_soon_threadsafe(accept, data)
 
-        await subscribe()
-        await asyncio.sleep(2)
+        try:
+            await api.setup_health_listener(child_uid, callback)
+            baseline = await asyncio.wait_for(initial, timeout=_HEALTH_LISTENER_TIMEOUT_SECONDS)
+            measured_at = datetime.now(timezone.utc)
+            expected_start = measured_at.timestamp()
+            previous = baseline.prefs.lastGrowthEntry if baseline.prefs else None
+            if previous is not None:
+                previous_start = previous.start
+                assert previous_start <= expected_start, (
+                    "A future growth entry prevents testing a new latest notification"
+                )
 
-        measured_at = datetime.now(timezone.utc).replace(microsecond=0)
-        await api.log_growth(
-            child_uid,
-            start_time=measured_at,
-            weight=11.5,
-            head=13.8,
-            units="imperial",
-        )
-        await _wait_or_resubscribe(
-            api,
-            updates,
-            subscribe,
-            lambda update: (
-                getattr(update, "prefs", None) is not None
-                and getattr(update.prefs, "lastGrowthEntry", None) is not None
-                and abs(update.prefs.lastGrowthEntry.start - measured_at.timestamp()) < 0.001
-            ),
-        )
+            await api.log_growth(child_uid, start_time=measured_at, weight=11.5, head=13.8, units="imperial")
+            last_growth = await asyncio.wait_for(observed, timeout=_HEALTH_LISTENER_TIMEOUT_SECONDS)
+        finally:
+            await api.stop_all_listeners()
 
-        await api.stop_all_listeners()
-
-        assert len(updates) > 0
-
-        growth_updates = [
-            update.prefs.lastGrowthEntry
-            for update in updates
-            if getattr(update, "prefs", None) is not None and getattr(update.prefs, "lastGrowthEntry", None) is not None
-        ]
-
-        assert growth_updates
-        last_growth = growth_updates[-1]
+        assert last_growth.start == expected_start
         assert last_growth.id_ is not None
         assert last_growth.weight == 11.5
         assert last_growth.weightUnits == "lbs.oz"

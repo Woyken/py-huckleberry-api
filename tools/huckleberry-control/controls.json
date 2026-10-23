@@ -1,0 +1,632 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-22",
+  "package": "com.huckleberry_labs.app",
+  "appVersion": "0.9.313 (93130002)",
+  "bridgeProtocol": 3,
+  "scope": "Visible controls and selectors observed through the accessibility bridge on an enrolled work-profile test account. Actions describe the supported capability for the selector; not every control was individually clicked. This is UI control/selector evidence, not Firebase parity. Dynamic text (child name, timestamps, amounts, counts and saved item names) is described rather than copied from private data.",
+  "selectorPolicy": {
+    "preference": ["id", "text", "path"],
+    "notes": [
+      "The bridge resolves id/text selectors to the nearest clickable ancestor for click and long-click.",
+      "Use an exact text selector only when it is unique in the current tree; inspect first after opening a modal or page.",
+      "Use withinParentOf to scope a repeated label to the subtree containing an anchor label; the resolved target is a node path.",
+      "Paths are capture-specific. Re-inspect before using a path, especially after returning Home or changing scroll position.",
+      "The bridge never retries an action automatically. Preserve action IDs and inspect after an uncertain result."
+    ]
+  },
+  "actions": {
+    "inspect": "Read visible nodes and their ids, labels, bounds, flags and action ids.",
+    "act": "Dispatch one semantic action: click, long-click, set-text, scroll-forward, scroll-backward, focus, select or back.",
+    "back": "Global BACK. Prefer explicit in-app close/back controls; from a root page BACK can leave Huckleberry."
+  },
+  "routes": [
+    {
+      "id": "app-shell",
+      "title": "Bottom navigation and persistent shell",
+      "controls": [
+        { "name": "Home tab", "selectors": [{ "id": "tab-button-home" }], "actions": ["click"], "parity": "home/report navigation" },
+        { "name": "Reports tab", "selectors": [{ "id": "tab-button-stat-tabs" }], "actions": ["click"], "parity": "reports" },
+        { "name": "Sleep Plans tab", "selectors": [{ "id": "tab-button-recommendations" }], "actions": ["click"], "parity": "premium/recommendations" },
+        { "name": "Child tab", "selectors": [{ "id": "tab-button-child-info" }], "actions": ["click"], "parity": "child profile" },
+        { "name": "Membership tab", "selectors": [{ "id": "tab-button-membership" }], "actions": ["click"], "parity": "premium" },
+        { "name": "Settings", "selectors": [{ "text": "settings" }], "actions": ["click"], "parity": "units, time format, profile" },
+        { "name": "Notifications", "selectors": [{ "text": "9+" }], "actions": ["click"], "notes": "Badge text is dynamic; match the current visible badge or inspect first." },
+        { "name": "Child switcher", "selectors": [{ "text": "current child name" }], "actions": ["click"], "notes": "The child label is dynamic and must be verified against the enrolled child before acting." }
+      ]
+    },
+    {
+      "id": "home",
+      "title": "Home",
+      "entry": { "selectors": [{ "id": "tab-button-home" }] },
+      "scroll": {
+        "selectors": [{ "path": "root/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/1/1" }],
+        "actions": ["scroll-forward", "scroll-backward"],
+        "notes": "The main list has no stable id. Re-inspect after each scroll; the path changed when the shell tree changed."
+      },
+      "controls": [
+        { "name": "Sleep card", "selectors": [{ "id": "home_sleep" }, { "text": "Sleep" }], "actions": ["click"], "parity": "sleep start/end" },
+        { "name": "Nursing card", "selectors": [{ "text": "Nursing" }], "actions": ["click"], "parity": "nursing timer/manual" },
+        { "name": "Bottle card", "selectors": [{ "text": "Bottle" }], "actions": ["click"], "parity": "bottle amount/type" },
+        { "name": "Solids card", "selectors": [{ "text": "Solids" }], "actions": ["click"], "parity": "solids foods/reaction" },
+        { "name": "Diaper card", "selectors": [{ "text": "Diaper" }], "actions": ["click"], "parity": "diaper contents/details" },
+        { "name": "Potty card", "selectors": [{ "text": "Potty" }], "actions": ["click"], "parity": "potty result" },
+        { "name": "Pumping card", "selectors": [{ "text": "Pumping" }], "actions": ["click"], "parity": "pump total/left-right/timer" },
+        { "name": "Milestones card", "selectors": [{ "text": "Milestones" }], "actions": ["click"], "parity": "milestone records" },
+        { "name": "Medicine card", "selectors": [{ "text": "Medicine" }], "actions": ["click"], "parity": "medicine type/units/amount" },
+        { "name": "Growth card", "selectors": [{ "text": "Growth" }], "actions": ["click"], "parity": "height/weight/head" },
+        { "name": "Temperature card", "selectors": [{ "text": "Temperature" }], "actions": ["click"], "parity": "temperature value/units" },
+        { "name": "Activity card", "selectors": [{ "text": "Activity" }], "actions": ["click"], "parity": "activity type/duration" },
+        { "name": "Customize home", "selectors": [{ "id": "cats" }], "actions": ["click"], "parity": "visible home categories" },
+        { "name": "SweetSpot information", "selectors": [{ "id": "home_sweetspot_open" }], "actions": ["click"], "parity": "predictions" }
+      ]
+    },
+    {
+      "id": "notifications",
+      "title": "Notifications",
+      "entry": { "from": "home", "selectors": [{ "text": "9+" }], "notes": "Badge text is dynamic." },
+      "controls": [
+        { "name": "Mark all as read", "selectors": [{ "text": "Mark all as read" }], "actions": ["click"], "mutates": true },
+        { "name": "Notification card", "selectors": [{ "text": "notification title" }], "actions": ["click"], "notes": "Card text is dynamic." },
+        { "name": "Mark as read", "selectors": [{ "text": "Mark as read" }], "actions": ["click"], "mutates": true },
+        { "name": "Destination button", "selectors": [{ "text": "Go to Settings" }], "actions": ["click"], "notes": "Button label depends on the notification." },
+        { "name": "Back", "selectors": [{ "text": "\ue91a" }], "actions": ["click"], "notes": "Header back arrow." }
+      ]
+    },
+    {
+      "id": "settings",
+      "title": "Huckleberry Settings",
+      "entry": { "from": "app-shell", "selectors": [{ "text": "settings" }] },
+      "scroll": {
+        "selectors": [{ "id": "settingsPage_settings" }],
+        "actions": ["scroll-forward", "scroll-backward"],
+        "notes": "The settings list id is stable across captures."
+      },
+      "controls": [
+        { "name": "Units metric", "selectors": [{ "id": "settingsPage_settings_units_metric" }], "actions": ["click"], "text": "cm/kg/ml", "parity": "unit conversion" },
+        { "name": "Units imperial", "selectors": [{ "id": "settingsPage_settings_units_imperial" }], "actions": ["click"], "text": "inch/lb/oz", "parity": "unit conversion" },
+        { "name": "Temperature Celsius", "selectors": [{ "id": "settingsPage_settings_temperature_c" }], "actions": ["click"], "text": "ºC", "parity": "temperature units" },
+        { "name": "Temperature Fahrenheit", "selectors": [{ "id": "settingsPage_settings_temperature_f" }], "actions": ["click"], "text": "ºF", "parity": "temperature units" },
+        { "name": "Time format 12h", "selectors": [{ "id": "settingsPage_settings_timeFormat_12" }], "actions": ["click"], "text": "12h", "parity": "event timestamps" },
+        { "name": "Time format 24h", "selectors": [{ "id": "settingsPage_settings_timeFormat_24" }], "actions": ["click"], "text": "24h", "parity": "event timestamps" },
+        { "name": "Theme light", "selectors": [{ "id": "settingsPage_settings_theme_light" }], "actions": ["click"] },
+        { "name": "Theme dark", "selectors": [{ "id": "settingsPage_settings_theme_dark" }], "actions": ["click"] },
+        { "name": "Theme system", "selectors": [{ "id": "settingsPage_settings_theme_system" }], "actions": ["click"] },
+        { "name": "Child row", "selectors": [{ "text": "current child name" }], "actions": ["click"], "notes": "Child list label is dynamic." },
+        { "name": "Add Child", "selectors": [{ "id": "settingsPage_addChild" }], "actions": ["click"], "mutates": true },
+        { "name": "Edit account", "selectors": [{ "id": "settingsPage_userDetails_editAccount" }], "actions": ["click"], "mutates": true },
+        { "name": "Sign Out", "selectors": [{ "id": "settingsPage_logout" }], "actions": ["click"], "mutates": true, "warn": "Do not use during parity testing." },
+        { "name": "Version", "selectors": [{ "id": "settingsPage_appVersion" }], "actions": ["click"], "notes": "Read-only version label; it is also the observed app build evidence." },
+        { "name": "Back", "selectors": [{ "text": "\ue91a" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "child",
+      "title": "Child profile",
+      "entry": { "selectors": [{ "id": "tab-button-child-info" }] },
+      "scroll": {
+        "selectors": [{ "path": "root/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/1/1" }],
+        "actions": ["scroll-forward", "scroll-backward"],
+        "notes": "Re-inspect before using the path."
+      },
+      "controls": [
+        { "name": "Edit profile", "selectors": [{ "text": "Edit profile" }], "actions": ["click"] },
+        { "name": "Day/night start times", "selectors": [{ "text": "time value" }], "actions": ["click"], "notes": "Two visible time controls (start and end). Labels are 9:00 AM / 6:00 PM by default." },
+        { "name": "Reports Settings link", "selectors": [{ "text": "Reports Settings" }], "actions": ["click"] },
+        { "name": "SweetSpot Settings", "selectors": [{ "text": "SweetSpot® Settings" }], "actions": ["click"], "premium": true },
+        { "name": "Schedule Creator", "selectors": [{ "text": "Schedule Creator" }], "actions": ["click"], "premium": true },
+        { "name": "Questionnaire", "selectors": [{ "text": "Questionnaire" }], "actions": ["click"] },
+        { "name": "Export tracking data", "selectors": [{ "text": "Export tracking data as CSV" }], "actions": ["click"], "mutates": true }
+      ]
+    },
+    {
+      "id": "edit-child",
+      "title": "Edit Child's Profile",
+      "entry": { "from": "child", "selectors": [{ "text": "Edit profile" }] },
+      "controls": [
+        { "name": "First Name", "selectors": [{ "id": "ion-input-1" }], "actions": ["set-text", "focus"], "notes": "The numeric suffix is generated by Ionic and can change; prefer the label + current value if the id differs." },
+        { "name": "Birthday", "selectors": [{ "text": "birthday value" }], "actions": ["click"] },
+        { "name": "Prematurity", "selectors": [{ "text": "No" }], "actions": ["click"], "notes": "Current value is dynamic." },
+        { "name": "Sex male", "selectors": [{ "text": "Male" }], "actions": ["click"] },
+        { "name": "Sex female", "selectors": [{ "text": "Female" }], "actions": ["click"] },
+        { "name": "Delete child", "selectors": [{ "text": "Delete this child profile" }], "actions": ["click"], "mutates": true, "warn": "Destructive; do not use in parity testing." },
+        { "name": "Save", "selectors": [{ "text": "Save" }], "actions": ["click"], "mutates": true },
+        { "name": "Back", "selectors": [{ "text": "\ue91a" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "reports-list",
+      "title": "Reports: List",
+      "entry": { "from": "app-shell", "selectors": [{ "id": "tab-button-stat-tabs" }, { "text": "List" }] },
+      "scroll": {
+        "selectors": [{ "path": "root/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/1/1/0/0/0/0/1/1" }],
+        "actions": ["scroll-forward", "scroll-backward"],
+        "notes": "Report rows are not individually stable; inspect after opening a day/range."
+      },
+      "controls": [
+        { "name": "Day view", "selectors": [{ "text": "Day" }], "actions": ["click"] },
+        { "name": "Week view", "selectors": [{ "text": "Week" }], "actions": ["click"], "notes": "The full Week tree can exceed the bridge reply limit; prefer a visual check or smaller reads." },
+        { "name": "List view", "selectors": [{ "text": "List" }], "actions": ["click"] },
+        { "name": "Summary view", "selectors": [{ "text": "Summary" }], "actions": ["click"] },
+        { "name": "Reports Settings", "selectors": [{ "id": "reports_content" }, { "text": "\ue956" }], "actions": ["click"] },
+        { "name": "Week range", "selectors": [{ "id": "list-YYYYMMDD" }], "actions": ["click"], "notes": "Ids encode the range end date and change with the selected week." },
+        { "name": "Report entry", "selectors": [{ "text": "report summary text" }], "actions": ["click"], "notes": "Tap a row to open Details. Text is dynamic." },
+        { "name": "Report edit icon", "selectors": [{ "text": "\ue918" }], "actions": ["click"], "notes": "The trailing icon on a report row opens editing. Many identical icons exist, so prefer opening a specific row first." }
+      ]
+    },
+    {
+      "id": "reports-settings",
+      "title": "Reports Settings",
+      "entry": { "from": "reports-list", "selectors": [{ "text": "\ue956" }] },
+      "controls": [
+        { "name": "Day start time", "selectors": [{ "text": "Day start time" }], "actions": ["click"] },
+        { "name": "Day start value", "selectors": [{ "text": "Midnight" }], "actions": ["click"], "notes": "Current value is dynamic; this button opens the same time picker." },
+        { "name": "Category switch", "selectors": [{ "text": "category label" }], "actions": ["click"], "notes": "On this screen the Switch nodes have no text; the text is a sibling. The switch is the clickable node in the same row, so inspect and use its path." },
+        { "name": "Reset", "selectors": [{ "text": "Reset" }], "actions": ["click"], "mutates": true },
+        { "name": "Apply", "selectors": [{ "text": "Apply" }], "actions": ["click"], "mutates": true },
+        { "name": "Back", "selectors": [{ "text": "\ue91a" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "reports-day",
+      "title": "Reports: Day",
+      "entry": { "from": "reports-list", "selectors": [{ "text": "Day" }] },
+      "controls": [
+        { "name": "Day selector strip", "selectors": [], "actions": ["click"], "notes": "Date cells are individual nodes with weekday/day text; inspect and click the exact date." },
+        { "name": "Day timeline", "selectors": [{ "id": "mainContent" }], "actions": ["scroll-forward", "scroll-backward"], "notes": "Timeline rows are labeled with hours such as 9am, 10am. Re-inspect after scrolling." },
+        { "name": "Report entry", "selectors": [{ "text": "report summary text" }], "actions": ["click"], "notes": "Opens Details for the corresponding record." }
+      ]
+    },
+    {
+      "id": "reports-summary",
+      "title": "Reports: Summary",
+      "entry": { "from": "reports-list", "selectors": [{ "text": "Summary" }] },
+      "controls": [
+        { "name": "Sleep segment", "selectors": [{ "id": "segment-sleeping" }], "actions": ["click"] },
+        { "name": "Nursing/Bottle segment", "selectors": [{ "id": "segment-feeding" }], "actions": ["click"] },
+        { "name": "Solids segment", "selectors": [{ "id": "segment-solids" }], "actions": ["click"] },
+        { "name": "Diaper/Potty segment", "selectors": [{ "id": "segment-diaper-potty" }], "actions": ["click"] },
+        { "name": "Pump segment", "selectors": [{ "id": "segment-pumping" }], "actions": ["click"], "notes": "Partially clipped off-screen on the captured width; scroll the segment row if needed." },
+        { "name": "Trend range 7D/14D/30D/90D/1Y", "selectors": [{ "text": "7D" }], "actions": ["click"], "notes": "The other ranges use the same text pattern." },
+        { "name": "Summary totals", "selectors": [{ "id": "totals-container" }], "actions": [], "notes": "Read-only values such as Nap total, Night total and Daily total; use text extraction rather than relying on positions." }
+      ]
+    },
+    {
+      "id": "reports-week",
+      "title": "Reports: Week",
+      "entry": { "from": "reports-list", "selectors": [{ "text": "Week" }] },
+      "controls": [
+        { "name": "Week timeline", "selectors": [], "actions": ["scroll-forward", "scroll-backward"], "notes": "Clicking Week works, but the full tree can exceed the bridge reply limit. Do not infer a failed click from a truncated snapshot." }
+      ],
+      "limitations": ["Full Week accessibility export was not reliable at the captured width."]
+    },
+    {
+      "id": "report-detail",
+      "title": "Report entry details",
+      "entry": { "from": "reports-list", "selectors": [{ "text": "report summary text" }] },
+      "controls": [
+        { "name": "Edit", "selectors": [{ "text": "Edit" }], "actions": ["click"], "mutates": true },
+        { "name": "Done", "selectors": [{ "text": "Done" }], "actions": ["click"] },
+        { "name": "Delete", "selectors": [{ "text": "\ue966" }], "actions": ["click"], "mutates": true, "warn": "Destructive. Capture before-state and require explicit intent." },
+        { "name": "Back", "selectors": [{ "text": "\ue91a" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "report-edit-pump",
+      "title": "Edit pumping",
+      "entry": { "from": "report-detail", "selectors": [{ "text": "Edit" }] },
+      "controls": [
+        { "name": "Start Time", "selectors": [{ "id": "addPumpingDetails_setStartTime" }], "actions": ["click"] },
+        { "name": "Duration", "selectors": [{ "id": "addPumpingDetails_setDuration" }], "actions": ["click"] },
+        { "name": "Mode total", "selectors": [{ "text": "total" }], "actions": ["click"] },
+        { "name": "Mode left/right", "selectors": [{ "text": "left/right" }], "actions": ["click"] },
+        { "name": "Unit oz", "selectors": [{ "text": "oz" }], "actions": ["click"] },
+        { "name": "Unit ml", "selectors": [{ "text": "ml" }], "actions": ["click"] },
+        { "name": "Amount", "selectors": [{ "id": "addPumpingDetails_set_total_amount" }], "actions": ["click"], "notes": "For left/right mode there are two amount controls with this same id; use the visible Left/Right label plus bounds or the row path." },
+        { "name": "Notes", "selectors": [{ "id": "ion-textarea-6" }], "actions": ["set-text", "focus"] },
+        { "name": "Save", "selectors": [{ "id": "addPumpingDetails_saveButton" }], "actions": ["click"], "mutates": true },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "sleep-form",
+      "title": "Add sleep",
+      "entry": { "from": "home", "selectors": [{ "text": "Sleep" }] },
+      "controls": [
+        { "name": "Start Time", "selectors": [{ "path": "root/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/1/1/0/0/1" }], "actions": ["click"], "notes": "Label is 'Set time'; two identical controls exist. Re-inspect before path use." },
+        { "name": "End Time", "selectors": [{ "path": "root/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/1/1/0/1/1" }], "actions": ["click"], "notes": "Label is 'Set time'; two identical controls exist." },
+        { "name": "Start timer", "selectors": [{ "id": "hb-timer-button" }], "actions": ["click"], "mutates": true, "notes": "Timer button label is START; starting a timer is a write." },
+        { "name": "FAQ", "selectors": [{ "text": "FAQ" }], "actions": ["click"] },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "bottle-form",
+      "title": "Add feeding: Bottle",
+      "entry": { "from": "home", "selectors": [{ "text": "Bottle" }] },
+      "controls": [
+        { "name": "Nursing tab", "selectors": [{ "text": "Nursing" }], "actions": ["click"] },
+        { "name": "Bottle tab", "selectors": [{ "text": "Bottle" }], "actions": ["click"] },
+        { "name": "Start Time", "selectors": [{ "id": "addFeed_bottle_setStartTime" }], "actions": ["click"] },
+        { "name": "Bottle type", "selectors": [{ "id": "addFeed_bottle_setBottleType" }], "actions": ["click"], "notes": "Opens a scroller modal; the option values were not exposed as text nodes." },
+        { "name": "Unit oz", "selectors": [{ "text": "oz" }], "actions": ["click"] },
+        { "name": "Unit mL", "selectors": [{ "text": "mL" }], "actions": ["click"] },
+        { "name": "Amount", "selectors": [{ "id": "feed_bottle_set_amount" }], "actions": ["click"] },
+        { "name": "Notes", "selectors": [{ "id": "ion-textarea-13" }], "actions": ["set-text", "focus"] },
+        { "name": "Save", "selectors": [{ "id": "addFeed_footer_saveButton" }], "actions": ["click"], "mutates": true },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "bottle-type-picker",
+      "title": "Bottle type modal",
+      "entry": { "from": "bottle-form", "selectors": [{ "id": "addFeed_bottle_setBottleType" }] },
+      "controls": [
+        { "name": "Type wheel", "selectors": [{ "id": "scrollerModal" }], "actions": [], "notes": "The wheel exposes a SeekBar, not option text. Wheel/scroll behavior and visible option labels were not verified; do not guess values." },
+        { "name": "Cancel", "selectors": [{ "text": "Cancel" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "text": "Save" }], "actions": ["click"], "mutates": true }
+      ],
+      "limitations": ["Bottle type option labels were not machine-readable through the accessibility tree."]
+    },
+    {
+      "id": "bottle-amount-numpad",
+      "title": "Bottle amount numpad",
+      "entry": { "from": "bottle-form", "selectors": [{ "text": "Volume (ml)" }] },
+      "controls": [
+        { "name": "Digit 1", "selectors": [{ "text": "1", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 2", "selectors": [{ "text": "2", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 3", "selectors": [{ "text": "3", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 4", "selectors": [{ "text": "4", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 5", "selectors": [{ "text": "5", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 6", "selectors": [{ "text": "6", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 7", "selectors": [{ "text": "7", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 8", "selectors": [{ "text": "8", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 9", "selectors": [{ "text": "9", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 0", "selectors": [{ "text": "0", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"], "notes": "The amount display and key share text; clickable scoping targets the key." },
+        { "name": "Cancel", "selectors": [{ "text": "Cancel" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "text": "Save", "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"], "mutates": true, "notes": "The bottle form behind the numpad also exposes Save. Resolve the target under the same parent subtree as the Volume (ml) label so it targets the numpad action." }
+      ],
+      "limitations": ["This ml keypad has no decimal key in the captured state.", "The amount display and digit keys can share text, and the bottle form can remain in the accessibility tree behind the numpad; digit and Save selectors are scoped to the clickable numpad subtree."]
+    },
+    {
+      "id": "nursing-form",
+      "title": "Add feeding: Nursing",
+      "entry": { "from": "bottle-form", "selectors": [{ "text": "Nursing" }] },
+      "controls": [
+        { "name": "Start Time", "selectors": [{ "id": "addFeed_breast_setStartTime" }], "actions": ["click"] },
+        { "name": "Left timer", "selectors": [{ "text": " LEFT Last Side" }], "actions": ["click"], "mutates": true, "notes": "Timer labels change after a session starts; inspect the current label." },
+        { "name": "Right timer", "selectors": [{ "text": " RIGHT" }], "actions": ["click"], "mutates": true },
+        { "name": "Manual entry", "selectors": [{ "text": "Manual entry" }], "actions": ["click"] },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "nursing-manual",
+      "title": "Nursing manual entry",
+      "entry": { "from": "nursing-form", "selectors": [{ "text": "Manual entry" }] },
+      "controls": [
+        { "name": "Start time", "selectors": [{ "id": "feed_manual_set_time" }], "actions": ["click"] },
+        { "name": "Duration", "selectors": [{ "id": "feed_manual_set_duration" }], "actions": ["click"] },
+        { "name": "Left duration", "selectors": [{ "text": "Set duration" }], "actions": ["click"], "notes": "Two identical labels; use bounds/path to distinguish left and right." },
+        { "name": "Right duration", "selectors": [{ "text": "Set duration" }], "actions": ["click"], "notes": "Two identical labels; use bounds/path to distinguish left and right." },
+        { "name": "Last breast left", "selectors": [{ "text": "left" }], "actions": ["click"] },
+        { "name": "Last breast right", "selectors": [{ "text": "right" }], "actions": ["click"] },
+        { "name": "Notes", "selectors": [{ "id": "ion-textarea-7" }], "actions": ["set-text", "focus"] },
+        { "name": "Switch to timer", "selectors": [{ "text": "Switch to timer" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "id": "addFeed_footer_saveButton" }], "actions": ["click"], "mutates": true },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "solids-picker",
+      "title": "Add Solids: food picker",
+      "entry": { "from": "home", "selectors": [{ "text": "Solids" }] },
+      "controls": [
+        { "name": "Search", "selectors": [{ "id": "solidsV2SearchInput" }], "actions": ["set-text", "focus"], "notes": "Live set-text was verified: 'banana' produced a Banana result and a create-new-food row." },
+        { "name": "Recent food", "selectors": [{ "text": "food name" }], "actions": ["click"], "notes": "Labels are dynamic saved foods." },
+        { "name": "Food to try next", "selectors": [{ "text": "food name" }], "actions": ["click"], "notes": "Labels are dynamic suggestions." },
+        { "name": "Next", "selectors": [{ "text": "Next" }], "actions": ["click"], "notes": "Appears after selecting at least one food." },
+        { "name": "Add reminder", "selectors": [{ "text": "Add reminder" }], "actions": ["click"], "notes": "Opens a reminder form; not mapped further." },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "solids-detail",
+      "title": "Add Solids: selected food detail",
+      "entry": { "from": "solids-picker", "selectors": [{ "text": "Next" }] },
+      "controls": [
+        { "name": "Allergic reaction", "selectors": [{ "text": "Allergic reaction" }], "actions": ["click"] },
+        { "name": "Loved", "selectors": [{ "text": "Loved" }], "actions": ["click"] },
+        { "name": "Okay", "selectors": [{ "text": "Okay" }], "actions": ["click"] },
+        { "name": "Disliked", "selectors": [{ "text": "Disliked" }], "actions": ["click"] },
+        { "name": "Add note", "selectors": [{ "text": "Add note" }], "actions": ["click"], "notes": "Opens a note input; set-text after opening." },
+        { "name": "Add photo", "selectors": [{ "text": "Add photo" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "text": "Save (N)" }], "actions": ["click"], "mutates": true, "notes": "Count in the label depends on selected foods." },
+        { "name": "Back", "selectors": [{ "text": "\ue91a" }], "actions": ["back", "click"], "notes": "Global BACK was verified to return to food selection; no in-app close button was visible in this detail state." }
+      ]
+    },
+    {
+      "id": "diaper-form",
+      "title": "Add diaper",
+      "entry": { "from": "home", "selectors": [{ "text": "Diaper" }] },
+      "controls": [
+        { "name": "Diaper tab", "selectors": [{ "text": "Diaper" }], "actions": ["click"] },
+        { "name": "Potty tab", "selectors": [{ "text": "Potty" }], "actions": ["click"] },
+        { "name": "Start time", "selectors": [{ "id": "diaper_setStartTime" }], "actions": ["click"] },
+        { "name": "Pee", "selectors": [{ "text": "Pee" }], "actions": ["click"], "notes": "Text has no clickable flag; the bridge resolves to the clickable icon container." },
+        { "name": "Poo", "selectors": [{ "text": "Poo" }], "actions": ["click"] },
+        { "name": "Mixed", "selectors": [{ "text": "Mixed" }], "actions": ["click"] },
+        { "name": "Dry", "selectors": [{ "text": "Dry" }], "actions": ["click"] },
+        { "name": "Notes", "selectors": [{ "text": "\ue97f" }], "actions": ["click"] },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "diaper-details",
+      "title": "Diaper details after Poo",
+      "entry": { "from": "diaper-form", "selectors": [{ "text": "Poo" }] },
+      "controls": [
+        { "name": "Size Little", "selectors": [{ "text": "Little" }], "actions": ["click"] },
+        { "name": "Size Medium", "selectors": [{ "text": "Medium" }], "actions": ["click"] },
+        { "name": "Size Big", "selectors": [{ "text": "Big" }], "actions": ["click"] },
+        { "name": "Consistency Solid", "selectors": [{ "text": "Solid" }], "actions": ["click"] },
+        { "name": "Consistency Loose", "selectors": [{ "text": "Loose" }], "actions": ["click"] },
+        { "name": "Consistency Runny", "selectors": [{ "text": "Runny" }], "actions": ["click"] },
+        { "name": "Consistency Mucousy", "selectors": [{ "text": "Mucousy" }], "actions": ["click"] },
+        { "name": "Consistency Hard", "selectors": [{ "text": "Hard" }], "actions": ["click"] },
+        { "name": "Diaper rash", "selectors": [{ "text": "Diaper rash" }], "actions": ["click"], "notes": "Sits in a toggle row; inspect the row if the text selector resolves to a non-clickable ancestor." },
+        { "name": "Save", "selectors": [{ "id": "diaper_save_button" }], "actions": ["click"], "mutates": true },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "potty-form",
+      "title": "Add potty",
+      "entry": { "from": "home", "selectors": [{ "text": "Potty" }] },
+      "controls": [
+        { "name": "Diaper tab", "selectors": [{ "text": "Diaper" }], "actions": ["click"] },
+        { "name": "Potty tab", "selectors": [{ "text": "Potty" }], "actions": ["click"], "notes": "Two 'Potty' labels exist (tab and result) after the form opens; use path or select the result by its known row." },
+        { "name": "Start time", "selectors": [{ "id": "diaper_setStartTime" }], "actions": ["click"] },
+        { "name": "Sat but dry", "selectors": [{ "text": "Sat but dry" }], "actions": ["click"] },
+        { "name": "Potty result", "selectors": [{ "path": "root/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/2/1/1/0/0/0/1" }], "actions": ["click"], "notes": "Path from the captured form; re-inspect before use." },
+        { "name": "Accident", "selectors": [{ "text": "Accident" }], "actions": ["click"] },
+        { "name": "Notes", "selectors": [{ "text": "\ue97f" }], "actions": ["click"] },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ],
+      "reveals": {
+        "after_potty": ["Pee", "Poo", "Mixed"]
+      }
+    },
+    {
+      "id": "pump-form",
+      "title": "Add pumping",
+      "entry": { "from": "home", "selectors": [{ "text": "Pumping" }] },
+      "controls": [
+        { "name": "Start Time", "selectors": [{ "id": "addPumpingDetails_setStartTime" }], "actions": ["click"] },
+        { "name": "Duration", "selectors": [{ "id": "addPumpingDetails_setDuration" }], "actions": ["click"] },
+        { "name": "Mode total", "selectors": [{ "text": "total" }], "actions": ["click"] },
+        { "name": "Mode left/right", "selectors": [{ "text": "left/right" }], "actions": ["click"] },
+        { "name": "Unit oz", "selectors": [{ "text": "oz" }], "actions": ["click"] },
+        { "name": "Unit ml", "selectors": [{ "text": "ml" }], "actions": ["click"] },
+        { "name": "Total amount", "selectors": [{ "id": "addPumpingDetails_set_total_amount" }], "actions": ["click"], "notes": "In left/right mode both amounts share this id; use Left/Right label plus bounds." },
+        { "name": "Left amount", "selectors": [{ "text": "Left" }], "actions": ["click"], "notes": "Left/right mode only." },
+        { "name": "Right amount", "selectors": [{ "text": "Right" }], "actions": ["click"], "notes": "Left/right mode only." },
+        { "name": "Notes", "selectors": [{ "id": "ion-textarea-10" }], "actions": ["set-text", "focus"] },
+        { "name": "Switch to timer", "selectors": [{ "text": "Switch to timer" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "id": "addPumpingDetails_saveButton" }], "actions": ["click"], "mutates": true },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "pump-timer",
+      "title": "Add pumping: timer mode",
+      "entry": { "from": "pump-form", "selectors": [{ "text": "Switch to timer" }] },
+      "controls": [
+        { "name": "Start timer", "selectors": [{ "id": "hb-timer-button" }], "actions": ["click"], "mutates": true, "notes": "Label is START; starting is a write." },
+        { "name": "Manual entry", "selectors": [{ "text": "Manual entry" }], "actions": ["click"] },
+        { "name": "Last session", "selectors": [{ "text": "Last session ... ago" }], "actions": ["click"], "notes": "Dynamic relative time; opens details." },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "medicine-form",
+      "title": "Add medicine",
+      "entry": { "from": "home", "selectors": [{ "text": "Medicine" }] },
+      "controls": [
+        { "name": "Start time", "selectors": [{ "text": "Start time:" }], "actions": ["click"], "notes": "Clicking the label or the current time opens the common time picker." },
+        { "name": "Type", "selectors": [{ "text": "Type:" }], "actions": ["click"], "notes": "Opens the medication picker/list." },
+        { "name": "Unit oz", "selectors": [{ "id": "medicationTake_unit_oz" }], "actions": ["click"] },
+        { "name": "Unit ml", "selectors": [{ "id": "medicationTake_unit_ml" }], "actions": ["click"] },
+        { "name": "Unit drops", "selectors": [{ "id": "medicationTake_unit_drops" }], "actions": ["click"] },
+        { "name": "Unit tsp", "selectors": [{ "id": "medicationTake_unit_tsp" }], "actions": ["click"] },
+        { "name": "Amount", "selectors": [{ "id": "medicationTake_amount" }], "actions": ["click"], "notes": "Opens a numeric input; the inner EditText may be used with set-text after inspection." },
+        { "name": "Notes", "selectors": [{ "id": "medicationTake_notes" }], "actions": ["click"], "notes": "Inner editable node is ion-textarea-11." },
+        { "name": "Save", "selectors": [{ "id": "medicationTake_saveButton" }], "actions": ["click"], "mutates": true },
+        { "name": "Notes shortcut", "selectors": [{ "text": "\ue97f" }], "actions": ["click"] },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "medicine-picker",
+      "title": "Medicine type list",
+      "entry": { "from": "medicine-form", "selectors": [{ "text": "Type:" }] },
+      "controls": [
+        { "name": "Saved medicine", "selectors": [{ "text": "medicine name" }], "actions": ["click"], "notes": "Selects the saved medication." },
+        { "name": "Add new", "selectors": [{ "id": "medications_addMedication" }], "actions": ["click"] },
+        { "name": "Back", "selectors": [{ "text": "\ue91a" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "medicine-add",
+      "title": "Add new medicine",
+      "entry": { "from": "medicine-picker", "selectors": [{ "id": "medications_addMedication" }] },
+      "controls": [
+        { "name": "Medicine name", "selectors": [{ "id": "ion-input-3" }], "actions": ["set-text", "focus"], "notes": "Ionic id suffix can change; use the surrounding 'New medicine' label if needed." },
+        { "name": "Cancel", "selectors": [{ "text": "Cancel" }], "actions": ["click"] },
+        { "name": "Add", "selectors": [{ "text": "Add" }], "actions": ["click"], "mutates": true }
+      ]
+    },
+    {
+      "id": "growth-form",
+      "title": "Add growth data",
+      "entry": { "from": "home", "selectors": [{ "text": "Growth" }] },
+      "controls": [
+        { "name": "Date", "selectors": [{ "text": "Today" }], "actions": ["click"], "notes": "Current date text is dynamic." },
+        { "name": "Time", "selectors": [{ "text": "time value" }], "actions": ["click"], "notes": "Current time text is dynamic." },
+        { "name": "Height", "selectors": [{ "text": "Set" }], "actions": ["click"], "notes": "Height starts as 'Set'; opens the height numpad/unit picker." },
+        { "name": "Weight", "selectors": [{ "text": "current weight value" }], "actions": ["click"], "notes": "The visible value is dynamic; inspect the Weight row and click its current value to open the wheel picker." },
+        { "name": "Head circumference", "selectors": [{ "text": "current head value" }], "actions": ["click"], "notes": "The visible value is dynamic; inspect the row and click its current value to open the same wheel picker." },
+        { "name": "Save", "selectors": [{ "id": "newGrowthDetails_saveButton" }], "actions": ["click"], "mutates": true },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "growth-height-picker",
+      "title": "Height numpad",
+      "entry": { "from": "growth-form", "selectors": [{ "text": "Set" }] },
+      "controls": [
+        { "name": "Unit in", "selectors": [{ "text": "in" }], "actions": ["click"] },
+        { "name": "Unit cm", "selectors": [{ "text": "cm" }], "actions": ["click"] },
+        { "name": "Digits", "selectors": [{ "text": "0-9" }], "actions": ["click"], "notes": "Clickable digit TextViews; includes a decimal point." },
+        { "name": "Cancel", "selectors": [{ "text": "Cancel" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "text": "Save" }], "actions": ["click"], "mutates": true }
+      ]
+    },
+    {
+      "id": "growth-weight-picker",
+      "title": "Weight/head wheel picker",
+      "entry": { "from": "growth-form", "selectors": [{ "text": "current weight value" }] },
+      "controls": [
+        { "name": "Unit lbs.oz", "selectors": [{ "text": "lbs.oz" }], "actions": ["click"] },
+        { "name": "Unit kg", "selectors": [{ "text": "kg" }], "actions": ["click"] },
+        { "name": "Wheel", "selectors": [], "actions": [], "notes": "The wheel exposes no option text in the captured state; wheel/scroll behavior was not verified." },
+        { "name": "Cancel", "selectors": [{ "text": "Cancel" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "text": "Save" }], "actions": ["click"], "mutates": true }
+      ],
+      "limitations": ["Weight/head wheel option values were not machine-readable through the accessibility tree."]
+    },
+    {
+      "id": "temperature-form",
+      "title": "Add temperature",
+      "entry": { "from": "home", "selectors": [{ "text": "Temperature" }] },
+      "controls": [
+        { "name": "Start time", "selectors": [{ "id": "temperature_setDateTime" }], "actions": ["click"] },
+        { "name": "Unit Celsius", "selectors": [{ "id": "temperature_change_c" }], "actions": ["click"] },
+        { "name": "Unit Fahrenheit", "selectors": [{ "id": "temperature_change_f" }], "actions": ["click"] },
+        { "name": "Temperature slider", "selectors": [{ "id": "temperature-details" }], "actions": [], "notes": "A custom range control; the readout is the sibling range-value text (e.g. '37.0 °C'). Direct slider value changes were not mapped." },
+        { "name": "Notes", "selectors": [{ "id": "temperature_notes" }], "actions": ["click"], "notes": "Inner editable node is ion-textarea-3." },
+        { "name": "Save", "selectors": [{ "id": "temperature_saveButton" }], "actions": ["click"], "mutates": true },
+        { "name": "Notes shortcut", "selectors": [{ "text": "\ue90b" }], "actions": ["click"] },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "activity-form",
+      "title": "Add activity",
+      "entry": { "from": "home", "selectors": [{ "text": "Activity" }] },
+      "scroll": {
+        "selectors": [{ "path": "root/0/0/0/0/0/0/0/0/0/0/0/0/0/0/0/1/1/1" }],
+        "actions": ["scroll-forward", "scroll-backward"],
+        "notes": "Horizontal activity-type row. Re-inspect before path use."
+      },
+      "controls": [
+        { "name": "Start Time", "selectors": [{ "id": "activitiesTracking_setStartTime" }], "actions": ["click"] },
+        { "name": "Bath", "selectors": [{ "text": "Bath" }], "actions": ["click"] },
+        { "name": "Tummy time", "selectors": [{ "text": "Tummy time" }], "actions": ["click"] },
+        { "name": "Story time", "selectors": [{ "text": "Story time" }], "actions": ["click"] },
+        { "name": "Screen time", "selectors": [{ "text": "Screen time" }], "actions": ["click"] },
+        { "name": "Skin to skin", "selectors": [{ "text": "Skin to skin" }], "actions": ["click"] },
+        { "name": "Outdoor play", "selectors": [{ "text": "Outdoor play" }], "actions": ["click"], "notes": "Revealed by scrolling the activity-type row." },
+        { "name": "Indoor play", "selectors": [{ "text": "Indoor play" }], "actions": ["click"], "notes": "Revealed by scrolling the activity-type row." },
+        { "name": "Brush teeth", "selectors": [{ "text": "Brush teeth" }], "actions": ["click"], "notes": "Revealed by scrolling the activity-type row." },
+        { "name": "Duration", "selectors": [{ "id": "activitiesTracking_manual_set_duration" }], "actions": ["click"] },
+        { "name": "Notes", "selectors": [{ "id": "ion-textarea-5" }], "actions": ["set-text", "focus"] },
+        { "name": "Switch to timer", "selectors": [{ "text": "Switch to timer" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "id": "activitiesTracking_footer_saveButton" }], "actions": ["click"], "mutates": true },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "duration-picker",
+      "title": "Duration picker",
+      "entry": { "from": "activity-form or nursing-manual", "selectors": [{ "id": "activitiesTracking_manual_set_duration" }, { "id": "feed_manual_set_duration" }] },
+      "controls": [
+        { "name": "Hours wheel", "selectors": [], "actions": ["click"], "notes": "Wheel values are individual clickable rows such as 04, 05 ...; inspect and click the exact value." },
+        { "name": "Minutes wheel", "selectors": [], "actions": ["click"], "notes": "Wheel values are individual clickable rows such as 55, 56 ...; inspect and click the exact value." },
+        { "name": "Cancel", "selectors": [{ "text": "Cancel" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "text": "Save" }], "actions": ["click"], "mutates": true }
+      ]
+    },
+    {
+      "id": "time-picker",
+      "title": "Date/time picker",
+      "entry": { "from": "sleep-form or temperature-form", "selectors": [{ "text": "Set time" }, { "id": "temperature_setDateTime" }] },
+      "controls": [
+        { "name": "Date wheel", "selectors": [], "actions": ["click"], "notes": "Rows include labels such as Fri Oct 2 and a Today row; inspect and click the exact date." },
+        { "name": "Hour wheel", "selectors": [], "actions": ["click"], "notes": "Hour rows are individual clickable views; inspect and click the exact hour." },
+        { "name": "Minute wheel", "selectors": [], "actions": ["click"], "notes": "Minute rows are individual clickable views; inspect and click the exact minute." },
+        { "name": "AM/PM", "selectors": [{ "text": "AM" }, { "text": "PM" }], "actions": ["click"] },
+        { "name": "Cancel", "selectors": [{ "text": "Cancel" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "text": "Save" }], "actions": ["click"], "mutates": true }
+      ]
+    },
+    {
+      "id": "milestones",
+      "title": "Add milestone",
+      "entry": { "from": "home", "selectors": [{ "text": "Milestones" }] },
+      "controls": [
+        { "name": "All filter", "selectors": [{ "text": "All" }], "actions": ["click"] },
+        { "name": "Age filter", "selectors": [{ "text": "For current child's age" }], "actions": ["click"], "notes": "Label contains the current child's name; inspect first." },
+        { "name": "Custom filter", "selectors": [{ "text": "Custom" }], "actions": ["click"] },
+        { "name": "Milestone row", "selectors": [{ "text": "milestone label" }], "actions": ["click"], "notes": "Labels are dynamic and grouped by Language/Cognitive/Movement/Memory." },
+        { "name": "Close", "selectors": [{ "text": "\ue909" }], "actions": ["click"] }
+      ]
+    },
+    {
+      "id": "milestone-add",
+      "title": "Add milestone detail",
+      "entry": { "from": "milestones", "selectors": [{ "text": "milestone label" }] },
+      "controls": [
+        { "name": "Date", "selectors": [{ "text": "Date Today" }], "actions": ["click"] },
+        { "name": "Notes", "selectors": [{ "id": "ion-textarea-12" }], "actions": ["set-text", "focus"] },
+        { "name": "Add photo", "selectors": [{ "text": "Add photo" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "id": "milestonesTracking_footer_saveButton" }], "actions": ["click"], "mutates": true },
+        { "name": "Back", "selectors": [], "actions": ["back"], "notes": "No in-app close button was visible; global BACK returned to Home in the captured flow." }
+      ]
+    },
+    {
+      "id": "customize-home",
+      "title": "Customize home categories",
+      "entry": { "from": "home", "selectors": [{ "id": "cats" }] },
+      "scroll": {
+        "selectors": [{ "path": "root/0/0/0/0/0/0/0/0/0/0/0/0/2/1" }],
+        "actions": ["scroll-forward", "scroll-backward"]
+      },
+      "controls": [
+        { "name": "Contractions switch", "selectors": [{ "text": "Contractions" }], "actions": ["click"], "notes": "Switch labels are the category names." },
+        { "name": "Sleep switch", "selectors": [{ "text": "Sleep" }], "actions": ["click"] },
+        { "name": "Nursing switch", "selectors": [{ "text": "Nursing" }], "actions": ["click"] },
+        { "name": "Bottle switch", "selectors": [{ "text": "Bottle" }], "actions": ["click"] },
+        { "name": "Solids switch", "selectors": [{ "text": "Solids" }], "actions": ["click"] },
+        { "name": "Diaper switch", "selectors": [{ "text": "Diaper" }], "actions": ["click"] },
+        { "name": "Potty switch", "selectors": [{ "text": "Potty" }], "actions": ["click"] },
+        { "name": "Pumping switch", "selectors": [{ "text": "Pumping" }], "actions": ["click"] },
+        { "name": "Milestones switch", "selectors": [{ "text": "Milestones" }], "actions": ["click"] },
+        { "name": "Medicine switch", "selectors": [{ "text": "Medicine" }], "actions": ["click"] },
+        { "name": "Activity switch", "selectors": [{ "text": "Activity" }], "actions": ["click"] },
+        { "name": "Growth switch", "selectors": [{ "text": "Growth" }], "actions": ["click"] },
+        { "name": "Temperature switch", "selectors": [{ "text": "Temperature" }], "actions": ["click"] },
+        { "name": "Save", "selectors": [{ "id": "modCategories_saveButton" }], "actions": ["click"], "mutates": true }
+      ]
+    }
+  ],
+  "limitations": [
+    "Private-use icon glyphs (close, back, notes and similar) may not survive shell text transport. Prefer a stable id or a captured path for those controls; the node path still points at the icon button.",
+    "The bridge verifies the focused Huckleberry package/task and enrolled Android user, not the selected child. Confirm the intended test app/profile before acting; actions remain explicit and at-most-once.",
+    "Selection-wheel controls (bottle type, weight/head, temperature slider, duration/hour-minute scrollers) expose few or no option text nodes. Use visual evidence and re-inspect after each scroll; do not guess option values.",
+    "The Reports Week view can exceed the bridge reply limit. A truncated/timeout reply is not evidence that the click failed.",
+    "Paths are capture-specific. Ids and unique text labels are preferred; re-inspect before any path action.",
+    "Global BACK is mapped for recovery, but explicit close/back controls are preferred. From a root page BACK can leave Huckleberry.",
+    "This catalog does not verify Firebase payloads. Use the parity workflow and an authorized observer before saving, deleting or starting timers."
+  ]
+}

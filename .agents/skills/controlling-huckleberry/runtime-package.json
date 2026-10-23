@@ -1,0 +1,8 @@
+{
+  "name": "controlling-huckleberry",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12" },
+  "dependencies": { "playwright-core": "1.64.1" }
+}

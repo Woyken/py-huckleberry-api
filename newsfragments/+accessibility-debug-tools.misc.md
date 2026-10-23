@@ -1,0 +1,1 @@
+Add repository-only Android accessibility debugging tools with a shared Windows ADB and Termux Shizuku controller, an opt-in debugging bridge, and guarded Home/Reports navigation. These tools are separate from the Python API package and do not ship an APK in its releases.

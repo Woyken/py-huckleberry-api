@@ -32,28 +32,55 @@ class TestGrowthTracking:
         assert "lastGrowthEntry" in data.get("prefs", {})
 
     async def test_log_growth_imperial(self, api: HuckleberryAPI, child_uid: str) -> None:
-        """Test logging supported imperial growth measurements."""
+        """Verify this measurement without assuming exclusive ownership of latest."""
+        # Keep microseconds to identify this intended entry, rather than another
+        # test's same-second measurement in the shared integration account.
+        start_time = datetime.now(timezone.utc)
+        db = await api._get_firestore_client()
+        health_ref = db.collection("health").document(child_uid)
+        query = health_ref.collection("data").where(filter=firestore.FieldFilter("start", "==", start_time.timestamp()))
+        existing_ids = {snapshot.id for snapshot in await query.get()}
+
         await api.log_growth(
             child_uid,
-            start_time=datetime.now(timezone.utc).replace(microsecond=0),
+            start_time=start_time,
             weight=11.5,
             head=13.8,
             units="imperial",
         )
-        await asyncio.sleep(1)
 
-        db = await api._get_firestore_client()
-        health_doc = await db.collection("health").document(child_uid).get()
+        created = [snapshot for snapshot in await query.get() if snapshot.id not in existing_ids]
+        assert len(created) == 1
+        growth_data = created[0].to_dict()
+        assert growth_data is not None
+        assert growth_data["mode"] == "growth"
+        assert growth_data["start"] == start_time.timestamp()
+        assert growth_data["weight"] == 11.5
+        assert growth_data["weightUnits"] == "lbs.oz"
+        assert growth_data["head"] == 13.8
+        assert growth_data["headUnits"] == "hin"
+        assert "height" not in growth_data
+        assert "heightUnits" not in growth_data
+
+        health_doc = await health_ref.get()
         data = health_doc.to_dict()
         assert data is not None
         assert "lastGrowthEntry" in data.get("prefs", {})
         last_growth = data["prefs"]["lastGrowthEntry"]
-        assert last_growth["weight"] == 11.5
-        assert last_growth["weightUnits"] == "lbs.oz"
-        assert last_growth["head"] == 13.8
-        assert last_growth["headUnits"] == "hin"
-        assert "height" not in last_growth
-        assert "heightUnits" not in last_growth
+        if last_growth["_id"] == created[0].id:
+            assert last_growth["weight"] == 11.5
+            assert last_growth["weightUnits"] == "lbs.oz"
+            assert last_growth["head"] == 13.8
+            assert last_growth["headUnits"] == "hin"
+            assert "height" not in last_growth
+            assert "heightUnits" not in last_growth
+        else:
+            # log_growth always writes history, but intentionally does not replace
+            # a newer event. Another client's newer measurement is valid too.
+            # An older/different summary is still a failure, not silently ignored.
+            assert last_growth["start"] > start_time.timestamp(), (
+                "Latest growth is neither this entry nor a newer event"
+            )
 
     async def test_get_latest_growth(self, api: HuckleberryAPI, child_uid: str) -> None:
         """Test retrieving latest growth data."""

@@ -1,0 +1,1 @@
+Verify the live imperial growth test's exact history row instead of assuming every write becomes the shared account's latest summary. Retain strict unit/value checks and add deterministic regression coverage for absent, older, equal-time and newer existing summaries without changing API behavior.

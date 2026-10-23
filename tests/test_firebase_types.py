@@ -1,6 +1,7 @@
 """Unit tests for strict Firebase schema models."""
 
-from pydantic import TypeAdapter
+import pytest
+from pydantic import TypeAdapter, ValidationError
 
 from huckleberry_api.firebase_types import (
     FirebaseActivityDocumentData,
@@ -20,6 +21,7 @@ from huckleberry_api.firebase_types import (
     FirebaseLastGrowthData,
     FirebaseLastMedicationData,
     FirebaseLastPumpData,
+    FirebaseLastTemperatureData,
     FirebaseMedicationData,
     FirebasePumpDocumentData,
     FirebasePumpIntervalData,
@@ -167,7 +169,8 @@ def test_last_medication_accepts_live_multientry_key() -> None:
     assert model.multientry_key == "second-medicine-id"
 
 
-def test_temperature_models_accept_distinct_live_history_and_latest_payloads() -> None:
+@pytest.mark.parametrize("multientry_key", [None, "temperature-entry-key"])
+def test_temperature_models_accept_distinct_live_history_and_latest_payloads(multientry_key: str | None) -> None:
     """Temperature history and latest-pref rows have different live shapes."""
     history = FirebaseTemperatureData.model_validate(
         {
@@ -192,7 +195,7 @@ def test_temperature_models_accept_distinct_live_history_and_latest_payloads() -
                     "offset": -120.0,
                     "start": 1773640784.705,
                     "lastUpdated": 1773640786.119,
-                    "multientry_key": None,
+                    "multientry_key": multientry_key,
                 }
             }
         }
@@ -202,6 +205,26 @@ def test_temperature_models_accept_distinct_live_history_and_latest_payloads() -
     assert health.prefs is not None
     assert health.prefs.lastTemperature is not None
     assert health.prefs.lastTemperature.id_ == "1773640786119-a762313500b521fee51f"
+    assert health.prefs.lastTemperature.multientry_key == multientry_key
+
+
+@pytest.mark.parametrize("multientry_key", [42, 1.5, True, {}, []])
+def test_last_temperature_multientry_key_remains_strict(multientry_key: object) -> None:
+    """The live string-or-null field must not coerce other payload types."""
+    with pytest.raises(ValidationError, match="multientry_key"):
+        FirebaseLastTemperatureData.model_validate(
+            {
+                "_id": "temperature-entry-id",
+                "type": "health",
+                "mode": "temperature",
+                "amount": 37.2,
+                "units": "C",
+                "offset": 0,
+                "start": 1773640784.705,
+                "lastUpdated": 1773640786.119,
+                "multientry_key": multientry_key,
+            }
+        )
 
 
 def test_batched_temperature_rows_accept_missing_last_updated() -> None:

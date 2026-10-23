@@ -1,0 +1,47 @@
+name: Accessibility Debug Tools
+
+on:
+  pull_request:
+    paths:
+      - "tools/huckleberry-control/**"
+      - ".github/workflows/debug-tools.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/huckleberry-control/**"
+      - ".github/workflows/debug-tools.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  controller:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm --prefix tools/huckleberry-control test
+
+  compile-debug-helper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install compile SDK tools
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+          log-accepted-android-sdk-licenses: "false"
+      - name: Compile unsigned developer helper (not published)
+        run: node tools/huckleberry-control/scripts/build-bridge.mjs
