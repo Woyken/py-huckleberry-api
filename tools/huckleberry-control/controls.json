@@ -270,12 +270,22 @@
     {
       "id": "bottle-amount-numpad",
       "title": "Bottle amount numpad",
-      "entry": { "from": "bottle-form", "selectors": [{ "id": "feed_bottle_set_amount" }] },
+      "entry": { "from": "bottle-form", "selectors": [{ "text": "Volume (ml)" }] },
       "controls": [
-        { "name": "Digits", "selectors": [{ "text": "0-9" }], "actions": ["click"], "notes": "Each digit is a separate clickable TextView. This ml keypad has no decimal key in the captured state." },
+        { "name": "Digit 1", "selectors": [{ "text": "1" }], "actions": ["click"] },
+        { "name": "Digit 2", "selectors": [{ "text": "2" }], "actions": ["click"] },
+        { "name": "Digit 3", "selectors": [{ "text": "3" }], "actions": ["click"] },
+        { "name": "Digit 4", "selectors": [{ "text": "4" }], "actions": ["click"] },
+        { "name": "Digit 5", "selectors": [{ "text": "5" }], "actions": ["click"] },
+        { "name": "Digit 6", "selectors": [{ "text": "6" }], "actions": ["click"] },
+        { "name": "Digit 7", "selectors": [{ "text": "7" }], "actions": ["click"] },
+        { "name": "Digit 8", "selectors": [{ "text": "8" }], "actions": ["click"] },
+        { "name": "Digit 9", "selectors": [{ "text": "9" }], "actions": ["click"] },
+        { "name": "Digit 0", "selectors": [{ "path": "root/0/0/0/0/0/0/0/0/0/0/0/0/0/1/1/12" }], "actions": ["click"], "notes": "The zero display is duplicated; this path targets the clickable key. Re-inspect before use because paths are capture-specific." },
         { "name": "Cancel", "selectors": [{ "text": "Cancel" }], "actions": ["click"] },
         { "name": "Save", "selectors": [{ "text": "Save" }], "actions": ["click"], "mutates": true }
-      ]
+      ],
+      "limitations": ["This ml keypad has no decimal key in the captured state. Zero appears twice in the tree; the clickable key is mapped by path."]
     },
     {
       "id": "nursing-form",

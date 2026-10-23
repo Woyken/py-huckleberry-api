@@ -91,6 +91,31 @@ test('page model reports live presence without pretending a page is current', ()
   assert.equal(sleep.selectors.find((selector) => selector.kind === 'id').matches, 1);
 });
 
+test('bottle amount numpad detects the modal and resolves its zero key', () => {
+  const numpad = {
+    selectedTab: null, truncated: false, guardComplete: true,
+    nodes: [
+      { id: '', text: 'Volume (ml)', path: 'root/0', visible: true },
+      { id: '', text: '0', path: 'root/1', visible: true, clickable: false },
+      { id: '', text: '0', path: 'root/0/0/0/0/0/0/0/0/0/0/0/0/0/1/1/12', visible: true, clickable: true },
+      { id: '', text: '5', path: 'root/3', visible: true, clickable: true },
+      { id: '', text: 'Cancel', path: 'root/4', visible: true, clickable: true },
+      { id: '', text: 'Save', path: 'root/5', visible: true, clickable: true },
+    ],
+  };
+  const page = getPage('bottle-amount-numpad');
+  assert.equal(pageModel(page, numpad).entryPresent, true);
+  assert.deepEqual(resolveControl(page, 'Digit 0', numpad).target,
+    { id: '', text: '', path: 'root/0/0/0/0/0/0/0/0/0/0/0/0/0/1/1/12' });
+  assert.deepEqual(resolveControl(page, 'Digit 5', numpad).target,
+    { id: '', text: '5', path: '' });
+  const form = {
+    selectedTab: null, truncated: false, guardComplete: true,
+    nodes: [{ id: 'feed_bottle_set_amount', text: '0 ml', path: 'root/0', visible: true }],
+  };
+  assert.equal(pageModel(page, form).entryPresent, false);
+});
+
 test('selector resolution prefers a unique id and refuses drift or ambiguity', () => {
   const home = getPage('home');
   const resolved = resolveControl(home, 'Sleep card', snapshot);
