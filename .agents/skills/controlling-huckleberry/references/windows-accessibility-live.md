@@ -35,7 +35,7 @@ After the first case was fully released, a separate explicitly planned fresh cas
 The complete fresh live case passed:
 
 - **One launcher request**, **two readback attempts**: first transient refusal, then a complete correctly enrolled Home observation.
-- Home → Reports → Home, each dispatched once through the common controller and independently read back with child proof, complete guard scan and no truncation.
+- Home → Reports → Home, each dispatched once through the common controller and independently read back with the then-required child proof, complete guard scan and no truncation.
 - Verified-action replay suppressed and Home unchanged.
 - Explicit final release and server-reported vacant bridge owner.
 

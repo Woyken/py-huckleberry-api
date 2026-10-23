@@ -6,20 +6,20 @@ import { join } from 'node:path';
 import { Controller, saveEvidence } from '../lib/client.mjs';
 
 function controller() {
-  return new Controller({ transport: 'rish', androidUser: 12, expectedChild: 'Test Child' }, { ready: true });
+  return new Controller({ transport: 'rish', androidUser: 12 }, { ready: true });
 }
 
 test('library users receive the same profile validation as the CLI', () => {
-  assert.throws(() => new Controller({ transport: 'rish', androidUser: 0, expectedChild: 'Test Child' }), /personal/);
-  assert.throws(() => new Controller({ transport: 'auto', androidUser: 12, expectedChild: 'Test Child' }), /transport/);
+  assert.throws(() => new Controller({ transport: 'rish', androidUser: 0 }), /personal/);
+  assert.throws(() => new Controller({ transport: 'auto', androidUser: 12 }), /transport/);
 });
 
 test('low-level public requests cannot bypass profile/task enrollment', async () => {
   const client = controller();
   client.transport.capture = async () => { throw new Error('Must not execute'); };
   client.identity = async () => ({ user: 12, task: 123 });
-  await assert.rejects(client.request({ method: 'claim', session: 'session', user: 0, child: 'Test Child' }), /enrolled profile/);
-  await assert.rejects(client.request({ method: 'tree', session: 'session', user: 12, child: 'Test Child', task: 999 }), /current task/);
+  await assert.rejects(client.request({ method: 'claim', session: 'session', user: 0 }), /enrolled profile/);
+  await assert.rejects(client.request({ method: 'tree', session: 'session', user: 12, task: 999 }), /current task/);
 });
 
 function launchHarness() {
@@ -39,7 +39,7 @@ function launchHarness() {
 
 test('successful launch dispatches and observes once without resetting the screen', async () => {
   const h = launchHarness();
-  const snapshot = { status: 'ok', selectedTab: 'reports', childVerified: true };
+  const snapshot = { status: 'ok', selectedTab: 'reports' };
   h.client.inspect = async () => { h.calls.observations++; return snapshot; };
   assert.equal(await h.client.launch('session'), snapshot);
   assert.equal(h.launches(), 1);
@@ -50,7 +50,7 @@ test('successful launch dispatches and observes once without resetting the scree
 
 test('late accessibility task cache retries observation without relaunching', async () => {
   const h = launchHarness();
-  const snapshot = { status: 'ok', selectedTab: 'home', childVerified: true };
+  const snapshot = { status: 'ok', selectedTab: 'home' };
   h.client.inspect = async () => {
     if (++h.calls.observations === 1) throw new Error('Bridge refused request: focused_task_not_found');
     return snapshot;
@@ -106,18 +106,17 @@ test('one shared workflow dispatches once and verifies the destination', async (
   const client = controller();
   const requests = [];
   let observations = 0;
-  client.inspect = async () => ({ task: 123, childVerified: true, selectedTab: observations++ ? 'reports' : 'home', identity: { user: 12 } });
+  client.inspect = async () => ({ task: 123, selectedTab: observations++ ? 'reports' : 'home', identity: { user: 12 } });
   client.request = async request => { requests.push(request); return { protocol: 1, status: 'dispatched' }; };
   const result = await client.navigate('session', 'home', 'reports', 'action_unique');
   assert.equal(result.status, 'verified');
   assert.equal(requests.length, 1);
   assert.equal(requests[0].user, 12);
-  assert.equal(requests[0].child, 'Test Child');
 });
 
-test('missing child or incorrect source does not dispatch', async () => {
+test('incorrect source tab does not dispatch', async () => {
   const client = controller();
-  client.inspect = async () => ({ task: 123, childVerified: false, selectedTab: 'home' });
+  client.inspect = async () => ({ task: 123, selectedTab: 'reports' });
   client.request = async () => { throw new Error('Must not dispatch'); };
   await assert.rejects(client.navigate('session', 'home', 'reports', 'action_unique'), /preconditions/);
 });
@@ -127,7 +126,7 @@ test('post-dispatch failures are never retried with another action ID', async ()
   let observations = 0, dispatches = 0;
   client.inspect = async () => {
     if (observations++) throw new Error('connection lost');
-    return { task: 123, childVerified: true, selectedTab: 'home' };
+    return { task: 123, selectedTab: 'home' };
   };
   client.request = async () => { dispatches++; return { status: 'dispatched' }; };
   await assert.rejects(client.navigate('session', 'home', 'reports', 'action_unique'), /connection lost/);
@@ -138,7 +137,7 @@ test('duplicate/uncertain replies stop rather than generating another request', 
   for (const status of ['duplicate_suppressed', 'uncertain', 'request_expired']) {
     const client = controller();
     let count = 0;
-    client.inspect = async () => ({ task: 123, childVerified: true, selectedTab: 'home' });
+    client.inspect = async () => ({ task: 123, selectedTab: 'home' });
     client.request = async () => { count++; return { status }; };
     await assert.rejects(client.navigate('session', 'home', 'reports', 'action_unique'), /not repeated/);
     assert.equal(count, 1);

@@ -1,12 +1,11 @@
 import { readFile } from 'node:fs/promises';
-import { childName, integer } from './protocol.mjs';
+import { integer } from './protocol.mjs';
 
 export function validateProfile(value) {
   if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error('Profile must be an object');
-  const keys = ['transport', 'serial', 'avd', 'androidUser', 'expectedChild', 'executable'];
+  const keys = ['transport', 'serial', 'avd', 'androidUser', 'executable'];
   if (Object.keys(value).some(key => !keys.includes(key))) throw new Error('Unknown profile field');
   integer(value.androidUser, 'androidUser');
-  childName(value.expectedChild);
   if (value.executable !== undefined && (typeof value.executable !== 'string' || !value.executable.trim() || /[\x00-\x1f]/.test(value.executable))) {
     throw new Error('Invalid executable path');
   }

@@ -19,7 +19,7 @@ public final class ProbeActivity extends Activity {
         text.setText("Huckleberry developer debugging tool\n\n"
             + "This is not a Huckleberry product or API client. Enable this service only for an authorized debugging session.\n\n"
             + "Android shell may claim a session, read the enrolled Huckleberry task's accessibility nodes, "
-            + "and perform semantic node actions (click, long-click, set text, scroll, focus, select, back) for the configured test child. "
+            + "and perform semantic node actions (click, long-click, set text, scroll, focus, select, back) in the enrolled test app. "
             + "Actions can change app or backend state. It cannot take screenshots or inject coordinate gestures. "
             + "It has no network permission. Password fields are not exported.\n\n"
             + "Private session and consumed-action records persist to prevent accidental replay. "

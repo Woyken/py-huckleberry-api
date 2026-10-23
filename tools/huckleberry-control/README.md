@@ -15,8 +15,9 @@ tooling.
 Choose one backend before an investigation. There is no automatic fallback,
 generic `--backend` wrapper or mixed-driver workflow. The CDP host lease and
 this bridge's device lease are independent, not unified cross-driver locking;
-do not operate the same app through both tools concurrently. Protocol 2 adds
-semantic node actions; the skill routes to the common CLI rather than copying it.
+do not operate the same app through both tools concurrently. Protocol 3 retains
+the semantic node actions and no longer requires child-name verification; the
+skill routes to the common CLI rather than copying it.
 
 ## Supported scope
 
@@ -25,13 +26,10 @@ semantic node actions; the skill routes to the common CLI rather than copying it
 - Semantic node actions: `click`, `long-click`, `set-text`, `scroll-forward`,
   `scroll-backward`, `focus`, `select` and `back`, plus Home ↔ Reports navigation.
   Id/text selectors resolve to the nearest clickable ancestor; paths are also
-  supported but are capture-specific. Before data-changing actions, inspect a
-  Home/Reports screen until `childVerified` is true; the bridge caches that proof
-  for the exact task because forms hide the child label. A new claim or release,
-  observing another child or the Child tab, clicking the child switcher, an
-  incomplete scan (including a `navigate` guard scan), or a new Huckleberry task clears it;
-  a later guarded action returns `child_not_verified` until a verified
-  Home/Reports screen is inspected again.
+  supported but are capture-specific. The bridge verifies the focused Huckleberry
+  package/task and the enrolled Android user; it does not verify which child is
+  selected. Confirm the intended test app/profile before acting; actions remain
+  explicit and at-most-once.
 - A machine-readable control/selector map in `controls.json`. It covers Home,
   settings, child profile, reports, sleep, feeding, solids, diaper/potty, pump,
   medicine, growth, temperature, activity, milestones and home customization.
@@ -40,8 +38,8 @@ semantic node actions; the skill routes to the common CLI rather than copying it
   route, and `page-act` resolves a named control (or `page.cN` ref) to one
   semantic action. The same layer is exported as `PageObject` for stateful
   `observe()`/`act(ref)`/`close()` use. A page model reports `present`, `unique`,
-  `entryPresent` and `childVerified`; it does not claim the screen is the page
-  just because the catalog entry exists.
+  `entryPresent` and guard state; it does not claim the screen is the page just
+  because the catalog entry exists.
 - No screenshots, coordinate gestures, generic IME/keypad injection or network
   access. Actions can change app/backend state; Save/delete/timer use requires the
   parity safeguards and an authorized observer. Successful UI action does not
@@ -136,13 +134,13 @@ for this path.
 
 Copy `profiles/windows.example.json` or `profiles/termux.example.json` to a new
 local `.json` file and replace its placeholders. Non-example profiles in that
-directory are ignored. Both `androidUser` and `expectedChild` are mandatory.
+directory are ignored. `androidUser` is mandatory.
 
-- Windows: choose the existing emulator serial, exact AVD name, Android user and
-  authorized test child. Never point this adapter at a physical phone.
-- Termux: set the actual **managed profile** ID from Android user metadata and
-  the exact test-child name. The sample user ID is illustrative, not auto-detected
-  or a machine default. Keep the personal Huckleberry installation untouched.
+- Windows: choose the existing emulator serial, exact AVD name and Android user.
+  Never point this adapter at a physical phone.
+- Termux: set the actual **managed profile** ID from Android user metadata. The
+  sample user ID is illustrative, not auto-detected or a machine default. Keep
+  the personal Huckleberry installation untouched.
 - Optional `executable` selects an explicit ADB/rish path; native Windows defaults
   to `adb.exe`, other hosts to `adb`, and Termux mode to `rish`.
 
@@ -187,8 +185,8 @@ node "$hb" release --profile "$profile" --session "$session"
 ```
 
 `launch` uses Android's launcher API rather than denied `am --user` variants. It
-requires an existing matching claim and never logs in or chooses a child for you.
-If the child is wrong, stop and have the user choose the authorized child manually.
+requires an existing matching claim and never logs in or selects a child for you.
+If the app/profile is wrong, stop and have the user select the intended test account manually.
 
 After its one launcher request, `launch` may repeat the fresh inspection up to
 three times only for the transient `focused_task_not_found` bridge refusal seen
@@ -232,7 +230,7 @@ await controller.release(sessionId); // only after reconciling the action
 
 `page.rawAct({ acknowledgeUnmapped: true, ...request })` is the explicit escape
 hatch for a control that is not in the catalog. It still uses the bridge's
-focus/task/child guards; it is not permission to use coordinates or screenshots.
+focus/task guards; it is not permission to use coordinates or screenshots.
 `page.release()` closes the local page object and releases the device claim.
 
 If `page`, `page-act`, or `PageObject.act` reports a missing, ambiguous or stale
@@ -264,16 +262,16 @@ Password fields are redacted; other editable values, child/UI text and identity 
   from using Android. Focus/refresh checks reduce, but do not eliminate, races
   between observation and dispatch. Do not operate the app manually during a
   command, and never interpret these guards as exactly-once delivery or a sandbox.
-- Navigation requires a fully scanned guard tree, the exact configured child
-  button, the selected source tab and one visible/enabled target. Semantic actions
-  require the exact focused task/window and one visible, unambiguous target. There
+- Navigation requires a fully scanned guard tree, the selected source tab and one
+  visible/enabled target. Semantic actions require the exact focused task/window
+  and one visible, unambiguous target. There
   is no coordinate or arbitrary-first-match fallback. Long histories can
   legitimately exceed the scan limit and cause refusal. Do not run actions while a
   human is using the app; inspect again after any focus change.
 - Action IDs are atomically consumed and fsynced on device **before dispatch**,
-  including a directory fsync. Protocol 2 also checks the protocol-1 journal, so
-  IDs remain consumed across the upgrade, release, host loss and app restarts.
-  The protocol-2 claim state is new; re-check ownership after upgrading. An
+  including a directory fsync. Protocol 3 also checks the protocol-2 and protocol-1
+  journals, so IDs remain consumed across upgrades, release, host loss and app restarts.
+  The protocol-3 claim state is new; re-check ownership after upgrading. An
   uncertain/failed action is not replayed. This is at-most-once dispatch, not
   guaranteed delivery or exactly-once UI/backend work.
 - Missing/incomplete output is never success. Rish responses are captured in
@@ -334,7 +332,7 @@ common CLI. This package is private, dependency-free and outside
 Historical common-controller acceptance covered building/signing the helper, explicit update of the
 consented helper, claiming/launching/inspecting the enrolled managed-profile app,
 Home → Reports → Home, duplicate suppression, rejecting another session and a
-changed child, and releasing without erasing consumed IDs. No screenshots,
+changed child under the earlier guard, and releasing without erasing consumed IDs. No screenshots,
 tracking writes or profile-policy changes were used. This historical Termux evidence
 is not a fresh runner pass or a substitute for the separate Windows live record.
 
@@ -347,7 +345,7 @@ The exact earlier readback failure is unknown; a later focus refusal is not proo
 of its cause. See the [versioned acceptance evidence record](../../.agents/skills/controlling-huckleberry/references/acceptance-status.md)
 for provenance and boundaries. Historical navigation, timeout/recovery and CI
 success must not be combined into a passed fresh runner round-trip or parity claim.
-Protocol 2 control mapping is separate from the runner.
+The earlier protocol-2 control mapping is separate from the runner.
 
 The [Windows accessibility live record](../../.agents/skills/controlling-huckleberry/references/windows-accessibility-live.md)
 documents fresh native Windows/Android 14 acceptance after user-enabled service
@@ -360,4 +358,5 @@ API-35 default build. No tracking writes, screenshots or backend observer were u
 This does not change the separate Termux full-runner uncertainty. Protocol 2 was
 subsequently exercised live on the enrolled Termux work profile for control
 mapping (inspection, scroll, click, set-text and back) without saving records;
-that is selector evidence, not a new formal acceptance pass.
+that is selector evidence, not a new formal acceptance pass. Protocol 3 changes
+the claim and snapshot field set and has not been live-accepted.

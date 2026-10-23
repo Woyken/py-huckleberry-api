@@ -9,7 +9,7 @@ import { ACTIONS, identifier, TABS } from './lib/protocol.mjs';
 const HELP = `Huckleberry accessibility debugging tool (not part of the API product)
   node tools/huckleberry-control/cli.mjs <command> --profile <local.json>
   status                                  Verify target and bridge connection
-  claim --session <id>                    Claim target with configured user/child
+  claim --session <id>                    Claim target with configured Android user
   launch --session <id>                   Open enrolled Huckleberry via launcher API
   inspect --session <id> [--out <new.json>] Read accessibility nodes; no screenshots
   pages                                   List catalog pages; no profile or device access
@@ -27,7 +27,7 @@ const HELP = `Huckleberry accessibility debugging tool (not part of the API prod
 
 Actions are semantic accessibility node actions, not coordinates or screenshots.
 They can change app/backend state. Every action requires a unique action id and is
-never retried automatically. Verify the intended child/profile before acting.
+never retried automatically. Verify the intended profile/app before acting.
 Page objects resolve catalog selectors against a fresh snapshot; if a control has
 drifted or is ambiguous, use inspect/act and propose a controls.json fix.
 Enable the helper service manually. No AVD boot, APK install or policy changes are automatic.`;

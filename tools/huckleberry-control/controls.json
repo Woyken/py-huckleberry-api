@@ -3,8 +3,8 @@
   "capturedAt": "2026-10-22",
   "package": "com.huckleberry_labs.app",
   "appVersion": "0.9.313 (93130002)",
-  "bridgeProtocol": 2,
-  "scope": "Visible controls and selectors observed through the accessibility bridge on an enrolled work-profile test child. Actions describe the supported capability for the selector; not every control was individually clicked. This is UI control/selector evidence, not Firebase parity. Dynamic text (child name, timestamps, amounts, counts and saved item names) is described rather than copied from private data.",
+  "bridgeProtocol": 3,
+  "scope": "Visible controls and selectors observed through the accessibility bridge on an enrolled work-profile test account. Actions describe the supported capability for the selector; not every control was individually clicked. This is UI control/selector evidence, not Firebase parity. Dynamic text (child name, timestamps, amounts, counts and saved item names) is described rather than copied from private data.",
   "selectorPolicy": {
     "preference": ["id", "text", "path"],
     "notes": [
@@ -611,7 +611,7 @@
   ],
   "limitations": [
     "Private-use icon glyphs (close, back, notes and similar) may not survive shell text transport. Prefer a stable id or a captured path for those controls; the node path still points at the icon button.",
-    "Before click/long-click/set-text, inspect Home/Reports until childVerified is true. The bridge caches this for the exact task; claim/release or observing the Child tab clears it. Forms do not show the child label. A child_not_verified reply means re-verify, not retry blindly.",
+    "The bridge verifies the focused Huckleberry package/task and enrolled Android user, not the selected child. Confirm the intended test app/profile before acting; actions remain explicit and at-most-once.",
     "Selection-wheel controls (bottle type, weight/head, temperature slider, duration/hour-minute scrollers) expose few or no option text nodes. Use visual evidence and re-inspect after each scroll; do not guess option values.",
     "The Reports Week view can exceed the bridge reply limit. A truncated/timeout reply is not evidence that the click failed.",
     "Paths are capture-specific. Ids and unique text labels are preferred; re-inspect before any path action.",

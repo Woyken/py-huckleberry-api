@@ -1,7 +1,7 @@
 # Termux accessibility acceptance (UI-only)
 
 This is the Termux-owned acceptance slice for the shared `accessibility` route.
-It uses the existing `index.mjs` controller, protocol 2 and consented Android
+It uses the existing `index.mjs` controller, protocol 3 and consented Android
 bridge without copying transport/identity/selector logic or changing that protocol.
 It is a developer test, not a Huckleberry product or Firebase observer.
 
@@ -53,7 +53,7 @@ owner (even the supplied session ID), verifies foreground identity, claims a new
 session, reads a complete visible Home/Reports observation and releases only
 after successful verification. Claim/release is private debug metadata, not app
 UI input. No navigation, launch, install, screenshot, bridge action or tracking
-mutation is performed by default. An unknown tab, missing child, wrong evidence source or
+mutation is performed by default. An unknown tab, wrong evidence source or
 incomplete/truncated observation blocks acceptance.
 
 ## Explicit Home/Reports round-trip
@@ -116,18 +116,18 @@ Use the same assertions when reviewing the Windows agent's shared-backend
 acceptance, but **do not run this Termux-only runner with an ADB profile**:
 
 - **Offline/mock:** option/profile/capability refusal, existing-owner refusal,
-  missing/wrong child/focus/source tab, truncation, used action IDs, no release or
+  missing focus/source tab, truncation, used action IDs, no release or
   retry after uncertainty, and report sanitization. Ordinary `npm test` does not
   contact a device.
 - **Build:** explicitly selected SDK/native tools compile/sign the helper. This
   is not installation, service consent or live UI evidence.
 - **Live observation:** enrolled target identity, connected service, vacant claim,
-  exact child, complete visible evidence, known Home/Reports tab and release.
+  target identity, complete visible evidence, known Home/Reports tab and release.
 - **Live navigation:** all preceding conditions, unused retained IDs, Home →
   Reports → Home with independent postcondition observations, then release.
 - **Not established by this runner:** form actions, set-text/keypad behavior,
   Save/delete/timers, screenshots, a coordinated CDP/bridge lock, Firebase
-  persistence or app/API parity. Protocol 2 exposes semantic actions including
+  persistence or app/API parity. Protocol 3 exposes semantic actions including
   `set-text`, but acceptance of those actions is a separate UI-control exercise,
   not this navigation runner. No backend observer runs in this test.
 

@@ -1,4 +1,4 @@
-export const PROTOCOL = 2;
+export const PROTOCOL = 3;
 export const PACKAGE = 'com.huckleberry_labs.app';
 export const BRIDGE = 'dev.local.huckleberry.a11yprobe';
 export const URI = `content://${BRIDGE}`;
@@ -22,14 +22,6 @@ export function identifier(value, name = 'session', minimum = 3) {
   return value;
 }
 
-export function childName(value) {
-  if (typeof value !== 'string' || !value.trim() || value !== value.trim() || value.length > 128 || /[\x00-\x1f\x7f]/.test(value)) {
-    throw new Error('An explicit expectedChild is required');
-  }
-  if (/YOUR_|SET_ME/.test(value)) throw new Error('Replace the example profile placeholders first');
-  return value;
-}
-
 export function quote(value) {
   if (typeof value !== 'string' || value.includes('\0')) throw new Error('Invalid shell argument');
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -37,10 +29,10 @@ export function quote(value) {
 
 export function contentArguments(request) {
   const allowed = {
-    status: [], claim: ['session', 'user', 'child'], release: ['session'], 'action-status': ['session', 'action_id'],
-    tree: ['session', 'user', 'child', 'task'],
-    action: ['session', 'user', 'child', 'task', 'action_id', 'path', 'id', 'text', 'action', 'expect_id', 'expect_text', 'value'],
-    navigate: ['session', 'user', 'child', 'task', 'action_id', 'from', 'to'],
+    status: [], claim: ['session', 'user'], release: ['session'], 'action-status': ['session', 'action_id'],
+    tree: ['session', 'user', 'task'],
+    action: ['session', 'user', 'task', 'action_id', 'path', 'id', 'text', 'action', 'expect_id', 'expect_text', 'value'],
+    navigate: ['session', 'user', 'task', 'action_id', 'from', 'to'],
   };
   if (!Object.hasOwn(allowed, request.method)) throw new Error('Unsupported bridge method');
   for (const key of Object.keys(request)) {
@@ -52,7 +44,6 @@ export function contentArguments(request) {
     if (['id', 'text', 'path', 'expect_id', 'expect_text', 'value'].includes(key)) value = String(value ?? '');
     if (key === 'session' || key === 'action_id') value = identifier(value, key, key === 'action_id' ? 8 : 3);
     if (key === 'user' || key === 'task') value = integer(value, key, key === 'task' ? 1 : 0);
-    if (key === 'child') value = childName(value);
     if ((key === 'from' || key === 'to') && !Object.hasOwn(TABS, value)) throw new Error('Only Home/Reports navigation is supported');
     if (key === 'action' && !Object.hasOwn(ACTIONS, value)) throw new Error('Unsupported accessibility action');
     if (key === 'path' && value !== '' && !/^root(?:\/\d{1,4}){0,60}$/.test(value)) throw new Error('Invalid accessibility path');
@@ -87,7 +78,7 @@ export function requireOk(reply) {
 export function validateSnapshot(reply, expectedTask) {
   requireOk(reply);
   if (reply.task !== expectedTask || !Number.isInteger(reply.window) || !Array.isArray(reply.nodes)
-      || typeof reply.truncated !== 'boolean' || typeof reply.childVerified !== 'boolean'
+      || typeof reply.truncated !== 'boolean'
       || typeof reply.guardComplete !== 'boolean' || !['home', 'reports', 'child', null].includes(reply.selectedTab)) {
     throw new Error('Malformed accessibility snapshot');
   }

@@ -17,12 +17,12 @@ final class BridgeState {
     private final File directory;
     private final AtomicFile session;
     BridgeState(Context context) {
-        directory = new File(context.getFilesDir(), "bridge-protocol2");
+        directory = new File(context.getFilesDir(), "bridge-protocol3");
         if (!directory.isDirectory() && !directory.mkdir()) throw new IllegalStateException("state_unavailable");
         session = new AtomicFile(new File(directory, "session.json"));
     }
     static JSONObject reply(String status) throws Exception {
-        return new JSONObject().put("protocol", 2).put("status", status);
+        return new JSONObject().put("protocol", 3).put("status", status);
     }
     static String id(String value, int minimum) {
         if (value == null || value.length() < minimum || value.length() > 80
@@ -33,7 +33,7 @@ final class BridgeState {
         if (!session.getBaseFile().exists()) return null;
         JSONObject value = new JSONObject(new String(session.readFully(), StandardCharsets.UTF_8));
         id(value.getString("session"), 3);
-        if (value.getInt("user") < 0 || value.getString("child").isEmpty()) throw new IllegalStateException("corrupt_session");
+        if (value.getInt("user") < 0) throw new IllegalStateException("corrupt_session");
         return value;
     }
     JSONObject status() throws Exception {
@@ -45,17 +45,16 @@ final class BridgeState {
                     .put("scroll-forward").put("scroll-backward").put("focus").put("select").put("back"))
                 .put("setText", true).put("trackingWrites", false).put("screenshots", false).put("gestures", false));
     }
-    JSONObject claim(String name, int user, String child) throws Exception {
+    JSONObject claim(String name, int user) throws Exception {
         id(name, 3);
-        if (user < 0 || child == null || child.trim().isEmpty() || !child.equals(child.trim())
-                || child.length() > 128 || child.matches("(?s).*[\\x00-\\x1f\\x7f].*")) throw new IllegalArgumentException("invalid_target");
+        if (user < 0) throw new IllegalArgumentException("invalid_target");
         JSONObject current = owner();
         if (current != null) {
             if (!name.equals(current.getString("session"))) return reply("claimed_by_another_session");
-            if (user != current.getInt("user") || !child.equals(current.getString("child"))) return reply("target_changed");
+            if (user != current.getInt("user")) return reply("target_changed");
             return reply("ok").put("owner", name);
         }
-        byte[] bytes = new JSONObject().put("session", name).put("user", user).put("child", child)
+        byte[] bytes = new JSONObject().put("session", name).put("user", user)
             .toString().getBytes(StandardCharsets.UTF_8);
         FileOutputStream stream = session.startWrite();
         try { stream.write(bytes); session.finishWrite(stream); }
@@ -76,11 +75,13 @@ final class BridgeState {
         return reply("ok").put("released", name).put("appLeftRunning", true);
     }
     boolean consumed(String actionId) throws Exception {
-        // Preserve suppression across the protocol-1 upgrade and the earlier
+        // Preserve suppression across the protocol upgrades and the earlier
         // local navigation probe. A new state directory must not make old IDs reusable.
         id(actionId, 8);
-        File legacy = new File(directory.getParentFile(), "bridge-protocol1");
-        return actionFile(actionId).exists() || actionFile(legacy, actionId).exists()
+        File legacy2 = new File(directory.getParentFile(), "bridge-protocol2");
+        File legacy1 = new File(directory.getParentFile(), "bridge-protocol1");
+        return actionFile(actionId).exists() || actionFile(legacy2, actionId).exists()
+            || actionFile(legacy1, actionId).exists()
             || new File(directory.getParentFile(), "navigation-journal/" + actionId).exists();
     }
     boolean consume(String actionId) throws Exception {

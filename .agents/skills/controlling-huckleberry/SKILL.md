@@ -56,7 +56,7 @@ node "$access" page-act <route-id> --control "<control name>" --action <action> 
 ```
 
 `pages` is offline and lists every known route; `page` returns the route's controls
-with live `present`/`unique` matches and `screen.childVerified`. A page model is
+with live `present`/`unique` matches and `screen.guardComplete`/`screen.truncated`. A page model is
 not proof that the screen is that page, and a catalog selector is not proof that an
 unmapped control exists. `page-act` re-inspects before one action and only permits
 actions declared in the catalog. In the JavaScript API, `PageObject.observe()`
@@ -91,17 +91,17 @@ Release with the same accessibility CLI/profile/session **after reconciliation**
 
 **Read [the parity protocol](references/api-parity.md) before any write.** For a parity investigation, require an authorized observer and captured server before-state **before** Save, timer start, edit or delete. Otherwise offer unsaved exploration only. Explicit standalone UI tests are UI-only, not parity tests.
 
-1. Confirm backend capability, exact authorized target/profile/child, observer coverage and quiet starting conditions. Accessibility can perform form actions, but captures no backend state; do not Save, delete, start a timer or edit a record without the observer and server before-state.
+1. Confirm backend capability, exact authorized target/profile, observer coverage and quiet starting conditions. Accessibility can perform form actions, but captures no backend state; do not Save, delete, start a timer or edit a record without the observer and server before-state.
 2. Capture server before-state and backend-specific private UI evidence. Perform one intended supported action; preserve after-state/readback before any cleanup or API comparison.
 3. Keep uncertainty explicit. A click acknowledgment, consumed ID, stable UI, truncated tree or absent record is not server persistence evidence. Reconcile lost results before any new input.
 4. Preserve evidence first; clean up only exact authorized fixtures as a separate observed operation. **No automatic cleanup that erases before/after evidence.**
 
-Both backends label UI evidence `backendCaptured: false`, but their formats differ: accessibility protocol-2 trees are not CDP checkpoint/DOM snapshots. Preserve source/protocol/coverage and observer timestamps; do not normalize missing fields into a false match. Password fields are redacted, but other editable values and child/UI text may be present; store files privately in the investigation, not the skill or public PR.
+Both backends label UI evidence `backendCaptured: false`, but their formats differ: accessibility protocol-3 trees are not CDP checkpoint/DOM snapshots. Preserve source/protocol/coverage and observer timestamps; do not normalize missing fields into a false match. Password fields are redacted, but other editable values and child/UI text may be present; store files privately in the investigation, not the skill or public PR.
 
 ## Evidence and maintenance boundaries
 
 - Read the [acceptance evidence record](references/acceptance-status.md): fresh Termux observation passed, but the fresh full navigation runner remained uncertain; its original claim was reconciled/released. Do not convert historical navigation or recovery into a passed fresh run, or replay it to obtain a green report.
-- Shared controller offline/CI checks are not device acceptance. Read the [Windows accessibility live record](references/windows-accessibility-live.md): an explicitly built API-34 helper on Android 14 passed supported inspection/navigation/guards and a fresh cold-process launch case after a narrow readback fix. That historical record covers protocol 1; protocol 2 mapping was exercised separately on the enrolled Termux work profile without saving. Neither confers bridge screenshots, every Windows setup, a passed Termux full runner, or backend parity. CDP's earlier form tests are separate.
-- If logged out, wrong child/profile/app, unknown native focus, missing bridge/CDP, or permission denial: stop and report. Do not log in, weaken policy, patch APKs, enable services silently, purchase upgrades, wipe an AVD, or touch historical fixtures.
+- Shared controller offline/CI checks are not device acceptance. Read the [Windows accessibility live record](references/windows-accessibility-live.md): an explicitly built API-34 helper on Android 14 passed supported inspection/navigation/guards and a fresh cold-process launch case after a narrow readback fix. That historical record covers protocol 1; protocol 2 mapping was exercised separately on the enrolled Termux work profile without saving, while protocol 3 has only offline/build coverage. Neither confers bridge screenshots, every Windows setup, a passed Termux full runner, or backend parity. CDP's earlier form tests are separate.
+- If logged out, wrong profile/app, unknown native focus, missing bridge/CDP, or permission denial: stop and report. Do not log in, weaken policy, patch APKs, enable services silently, purchase upgrades, wipe an AVD, or touch historical fixtures.
 - A user-level copy of this skill alone does not include `tools/huckleberry-control/`. Accessibility needs the matching repository checkout and bridge protocol; do not use stale/missing external tooling. CDP's bundled scripts remain independently usable on Windows.
 - [Evaluation scenarios](references/evaluations.md) distinguish offline, build, live UI and backend evidence. Keep changes in the selected backend's documented scope until separately implemented and tested.

@@ -18,9 +18,8 @@ function safeId(value, minimum, maximum) {
 }
 
 function verifyObservation(snapshot, tab) {
-  requireCondition(snapshot?.protocol === 2 && snapshot.status === 'ok'
+  requireCondition(snapshot?.protocol === 3 && snapshot.status === 'ok'
     && snapshot.source === 'android-accessibility' && snapshot.backendCaptured === false, 'unexpected_evidence_source');
-  requireCondition(snapshot.childVerified === true, 'child_not_verified');
   requireCondition(snapshot.guardComplete === true && snapshot.truncated === false, 'incomplete_observation');
   requireCondition(['home', 'reports'].includes(snapshot.selectedTab), 'unexpected_start_tab');
   if (tab) requireCondition(snapshot.selectedTab === tab, 'unexpected_selected_tab');
@@ -66,7 +65,7 @@ export async function runTermuxSmoke(options, dependencies = {}) {
     await controller.connect();
     report.phase = 'status';
     const status = await controller.status();
-    requireCondition(status?.protocol === 2 && status.status === 'ok', 'unexpected_status_protocol');
+    requireCondition(status?.protocol === 3 && status.status === 'ok', 'unexpected_status_protocol');
     requireCondition(status.owner === null || safeId(status.owner, 3, 80), 'unexpected_status_protocol');
     requireCondition(status.serviceConnected === true, 'service_not_connected');
     report.checks.serviceConnected = true;
@@ -100,7 +99,7 @@ export async function runTermuxSmoke(options, dependencies = {}) {
       report.phase = 'action_preflight';
       for (const id of [reportsId, homeId]) {
         const action = await controller.actionStatus(options.session, id);
-        requireCondition(action?.protocol === 2 && action.status === 'ok' && typeof action.consumed === 'boolean', 'unexpected_action_status');
+        requireCondition(action?.protocol === 3 && action.status === 'ok' && typeof action.consumed === 'boolean', 'unexpected_action_status');
         requireCondition(action.consumed === false, 'action_id_already_consumed');
       }
       report.checks.unusedActionIds = true;

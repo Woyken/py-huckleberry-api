@@ -26,13 +26,13 @@ public final class ProbeProvider extends ContentProvider {
         Set<String> keys;
         switch (method) {
             case "status": keys = new HashSet<>(); break;
-            case "claim": keys = new HashSet<>(Arrays.asList("session", "user", "child")); break;
+            case "claim": keys = new HashSet<>(Arrays.asList("session", "user")); break;
             case "release": keys = new HashSet<>(Arrays.asList("session")); break;
             case "action-status": keys = new HashSet<>(Arrays.asList("session", "action_id")); break;
-            case "tree": keys = new HashSet<>(Arrays.asList("session", "user", "child", "task")); break;
-            case "action": keys = new HashSet<>(Arrays.asList("session", "user", "child", "task", "action_id",
+            case "tree": keys = new HashSet<>(Arrays.asList("session", "user", "task")); break;
+            case "action": keys = new HashSet<>(Arrays.asList("session", "user", "task", "action_id",
                 "path", "id", "text", "action", "expect_id", "expect_text", "value")); break;
-            case "navigate": keys = new HashSet<>(Arrays.asList("session", "user", "child", "task", "action_id", "from", "to")); break;
+            case "navigate": keys = new HashSet<>(Arrays.asList("session", "user", "task", "action_id", "from", "to")); break;
             default: throw new IllegalArgumentException("Unsupported method");
         }
         final Bundle request = extras == null ? new Bundle() : new Bundle(extras);
@@ -50,12 +50,10 @@ public final class ProbeProvider extends ContentProvider {
                     String owner = request.getString("session");
                     if ("status".equals(method)) reply = state.status();
                     else if ("claim".equals(method)) {
-                        reply = state.claim(owner, request.getInt("user", -1), request.getString("child"));
-                        if (ProbeService.instance != null) ProbeService.instance.resetChild();
+                        reply = state.claim(owner, request.getInt("user", -1));
                     }
                     else if ("release".equals(method)) {
                         reply = state.release(owner);
-                        if (ProbeService.instance != null) ProbeService.instance.resetChild();
                     }
                     else if ("action-status".equals(method)) {
                         state.requireOwner(owner);
@@ -64,16 +62,15 @@ public final class ProbeProvider extends ContentProvider {
                     }
                     else {
                         JSONObject enrollment = state.requireOwner(owner);
-                        if (enrollment.getInt("user") != request.getInt("user", -1)
-                                || !enrollment.getString("child").equals(request.getString("child"))) throw new IllegalStateException("target_changed");
+                        if (enrollment.getInt("user") != request.getInt("user", -1)) throw new IllegalStateException("target_changed");
                         ProbeService service = ProbeService.instance;
                         if (service == null) reply = BridgeState.reply("service_not_enabled");
-                        else if ("tree".equals(method)) reply = service.snapshot(request.getInt("task", -1), enrollment.getString("child"));
-                        else if ("action".equals(method)) reply = service.action(request.getInt("task", -1), enrollment.getString("child"),
+                        else if ("tree".equals(method)) reply = service.snapshot(request.getInt("task", -1));
+                        else if ("action".equals(method)) reply = service.action(request.getInt("task", -1),
                             request.getString("action_id"), request.getString("path"), request.getString("id"), request.getString("text"),
                             request.getString("action"), request.getString("expect_id"), request.getString("expect_text"),
                             request.getString("value"), state, deadline);
-                        else reply = service.navigate(request.getInt("task", -1), enrollment.getString("child"),
+                        else reply = service.navigate(request.getInt("task", -1),
                             request.getString("action_id"), request.getString("from"), request.getString("to"), state, deadline);
                     }
                 }
@@ -81,18 +78,18 @@ public final class ProbeProvider extends ContentProvider {
             } catch (Exception error) {
                 try { result.set(BridgeState.reply(error instanceof IllegalArgumentException || error instanceof IllegalStateException
                     ? error.getMessage() : "bridge_error").toString()); }
-                catch (Exception ignored) { result.set("{\"protocol\":2,\"status\":\"bridge_error\"}"); }
+                catch (Exception ignored) { result.set("{\"protocol\":3,\"status\":\"bridge_error\"}"); }
             } finally { done.countDown(); }
         });
         try {
             if (!done.await(10, TimeUnit.SECONDS)) {
                 cancelled.set(true);
-                result.compareAndSet(null, "{\"protocol\":2,\"status\":\"timeout_uncertain\"}");
+                result.compareAndSet(null, "{\"protocol\":3,\"status\":\"timeout_uncertain\"}");
             }
         } catch (InterruptedException error) {
             cancelled.set(true);
             Thread.currentThread().interrupt();
-            result.compareAndSet(null, "{\"protocol\":2,\"status\":\"interrupted_uncertain\"}");
+            result.compareAndSet(null, "{\"protocol\":3,\"status\":\"interrupted_uncertain\"}");
         }
         Bundle response = new Bundle();
         response.putString("result", result.get());

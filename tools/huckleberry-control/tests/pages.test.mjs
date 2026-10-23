@@ -13,7 +13,6 @@ const cli = fileURLToPath(new URL('../cli.mjs', import.meta.url));
 
 const snapshot = {
   selectedTab: 'home',
-  childVerified: true,
   truncated: false,
   guardComplete: true,
   nodes: [
@@ -63,7 +62,7 @@ test('page catalog is listed with stable identifiers', () => {
 
 test('every catalog route produces a page model', () => {
   const empty = {
-    selectedTab: 'home', childVerified: false, truncated: false, guardComplete: true, nodes: [],
+    selectedTab: 'home', truncated: false, guardComplete: true, nodes: [],
   };
   for (const summary of pageSummaries()) {
     const model = pageModel(getPage(summary.id), empty);
@@ -83,7 +82,6 @@ test('page model reports live presence without pretending a page is current', ()
   const model = pageModel(getPage('home'), snapshot);
   assert.equal(model.page.id, 'home');
   assert.equal(model.entryPresent, true);
-  assert.equal(model.screen.childVerified, true);
   assert.ok(model.presentCount > 0);
   assert.ok(model.missing.includes('Bottle card'));
   const sleep = model.controls.find((control) => control.name === 'Sleep card');
@@ -184,7 +182,7 @@ test('pages command lists the catalog without a profile or device', async () => 
   const { stdout } = await exec(process.execPath, [cli, 'pages']);
   const result = JSON.parse(stdout);
   assert.equal(result.count, 39);
-  assert.equal(result.bridgeProtocol, 2);
+  assert.equal(result.bridgeProtocol, 3);
   assert.equal(result.pages[1].id, 'home');
 });
 

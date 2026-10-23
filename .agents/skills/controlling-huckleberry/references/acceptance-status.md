@@ -20,18 +20,19 @@ This records tested/reported outcomes, not guarantees for another app build, hos
 | Unsigned Android helper compile | Integrated CI passed | Build compatibility, not install, consent or device behavior. |
 | Windows CDP app operations | Historical local UI acceptance | Startup, keypad/Unicode and marked record readback/cleanup on the tested emulator/build; not bridge forms or Firebase parity. |
 | Termux common-controller navigation | Historical reported acceptance | Earlier Home/Reports/Home checks; not a fresh runner pass. |
-| New Termux runner, observation-only | Fresh **passed**, reported by Termux | Target/service/capability/child/complete-baseline checks and verified release; no navigation/launch/input. |
+| New Termux runner, observation-only | Fresh **passed**, reported by Termux | Target/service/capability/complete-baseline checks and verified release; no navigation/launch/input. |
 | New Termux runner, full navigation | Fresh **uncertain / not passed** | Controller verified the first transition, but the runner's independent Reports readback failed. Home was not attempted; no automatic retry/release. |
 | Windows live accessibility bridge | Fresh supported workflow **passed** on Android 14 with explicit API-34 build | Includes inspection, navigation, guards/replay/journal/release; a separate clean cold-process case used one launch and two guarded reads after the narrow startup readback fix. Default API-35 local build was not performed. |
 | Protocol 2 semantic control mapping | Live **exploration**, not a formal acceptance run | Inspection, scroll, click, set-text and back actions were used on the enrolled Termux work profile across Home, settings, child, reports, feeding, diaper/potty, pump, medicine, growth, temperature, activity, milestones and home customization. No record Save/delete, timer start or backend observer. Raw trees remained private. |
-| Forms, typing/keypad, Save/delete, timers or screenshots via accessibility | Semantic actions available; write parity not established | Protocol 2 exposes click/set-text/scroll/back and can operate form controls, but has no screenshots or observer. Do not claim backend persistence from UI. |
+| Protocol 3 field-set change | Offline/build only | Claim and snapshot fields no longer carry child verification. No live acceptance of this protocol revision. |
+| Forms, typing/keypad, Save/delete, timers or screenshots via accessibility | Semantic actions available; write parity not established | Protocol 3 exposes click/set-text/scroll/back and can operate form controls, but has no screenshots or observer. Do not claim backend persistence from UI. |
 | Firebase persistence / app-vs-API parity in acceptance | Not tested | No backend observer/capture; UI results have `backendCaptured: false`. |
 
 ## Fresh navigation uncertainty and reconciliation
 
 The larger-budget fresh runner ended with exit code 1, `phase: reports_observation`, `reason: reports_observation_failed`, and a retained claim. Its allowlisted report did not retain the raw exception, so the exact cause is **unknown**. A later inspection was refused by the identity/focus guard; that does not prove the earlier failure's cause or establish a transport defect.
 
-The Termux operator reconciled the terminal run's original metadata: Reports consumed, Home unconsumed. Under the same matching claim, one scoped launcher request brought the enrolled work app forward **for readback only**. Inspection verified the expected child, Reports selection and complete visible guard evidence. No Reports replay or Home navigation occurred. The operator explicitly released the claim and left the app on Reports.
+The Termux operator reconciled the terminal run's original metadata: Reports consumed, Home unconsumed. Under the same matching claim, one scoped launcher request brought the enrolled work app forward **for readback only**. Inspection verified the expected target, Reports selection and complete visible guard evidence. No Reports replay or Home navigation occurred. The operator explicitly released the claim and left the app on Reports.
 
 At that handoff there was **no in-flight runner or retained claim from these attempts**, according to Termux. Windows did not operate the phone or perform recovery. This historical record is not proof that the device is currently free.
 
@@ -43,4 +44,4 @@ An earlier 300-second external timeout and separately reported Home recovery are
 - No further run, install, policy/service change or historical fixture cleanup is requested here. Do not weaken guards to turn uncertainty green.
 - A later foreground-stable acceptance is a new explicitly planned/authorized investigation after reconciliation. New case IDs must not be replacement IDs chosen to replay an uncertain action.
 - Re-establish capability, consent, target identity, quiet conditions and current ownership for that investigation.
-- Passing CI or observation does not validate protocol 2 form actions, exactly-once input, unified cross-driver locking or Firebase parity.
+- Passing CI or observation does not validate protocol 3 form actions, exactly-once input, unified cross-driver locking or Firebase parity.

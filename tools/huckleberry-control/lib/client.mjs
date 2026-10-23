@@ -25,7 +25,7 @@ export class Controller {
   async request(request) {
     contentArguments(request); // Validate before any device access.
     if (!this.transport.ready) throw new Error('Verify the enrolled target before bridge access');
-    if (Object.hasOwn(request, 'user') && (request.user !== this.profile.androidUser || request.child !== this.profile.expectedChild)) {
+    if (Object.hasOwn(request, 'user') && request.user !== this.profile.androidUser) {
       throw new Error('Request does not match the enrolled profile');
     }
     if (request.method === 'tree' || request.method === 'navigate') {
@@ -43,7 +43,7 @@ export class Controller {
   }
 
   async claim(session) {
-    return requireOk(await this.request({ method: 'claim', session, user: this.profile.androidUser, child: this.profile.expectedChild }));
+    return requireOk(await this.request({ method: 'claim', session, user: this.profile.androidUser }));
   }
 
   async status() { return requireOk(await this.request({ method: 'status' })); }
@@ -73,7 +73,7 @@ export class Controller {
   async inspect(session) {
     const before = await this.identity();
     const snapshot = validateSnapshot(await this.#exchange({ method: 'tree', session,
-      user: this.profile.androidUser, child: this.profile.expectedChild, task: before.task }), before.task);
+      user: this.profile.androidUser, task: before.task }), before.task);
     const after = await this.identity();
     if (before.task !== after.task) throw new Error('Task changed during observation');
     return { ...snapshot, identity: after, source: 'android-accessibility', backendCaptured: false };
@@ -83,22 +83,22 @@ export class Controller {
     const { actionId, action, id = '', text = '', path = '', expectId = '', expectText = '', value = '' } = request;
     // Validate every argument, including empties, before any device access.
     contentArguments({ method: 'action', session, user: this.profile.androidUser,
-      child: this.profile.expectedChild, task: 1, action_id: actionId, path, id, text, action,
+      task: 1, action_id: actionId, path, id, text, action,
       expect_id: expectId, expect_text: expectText, value });
     const before = await this.identity();
     return this.request({ method: 'action', session, user: this.profile.androidUser,
-      child: this.profile.expectedChild, task: before.task, action_id: actionId, path, id, text, action,
+      task: before.task, action_id: actionId, path, id, text, action,
       expect_id: expectId, expect_text: expectText, value });
   }
 
   async navigate(session, from, to, actionId) {
     // Validate all arguments before any command. Never generate a fresh ID on retry.
     contentArguments({ method: 'navigate', session, user: this.profile.androidUser,
-      child: this.profile.expectedChild, task: 1, from, to, action_id: actionId });
+      task: 1, from, to, action_id: actionId });
     const before = await this.inspect(session);
-    if (before.selectedTab !== from || !before.childVerified) throw new Error('Navigation preconditions failed');
+    if (before.selectedTab !== from) throw new Error('Navigation preconditions failed');
     const result = await this.request({ method: 'navigate', session, user: this.profile.androidUser,
-      child: this.profile.expectedChild, task: before.task, from, to, action_id: actionId });
+      task: before.task, from, to, action_id: actionId });
     if (result.status !== 'dispatched') {
       throw new Error(`Action not repeated: ${result.status}. Inspect and reconcile before further actions`);
     }
@@ -106,7 +106,7 @@ export class Controller {
     const deadline = Date.now() + 15000;
     do {
       const after = await this.inspect(session);
-      if (after.selectedTab === to && after.childVerified) return { status: 'verified', actionId, from, to, identity: after.identity, trackingWrites: false };
+      if (after.selectedTab === to) return { status: 'verified', actionId, from, to, identity: after.identity, trackingWrites: false };
       await new Promise(resolve => setTimeout(resolve, 200));
     } while (Date.now() < deadline);
     throw new Error('Navigation outcome uncertain; inspect the UI tree, never replay the action');
@@ -116,7 +116,7 @@ export class Controller {
 export function summary(snapshot) {
   return {
     status: snapshot.status, source: snapshot.source, identity: snapshot.identity,
-    childVerified: snapshot.childVerified, selectedTab: snapshot.selectedTab,
+    selectedTab: snapshot.selectedTab,
     nodeCount: snapshot.nodes.length, truncated: snapshot.truncated,
     controls: snapshot.nodes.filter(node => node.visible && node.id && node.id !== 'undefined')
       .map(node => ({ id: node.id, path: node.path, text: node.text, className: node.className,

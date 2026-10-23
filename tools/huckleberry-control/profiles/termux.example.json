@@ -1,5 +1,4 @@
 {
   "transport": "rish",
-  "androidUser": 1,
-  "expectedChild": "YOUR_TEST_CHILD"
+  "androidUser": 1
 }

@@ -143,7 +143,6 @@ export function pageModel(page, snapshot) {
     },
     screen: {
       selectedTab: snapshot.selectedTab,
-      childVerified: snapshot.childVerified,
       truncated: snapshot.truncated,
       guardComplete: snapshot.guardComplete,
     },

@@ -19,10 +19,10 @@ import java.util.regex.Pattern;
  * Developer-only semantic accessibility bridge.
  *
  * <p>It is intentionally not a general-purpose automation service: every request
- * carries the enrolled Android user, expected child and exact task; nodes are
- * limited to Huckleberry and to the focused window. Mutating actions require an
- * atomically consumed action id. There is no screenshot, gesture injection or
- * network access.</p>
+ * carries the enrolled Android user and exact task; nodes are limited to
+ * Huckleberry and to the focused window. Mutating actions require an atomically
+ * consumed action id. There is no screenshot, gesture injection or network
+ * access.</p>
  */
 public final class ProbeService extends AccessibilityService {
     static volatile ProbeService instance;
@@ -32,8 +32,6 @@ public final class ProbeService extends AccessibilityService {
     private static final int MAX_VISITED = 6000;
     private static final int MAX_EXPORTED = 3000;
     private static final int MAX_DEPTH = 60;
-    private int verifiedTask = -1;
-    private String verifiedChild = "";
 
     @Override protected void onServiceConnected() { instance = this; }
     @Override public void onAccessibilityEvent(AccessibilityEvent event) { /* Never log event contents. */ }
@@ -93,20 +91,18 @@ public final class ProbeService extends AccessibilityService {
         final ArrayList<JSONObject> content = new ArrayList<>(), navigation = new ArrayList<>();
         final ArrayList<AccessibilityNodeInfo> targets = new ArrayList<>();
         final Set<String> selectedTabs = new HashSet<>();
-        int visited, exported, childMatches;
-        boolean incomplete, form, homeScreen, reportsScreen;
+        int visited, exported;
+        boolean incomplete, form;
         String selectedTab() { return selectedTabs.size() == 1 ? selectedTabs.iterator().next() : null; }
         @Override public void close() { for (AccessibilityNodeInfo target : targets) target.recycle(); }
     }
 
     private void scan(AccessibilityNodeInfo node, String path, int depth, String ancestorTab,
-                      boolean inNavigation, String child, String target, Scan result) throws Exception {
+                      boolean inNavigation, String target, Scan result) throws Exception {
         if (result.visited >= MAX_VISITED || depth > MAX_DEPTH) { result.incomplete = true; return; }
         result.visited++;
         if (!PACKAGE.contentEquals(node.getPackageName() == null ? "" : node.getPackageName())) return;
         String id = node.getViewIdResourceName();
-        if ("home_sleep".equals(id) || "cats".equals(id)) result.homeScreen = true;
-        if ("mainContent".equals(id) || "reports_content".equals(id)) result.reportsScreen = true;
         String currentTab = tab(id);
         if (currentTab == null) currentTab = ancestorTab;
         boolean navigation = inNavigation || "mainTabs".equals(id);
@@ -116,8 +112,6 @@ public final class ProbeService extends AccessibilityService {
         if (!visible) return;
         result.exported++;
         if (node.isSelected() && currentTab != null) result.selectedTabs.add(currentTab);
-        if (child != null && child.contentEquals(node.getText() == null ? "" : node.getText())
-                && node.isClickable() && "android.widget.Button".contentEquals(node.getClassName())) result.childMatches++;
         if (node.isEditable() || "Save".equals(node.getText() == null ? "" : node.getText().toString().trim())) result.form = true;
         if (target != null && target.equals(tab(id)) && node.isEnabled() && node.isClickable()) {
             result.targets.add(AccessibilityNodeInfo.obtain(node));
@@ -148,28 +142,24 @@ public final class ProbeService extends AccessibilityService {
             if (result.visited >= MAX_VISITED) { result.incomplete = true; break; }
             AccessibilityNodeInfo next = node.getChild(index);
             if (next == null) continue;
-            try { scan(next, path + "/" + index, depth + 1, currentTab, navigation, child, target, result); }
+            try { scan(next, path + "/" + index, depth + 1, currentTab, navigation, target, result); }
             finally { next.recycle(); }
         }
     }
 
-    JSONObject snapshot(int expectedTask, String child) throws Exception {
+    JSONObject snapshot(int expectedTask) throws Exception {
         AccessibilityWindowInfo selected = window(expectedTask);
         AccessibilityNodeInfo root = root(selected);
         try (Scan result = new Scan()) {
-            scan(root, "root", 0, null, false, child, null, result);
+            scan(root, "root", 0, null, false, null, result);
             if (window(expectedTask).getId() != selected.getId()) return BridgeState.reply("focus_changed");
             JSONArray nodes = new JSONArray();
             for (JSONObject row : result.navigation) if (nodes.length() < MAX_EXPORTED) nodes.put(row);
             for (JSONObject row : result.content) if (nodes.length() < MAX_EXPORTED) nodes.put(row);
-            if (result.incomplete || result.selectedTabs.contains("child")) clearChild();
-            else if (result.childMatches == 1) markChild(expectedTask, child);
-            else if (!result.incomplete && ((result.homeScreen && "home".equals(result.selectedTab()))
-                    || (result.reportsScreen && "reports".equals(result.selectedTab())))) clearChild();
             return BridgeState.reply("ok").put("task", expectedTask).put("window", selected.getId())
                 .put("nodes", nodes).put("exported", result.exported)
                 .put("truncated", result.incomplete || result.exported > nodes.length())
-                .put("guardComplete", !result.incomplete).put("childVerified", childVerified(expectedTask, child))
+                .put("guardComplete", !result.incomplete)
                 .put("selectedTab", result.selectedTab() == null ? JSONObject.NULL : result.selectedTab());
         } finally { root.recycle(); }
     }
@@ -246,20 +236,7 @@ public final class ProbeService extends AccessibilityService {
         return expected == null || expected.isEmpty() || expected.equals(actual == null ? "" : actual);
     }
 
-    private void markChild(int task, String child) {
-        verifiedTask = task;
-        verifiedChild = child == null ? "" : child;
-    }
-    private void clearChild() {
-        verifiedTask = -1;
-        verifiedChild = "";
-    }
-    private boolean childVerified(int task, String child) {
-        return task == verifiedTask && child != null && child.equals(verifiedChild);
-    }
-    void resetChild() { clearChild(); }
-
-    JSONObject action(int expectedTask, String child, String actionId, String path, String id, String text,
+    JSONObject action(int expectedTask, String actionId, String path, String id, String text,
                       String action, String expectId, String expectText, String value,
                       BridgeState state, long deadline) throws Exception {
         BridgeState.id(actionId, 8);
@@ -279,7 +256,6 @@ public final class ProbeService extends AccessibilityService {
         if (selectors == 0 && !"back".equals(action)) return BridgeState.reply("target_required");
         if (selectors > 1) return BridgeState.reply("ambiguous_target_selector");
         if (value.length() > 4096) return BridgeState.reply("value_too_long");
-        boolean changesData = "click".equals(action) || "long-click".equals(action) || "set-text".equals(action);
 
         AccessibilityWindowInfo selected = window(expectedTask);
         AccessibilityNodeInfo root = root(selected);
@@ -322,14 +298,8 @@ public final class ProbeService extends AccessibilityService {
                     default: break;
                 }
             }
-            boolean navigationTab = target != null && ("tab-button-home".equals(target.getViewIdResourceName())
-                    || "tab-button-stat-tabs".equals(target.getViewIdResourceName()));
-            if (changesData && !navigationTab && !childVerified(expectedTask, child)) return BridgeState.reply("child_not_verified");
             if (window(expectedTask).getId() != selected.getId()) return BridgeState.reply("focus_changed");
             if (SystemClock.uptimeMillis() >= deadline) return BridgeState.reply("request_expired");
-            if ("click".equals(action)
-                    && ((target != null && "tab-button-child-info".equals(target.getViewIdResourceName()))
-                    || (!verifiedChild.isEmpty() && verifiedChild.equals(text)))) clearChild();
             if (!state.consume(actionId)) return BridgeState.reply("duplicate_suppressed");
             if (SystemClock.uptimeMillis() >= deadline || window(expectedTask).getId() != selected.getId()) {
                 return BridgeState.reply("consumed_without_dispatch");
@@ -373,7 +343,7 @@ public final class ProbeService extends AccessibilityService {
         }
     }
 
-    JSONObject navigate(int expectedTask, String child, String actionId, String from, String to,
+    JSONObject navigate(int expectedTask, String actionId, String from, String to,
                         BridgeState state, long deadline) throws Exception {
         BridgeState.id(actionId, 8);
         if (!("home".equals(from) || "reports".equals(from)) || !("home".equals(to) || "reports".equals(to)) || from.equals(to)) {
@@ -383,13 +353,9 @@ public final class ProbeService extends AccessibilityService {
         AccessibilityWindowInfo selected = window(expectedTask);
         AccessibilityNodeInfo root = root(selected);
         try (Scan result = new Scan()) {
-            scan(root, "root", 0, null, false, child, to, result);
-            if (result.incomplete) {
-                clearChild();
-                return BridgeState.reply("incomplete_guard_tree");
-            }
-            if (result.childMatches != 1 || !from.equals(result.selectedTab()) || result.form) return BridgeState.reply("precondition_failed");
-            markChild(expectedTask, child);
+            scan(root, "root", 0, null, false, to, result);
+            if (result.incomplete) return BridgeState.reply("incomplete_guard_tree");
+            if (!from.equals(result.selectedTab()) || result.form) return BridgeState.reply("precondition_failed");
             if (result.targets.size() != 1) return BridgeState.reply("target_not_unique");
             AccessibilityNodeInfo target = result.targets.get(0);
             if (!target.refresh() || !target.isVisibleToUser() || !target.isEnabled() || !target.isClickable()) return BridgeState.reply("target_changed");

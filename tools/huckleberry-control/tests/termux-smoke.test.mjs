@@ -11,8 +11,8 @@ function harness(overrides = {}) {
   const calls = [];
   let tab = 'home';
   const snapshot = selectedTab => ({
-    protocol: 2, status: 'ok', source: 'android-accessibility', backendCaptured: false,
-    selectedTab, childVerified: true, guardComplete: true, truncated: false,
+    protocol: 3, status: 'ok', source: 'android-accessibility', backendCaptured: false,
+    selectedTab, guardComplete: true, truncated: false,
     identity: { user: 12, task: 987654, device: 'SYNTHETIC_PRIVATE_DEVICE' },
     nodes: [{ text: 'SYNTHETIC_PRIVATE_RECORD' }],
   });
@@ -20,13 +20,13 @@ function harness(overrides = {}) {
     async connect() { calls.push(['connect']); return this; },
     async status() {
       calls.push(['status']);
-      return { protocol: 2, status: 'ok', serviceConnected: true, owner: null,
+      return { protocol: 3, status: 'ok', serviceConnected: true, owner: null,
         capabilities: { inspect: true, semanticActions: true, actions: ['click'], trackingWrites: false, screenshots: false, gestures: false } };
     },
     async identity() { calls.push(['identity']); return { user: 12, task: 987654 }; },
     async claim(session) { calls.push(['claim', session]); return { status: 'ok', owner: session }; },
     async inspect(session) { calls.push(['inspect', session]); return snapshot(tab); },
-    async actionStatus(session, id) { calls.push(['actionStatus', session, id]); return { protocol: 2, status: 'ok', consumed: false }; },
+    async actionStatus(session, id) { calls.push(['actionStatus', session, id]); return { protocol: 3, status: 'ok', consumed: false }; },
     async navigate(session, from, to, id) {
       calls.push(['navigate', session, from, to, id]); tab = to; return { status: 'verified' };
     },
@@ -37,7 +37,7 @@ function harness(overrides = {}) {
   const dependencies = {
     async loadProfile(path) {
       calls.push(['loadProfile', path]);
-      return { transport: 'rish', androidUser: 12, expectedChild: 'SYNTHETIC_PRIVATE_CHILD' };
+      return { transport: 'rish', androidUser: 12 };
     },
     createController(profile) { calls.push(['createController', profile]); return controller; },
   };
@@ -86,8 +86,8 @@ test('invalid/missing opt-ins fail before profile or Android access', async () =
 
 test('ADB and personal-user profiles are refused before controller construction', async () => {
   for (const profile of [
-    { transport: 'adb', androidUser: 0, expectedChild: 'Synthetic', serial: 'emulator-5580', avd: 'synthetic_avd' },
-    { transport: 'rish', androidUser: 0, expectedChild: 'Synthetic' },
+    { transport: 'adb', androidUser: 0, serial: 'emulator-5580', avd: 'synthetic_avd' },
+    { transport: 'rish', androidUser: 0 },
   ]) {
     const h = harness();
     h.dependencies.loadProfile = async () => profile;
@@ -129,8 +129,8 @@ test('identity/focus failure occurs before acquiring a session', async () => {
   assert.equal(h.calls.some(call => call[0] === 'claim'), false);
 });
 
-test('bad, partial or wrong-child baseline retains the claim without navigation/release', async () => {
-  const patches = [{ childVerified: false }, { guardComplete: false }, { truncated: true },
+test('bad or partial baseline retains the claim without navigation/release', async () => {
+  const patches = [{ guardComplete: false }, { truncated: true },
     { selectedTab: null }, { source: 'cdp' }, { backendCaptured: true }];
   for (const patch of patches) {
     const h = harness();
@@ -155,7 +155,7 @@ test('observation may inspect Reports, but navigation never automatically resets
 });
 
 test('consumed or malformed action-status preflight stops before either navigation', async () => {
-  for (const action of [{ protocol: 2, status: 'ok', consumed: true }, { protocol: 2, status: 'ok' }]) {
+  for (const action of [{ protocol: 3, status: 'ok', consumed: true }, { protocol: 3, status: 'ok' }]) {
     const h = harness({ async actionStatus() { return action; } });
     const report = await runTermuxSmoke(navigation, h.dependencies);
     assert.equal(report.status, 'blocked');
