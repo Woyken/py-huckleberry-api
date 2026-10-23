@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { ACTIONS, PROTOCOL } from '../lib/protocol.mjs';
 
 const catalog = JSON.parse(await readFile(new URL('../controls.json', import.meta.url), 'utf8'));
-const allowedSelectorKeys = new Set(['id', 'text', 'path']);
+const allowedSelectorKeys = new Set(['id', 'text', 'path', 'withinParentOf', 'clickable']);
+const selectorKinds = new Set(['id', 'text', 'path']);
 
 test('control catalog is versioned, machine-readable and selector-bounded', () => {
   assert.equal(catalog.schemaVersion, 1);
@@ -27,12 +28,23 @@ test('control catalog is versioned, machine-readable and selector-bounded', () =
       if (control.mutates !== undefined) assert.equal(typeof control.mutates, 'boolean');
       for (const selector of control.selectors) {
         const keys = Object.keys(selector);
-        assert.equal(keys.length, 1, `${route.id}/${control.name}: one selector kind`);
-        assert.ok(allowedSelectorKeys.has(keys[0]), `${route.id}/${control.name}: selector kind`);
-        assert.ok(typeof selector[keys[0]] === 'string' && selector[keys[0]].length > 0);
+        assert.ok(keys.every((key) => allowedSelectorKeys.has(key)), `${route.id}/${control.name}: selector kind`);
+        const kinds = keys.filter((key) => selectorKinds.has(key));
+        assert.equal(kinds.length, 1, `${route.id}/${control.name}: one selector kind`);
+        assert.ok(typeof selector[kinds[0]] === 'string' && selector[kinds[0]].length > 0);
         if (selector.path) {
           assert.match(selector.path, /^root(?:\/\d{1,4}){0,60}$/, `${route.id}/${control.name}: path`);
           assert.ok(!selector.path.includes('...'), `${route.id}/${control.name}: literal path`);
+        }
+        if (selector.withinParentOf) {
+          const anchorKeys = Object.keys(selector.withinParentOf);
+          assert.equal(anchorKeys.length, 1, `${route.id}/${control.name}: one scope anchor kind`);
+          assert.ok(selectorKinds.has(anchorKeys[0]), `${route.id}/${control.name}: scope anchor kind`);
+          assert.ok(typeof selector.withinParentOf[anchorKeys[0]] === 'string'
+            && selector.withinParentOf[anchorKeys[0]].length > 0);
+        }
+        if (selector.clickable !== undefined) {
+          assert.equal(selector.clickable, true, `${route.id}/${control.name}: clickable constraint`);
         }
       }
       for (const action of control.actions) assert.ok(Object.hasOwn(ACTIONS, action), `${route.id}/${control.name}: action ${action}`);

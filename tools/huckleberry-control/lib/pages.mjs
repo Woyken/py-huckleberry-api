@@ -29,35 +29,72 @@ export function getPage(id) {
   return page;
 }
 
+function selectorKind(selector) {
+  if (selector.id !== undefined) return 'id';
+  if (selector.text !== undefined) return 'text';
+  if (selector.path !== undefined) return 'path';
+  throw new Error('Invalid selector');
+}
+
+function selectorValue(selector) {
+  return selector[selectorKind(selector)];
+}
+
+function selectorEntry(selector) {
+  return { kind: selectorKind(selector), value: selectorValue(selector) };
+}
+
 function selectorEntries(control) {
   return control.selectors
-    .map((selector) => {
-      const kind = Object.keys(selector)[0];
-      return { kind, value: selector[kind] };
-    })
+    .map((selector) => ({
+      ...selectorEntry(selector),
+      ...(selector.withinParentOf ? { withinParentOf: selector.withinParentOf } : {}),
+      ...(selector.clickable ? { clickable: true } : {}),
+    }))
     .sort((left, right) => SELECTOR_ORDER[left.kind] - SELECTOR_ORDER[right.kind]);
 }
 
-function selectorMatches(node, selector) {
+function selectorMatches(node, selector, nodes = []) {
   if (!node.visible) return false;
-  if (selector.kind === 'id') return node.id === selector.value;
-  if (selector.kind === 'text') return node.text === selector.value;
-  if (selector.kind === 'path') return node.path === selector.value;
-  return false;
+  const base = selector.kind === 'id' ? node.id === selector.value
+    : selector.kind === 'text' ? node.text === selector.value
+      : selector.kind === 'path' ? node.path === selector.value
+        : false;
+  if (!base) return false;
+  if (selector.clickable && !node.clickable) return false;
+  if (!selector.withinParentOf) return true;
+  // Some Huckleberry modals leave the surface behind them in the tree, so a
+  // global text selector can match the wrong Save/action. The anchor's parent
+  // is the modal subtree to search; the matched target becomes a path.
+  const anchor = selectorEntry(selector.withinParentOf);
+  const anchors = nodes.filter((candidate) => selectorMatches(candidate, anchor, nodes));
+  if (anchors.length !== 1) return false;
+  const parentPath = anchors[0].path.split('/').slice(0, -1).join('/');
+  return Boolean(parentPath) && node.path.startsWith(`${parentPath}/`);
 }
 
 function matchCounts(control, snapshot) {
-  return selectorEntries(control).map((selector) => ({
-    ...selector,
-    matches: (snapshot.nodes ?? []).filter((node) => selectorMatches(node, selector)).length,
-  }));
+  const nodes = snapshot.nodes ?? [];
+  return selectorEntries(control).map((selector) => {
+    const candidates = nodes.filter((node) => selectorMatches(node, selector, nodes));
+    const anchors = selector.withinParentOf
+      ? nodes.filter((node) => selectorMatches(node, selectorEntry(selector.withinParentOf), nodes)).length
+      : undefined;
+    return {
+      ...selector,
+      matches: candidates.length,
+      ...(anchors === undefined ? {} : { scopeMatches: anchors }),
+      ...(candidates.length === 1 ? { target: targetFor(selector, candidates[0]) } : {}),
+    };
+  });
 }
 
 function selectorValues(control) {
-  return control.selectors.map((selector) => Object.values(selector)[0]);
+  return control.selectors.map((selector) => String(selectorValue(selector)));
 }
 
-function targetFor(selector) {
+function targetFor(selector, node) {
+  if (selector.withinParentOf || selector.clickable) return { id: '', text: '', path: node.path };
   return {
     id: selector.kind === 'id' ? selector.value : '',
     text: selector.kind === 'text' ? selector.value : '',
@@ -97,7 +134,13 @@ export function resolveControl(page, nameOrSelector, snapshot) {
   const selectors = matchCounts(control, snapshot);
   const unique = selectors.find((selector) => selector.matches === 1);
   if (unique) {
-    return { control, selector: unique, target: targetFor(unique) };
+    return { control, selector: unique, target: unique.target };
+  }
+  const badScope = selectors.find((selector) => selector.withinParentOf && selector.scopeMatches !== 1);
+  if (badScope) {
+    throw new ControlDriftError(`Scope for control ${control.name} is missing or ambiguous on page ${page.id}`, {
+      code: 'control_scope_drifted', page: page.id, control: control.name, selectors,
+    });
   }
   const ambiguous = selectors.find((selector) => selector.matches > 1);
   if (ambiguous) {
@@ -112,9 +155,10 @@ export function resolveControl(page, nameOrSelector, snapshot) {
 
 function entryPresent(page, snapshot) {
   if (!page.entry?.selectors?.length) return null;
+  const nodes = snapshot.nodes ?? [];
   return page.entry.selectors.some((selector) => {
-    const kind = Object.keys(selector)[0];
-    return (snapshot.nodes ?? []).some((node) => selectorMatches(node, { kind, value: selector[kind] }));
+    const entry = selectorEntry(selector);
+    return nodes.some((node) => selectorMatches(node, entry, nodes));
   });
 }
 

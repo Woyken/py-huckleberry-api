@@ -10,6 +10,7 @@
     "notes": [
       "The bridge resolves id/text selectors to the nearest clickable ancestor for click and long-click.",
       "Use an exact text selector only when it is unique in the current tree; inspect first after opening a modal or page.",
+      "Use withinParentOf to scope a repeated label to the subtree containing an anchor label; the resolved target is a node path.",
       "Paths are capture-specific. Re-inspect before using a path, especially after returning Home or changing scroll position.",
       "The bridge never retries an action automatically. Preserve action IDs and inspect after an uncertain result."
     ]
@@ -272,20 +273,20 @@
       "title": "Bottle amount numpad",
       "entry": { "from": "bottle-form", "selectors": [{ "text": "Volume (ml)" }] },
       "controls": [
-        { "name": "Digit 1", "selectors": [{ "text": "1" }], "actions": ["click"] },
-        { "name": "Digit 2", "selectors": [{ "text": "2" }], "actions": ["click"] },
-        { "name": "Digit 3", "selectors": [{ "text": "3" }], "actions": ["click"] },
-        { "name": "Digit 4", "selectors": [{ "text": "4" }], "actions": ["click"] },
-        { "name": "Digit 5", "selectors": [{ "text": "5" }], "actions": ["click"] },
-        { "name": "Digit 6", "selectors": [{ "text": "6" }], "actions": ["click"] },
-        { "name": "Digit 7", "selectors": [{ "text": "7" }], "actions": ["click"] },
-        { "name": "Digit 8", "selectors": [{ "text": "8" }], "actions": ["click"] },
-        { "name": "Digit 9", "selectors": [{ "text": "9" }], "actions": ["click"] },
-        { "name": "Digit 0", "selectors": [{ "path": "root/0/0/0/0/0/0/0/0/0/0/0/0/0/1/1/12" }], "actions": ["click"], "notes": "The zero display is duplicated; this path targets the clickable key. Re-inspect before use because paths are capture-specific." },
+        { "name": "Digit 1", "selectors": [{ "text": "1", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 2", "selectors": [{ "text": "2", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 3", "selectors": [{ "text": "3", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 4", "selectors": [{ "text": "4", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 5", "selectors": [{ "text": "5", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 6", "selectors": [{ "text": "6", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 7", "selectors": [{ "text": "7", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 8", "selectors": [{ "text": "8", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 9", "selectors": [{ "text": "9", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"] },
+        { "name": "Digit 0", "selectors": [{ "text": "0", "clickable": true, "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"], "notes": "The amount display and key share text; clickable scoping targets the key." },
         { "name": "Cancel", "selectors": [{ "text": "Cancel" }], "actions": ["click"] },
-        { "name": "Save", "selectors": [{ "text": "Save" }], "actions": ["click"], "mutates": true }
+        { "name": "Save", "selectors": [{ "text": "Save", "withinParentOf": { "text": "Volume (ml)" } }], "actions": ["click"], "mutates": true, "notes": "The bottle form behind the numpad also exposes Save. Resolve the target under the same parent subtree as the Volume (ml) label so it targets the numpad action." }
       ],
-      "limitations": ["This ml keypad has no decimal key in the captured state. Zero appears twice in the tree; the clickable key is mapped by path."]
+      "limitations": ["This ml keypad has no decimal key in the captured state.", "The amount display and digit keys can share text, and the bottle form can remain in the accessibility tree behind the numpad; digit and Save selectors are scoped to the clickable numpad subtree."]
     },
     {
       "id": "nursing-form",

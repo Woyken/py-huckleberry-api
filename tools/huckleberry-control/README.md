@@ -238,6 +238,13 @@ hatch for a control that is not in the catalog. It still uses the bridge's
 focus/task guards; it is not permission to use coordinates or screenshots.
 `page.release()` closes the local page object and releases the device claim.
 
+Selectors can add `clickable: true` and `withinParentOf: { text: "..." }` when a
+surface leaves another one behind it. The resolver searches under the anchor
+label's parent subtree, filters to the clickable target, and returns a path from
+that snapshot. This is how the bottle amount numpad distinguishes its digits and
+`Save` from the bottle form behind it; the path is valid for that observation and
+must be re-resolved after a new inspect.
+
 If `page`, `page-act`, or `PageObject.act` reports a missing, ambiguous or stale
 control, do not guess another selector or fall back to coordinates. Re-observe;
 if the control is still missing, use raw `inspect`/`act` only to discover the new
