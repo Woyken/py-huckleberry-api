@@ -1,5 +1,5 @@
 import { writeFile } from 'node:fs/promises';
-import { Transport } from './transport.mjs';
+import { PersistentTransport, Transport } from './transport.mjs';
 import { validateProfile } from './config.mjs';
 import { parseIdentity } from './identity.mjs';
 import { BRIDGE, PACKAGE, TABS, contentArguments, identifier, parseReply, quote, requireOk, validateSnapshot } from './protocol.mjs';
@@ -12,7 +12,9 @@ const LAUNCH_READBACK_DELAY_MS = 200;
 export class Controller {
   constructor(profile, transport) {
     this.profile = validateProfile(profile);
-    this.transport = transport || new Transport(this.profile);
+    this.transport = transport || (this.profile.transport === 'rish'
+      ? new PersistentTransport(this.profile)
+      : new Transport(this.profile));
   }
 
   async connect() { await this.transport.verify(); return this; }

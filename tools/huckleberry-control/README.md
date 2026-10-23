@@ -197,7 +197,12 @@ still stop immediately. This does not add general navigation retry or diagnose
 an unrelated later observation failure.
 
 Other repository scripts can reuse the controller rather than rebuilding the
-connection/identity checks. The same code works with either profile transport:
+connection/identity checks. The same code works with either profile transport.
+On Termux, the controller keeps one interactive `rish` shell per process, so a
+script's identity/tree/action calls reuse the Shizuku/Java startup instead of
+paying it again for each call. Call `controller.transport.close()` in a `finally`
+block when finished. Separate CLI invocations are separate processes and still
+pay one startup each; use one script for a multi-step flow.
 
 ```javascript
 import { Controller, loadProfile } from './tools/huckleberry-control/index.mjs';

@@ -111,41 +111,45 @@ export async function main(args = process.argv.slice(2)) {
   }
 
   const controller = await new Controller(await loadProfile(values.profile)).connect();
-  if (command === 'status') result = await controller.status();
-  if (command === 'claim') result = await controller.claim(values.session);
-  if (command === 'release') result = await controller.release(values.session);
-  if (command === 'action-status') result = await controller.actionStatus(values.session, values['action-id']);
-  if (command === 'launch' || command === 'inspect') {
-    const snapshot = command === 'launch' ? await controller.launch(values.session) : await controller.inspect(values.session);
-    if (values.out) await saveEvidence(values.out, snapshot);
-    result = { ...summary(snapshot), ...(values.out ? { saved: values.out } : {}) };
-  }
-  if (command === 'navigate') result = await controller.navigate(values.session, values.from, destination, values['action-id']);
-  if (command === 'page') {
-    result = (await PageObject.open(controller, values.session, destination)).model();
-  }
-  if (command === 'page-act') {
-    const page = await PageObject.open(controller, values.session, destination);
-    const id = values['action-id'] ? actionId(values['action-id']) : freshActionId();
-    result = { ...await page.act(values.control ?? values.ref, values.action, { value: values.value ?? '', actionId: id }), actionId: id };
-  }
-  if (['act', 'click', 'set-text', 'scroll', 'back'].includes(command)) {
-    const id = values['action-id'] ? actionId(values['action-id']) : freshActionId();
-    const target = command === 'back' ? { id: '', text: '', path: '', expectId: '', expectText: '' } : targetArgs(values);
-    let action = values.action;
-    if (command === 'click') action = 'click';
-    if (command === 'set-text') action = 'set-text';
-    if (command === 'scroll') {
-      if (!['forward', 'backward'].includes(values.direction)) throw new Error('--direction must be forward or backward');
-      action = `scroll-${values.direction}`;
+  try {
+    if (command === 'status') result = await controller.status();
+    if (command === 'claim') result = await controller.claim(values.session);
+    if (command === 'release') result = await controller.release(values.session);
+    if (command === 'action-status') result = await controller.actionStatus(values.session, values['action-id']);
+    if (command === 'launch' || command === 'inspect') {
+      const snapshot = command === 'launch' ? await controller.launch(values.session) : await controller.inspect(values.session);
+      if (values.out) await saveEvidence(values.out, snapshot);
+      result = { ...summary(snapshot), ...(values.out ? { saved: values.out } : {}) };
     }
-    if (command === 'back') action = 'back';
-    if (!action) throw new Error('--action is required for act');
-    if (command === 'set-text' && values.value === undefined) throw new Error('set-text requires --value (empty string is allowed)');
-    result = await controller.act(values.session, { ...target, action, value: values.value ?? '', actionId: id });
+    if (command === 'navigate') result = await controller.navigate(values.session, values.from, destination, values['action-id']);
+    if (command === 'page') {
+      result = (await PageObject.open(controller, values.session, destination)).model();
+    }
+    if (command === 'page-act') {
+      const page = await PageObject.open(controller, values.session, destination);
+      const id = values['action-id'] ? actionId(values['action-id']) : freshActionId();
+      result = { ...await page.act(values.control ?? values.ref, values.action, { value: values.value ?? '', actionId: id }), actionId: id };
+    }
+    if (['act', 'click', 'set-text', 'scroll', 'back'].includes(command)) {
+      const id = values['action-id'] ? actionId(values['action-id']) : freshActionId();
+      const target = command === 'back' ? { id: '', text: '', path: '', expectId: '', expectText: '' } : targetArgs(values);
+      let action = values.action;
+      if (command === 'click') action = 'click';
+      if (command === 'set-text') action = 'set-text';
+      if (command === 'scroll') {
+        if (!['forward', 'backward'].includes(values.direction)) throw new Error('--direction must be forward or backward');
+        action = `scroll-${values.direction}`;
+      }
+      if (command === 'back') action = 'back';
+      if (!action) throw new Error('--action is required for act');
+      if (command === 'set-text' && values.value === undefined) throw new Error('set-text requires --value (empty string is allowed)');
+      result = await controller.act(values.session, { ...target, action, value: values.value ?? '', actionId: id });
+    }
+    console.log(JSON.stringify(result, null, 2));
+    return result;
+  } finally {
+    controller.transport.close?.();
   }
-  console.log(JSON.stringify(result, null, 2));
-  return result;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

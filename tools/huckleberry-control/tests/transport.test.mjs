@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { createServer } from 'node:net';
-import { once } from 'node:events';
-import { Transport, verifyTransfer, runProcess } from '../lib/transport.mjs';
+import { EventEmitter, once } from 'node:events';
+import { PassThrough, Writable } from 'node:stream';
+import { PersistentTransport, Transport, verifyTransfer, runProcess } from '../lib/transport.mjs';
 import { protocolNumber, readServerProtocol, validateAdbEnvironment } from '../lib/adb-safety.mjs';
 
 test('both adapters execute the same Android script without a host shell', async () => {
@@ -100,4 +101,61 @@ test('missing/nonzero command completion records are errors, not empty successes
     stdout: `\n${/HB_EXIT_[a-f0-9]+/.exec(args[1])[0]}=1\n`, stderr: '',
   }));
   await assert.rejects(failed.shell('false'), /failed/);
+});
+
+function fakeRish({ response = '2000', code = 0, delay = 0 } = {}) {
+  let spawns = 0;
+  const writes = [];
+  const spawnProcess = () => {
+    spawns += 1;
+    const child = new EventEmitter();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.stdin = new Writable({
+      write(chunk, encoding, callback) {
+        const text = chunk.toString();
+        writes.push(text);
+        const begin = /HB_BEGIN_[a-f0-9]+/.exec(text);
+        const end = /HB_END_[a-f0-9]+/.exec(text);
+        if (begin && end) {
+          const timer = setTimeout(() => {
+            child.stdout.write(`\n${begin[0]}\n${response}\n${end[0]}=${code}\n`);
+          }, delay);
+          timer.unref?.();
+        }
+        callback();
+      },
+    });
+    child.kill = () => { child.emit('close', 0, 'SIGTERM'); };
+    queueMicrotask(() => child.emit('spawn'));
+    return child;
+  };
+  return { spawnProcess, writes, spawns: () => spawns };
+}
+
+test('persistent rish transport reuses one shell for sequential commands', async () => {
+  const fake = fakeRish();
+  const transport = new PersistentTransport({ transport: 'rish', executable: 'rish' }, fake.spawnProcess);
+  assert.equal((await transport.shell('id -u')).trim(), '2000');
+  assert.equal((await transport.shell('/system/bin/dumpsys window')).trim(), '2000');
+  assert.equal(fake.spawns(), 1);
+  assert.equal(fake.writes.length, 2);
+  assert.match(fake.writes[0], /HB_BEGIN_[a-f0-9]+/);
+  assert.match(fake.writes[0], /\/system\/bin\/sh -c/);
+  transport.close();
+});
+
+test('persistent rish transport keeps a failed command separate from the next', async () => {
+  const fake = fakeRish({ code: 1 });
+  const transport = new PersistentTransport({ transport: 'rish', executable: 'rish' }, fake.spawnProcess);
+  await assert.rejects(transport.shell('false'), /failed/);
+  assert.equal(transport.closed, false);
+  transport.close();
+});
+
+test('persistent rish transport fails closed on timeout', async () => {
+  const fake = fakeRish({ delay: 1000 });
+  const transport = new PersistentTransport({ transport: 'rish', executable: 'rish' }, fake.spawnProcess);
+  await assert.rejects(transport.shell('slow', 5), /timed out/);
+  assert.equal(transport.closed, true);
 });

@@ -14,6 +14,13 @@ test('library users receive the same profile validation as the CLI', () => {
   assert.throws(() => new Controller({ transport: 'auto', androidUser: 12 }), /transport/);
 });
 
+test('rish controllers reuse one shell; ADB controllers keep the stateless adapter', () => {
+  const rish = new Controller({ transport: 'rish', androidUser: 12 });
+  const adb = new Controller({ transport: 'adb', serial: 'emulator-5580', avd: 'huck34', androidUser: 0 });
+  assert.equal(rish.transport.constructor.name, 'PersistentTransport');
+  assert.equal(adb.transport.constructor.name, 'Transport');
+});
+
 test('low-level public requests cannot bypass profile/task enrollment', async () => {
   const client = controller();
   client.transport.capture = async () => { throw new Error('Must not execute'); };

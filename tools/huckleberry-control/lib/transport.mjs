@@ -181,3 +181,131 @@ printf '${transferMarker} %s %s %s\n' "$rawsize" "$size" "\${hash%% *}"`, 20000)
     }
   }
 }
+
+// rish startup dominates short accessibility commands. Keep one interactive
+// shell for the lifetime of this process so a multi-step flow pays the
+// Shizuku/Java startup once instead of once per shell call.
+export class PersistentTransport extends Transport {
+  constructor(profile, spawnProcess = spawn) {
+    super(profile);
+    if (profile.transport !== 'rish') throw new Error('PersistentTransport requires the rish transport');
+    this.spawnProcess = spawnProcess;
+    this.child = null;
+    this.pending = null;
+    this.buffer = '';
+    this.queue = Promise.resolve();
+    this.closed = false;
+  }
+
+  async #start() {
+    if (this.child) return;
+    if (this.closed) throw new Error('rish session is closed; create a new transport');
+    const child = this.spawnProcess(this.executable, [],
+      { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    this.child = child;
+    this.buffer = '';
+    child.stdout.on('data', chunk => this.#onData(chunk));
+    child.stderr.on('data', chunk => this.#onData(chunk));
+    child.on('error', error => this.#fail(error));
+    child.on('close', (code, signal) =>
+      this.#fail(new Error(`rish session closed (${signal || code})`)));
+    await new Promise((resolve, reject) => {
+      child.once('spawn', resolve);
+      child.once('error', reject);
+    });
+  }
+
+  #onData(chunk) {
+    // Data from a previous command is not part of the next reply. If no
+    // command is pending, it is stray output and is deliberately discarded.
+    if (!this.pending) return;
+    this.buffer += chunk.toString('utf8');
+    if (this.buffer.length > LIMIT) {
+      this.#fail(new Error('rish output exceeded limit'));
+      return;
+    }
+    this.#match();
+  }
+
+  #match() {
+    const pending = this.pending;
+    if (!pending) return;
+    const endIndex = this.buffer.indexOf(`${pending.end}=`);
+    if (endIndex < 0) return;
+    const lineEnd = this.buffer.indexOf('\n', endIndex);
+    if (lineEnd < 0) return;
+    const beginIndex = this.buffer.indexOf(pending.begin);
+    if (beginIndex < 0) {
+      this.#fail(new Error('Missing rish command start marker; reconcile any uncertain action'));
+      return;
+    }
+    const code = this.buffer.slice(endIndex + pending.end.length + 1, lineEnd).trim();
+    const output = this.buffer.slice(beginIndex + pending.begin.length, endIndex)
+      .replace(/^\r?\n/, '');
+    this.buffer = this.buffer.slice(lineEnd + 1);
+    this.pending = null;
+    clearTimeout(pending.timer);
+    if (Number(code) !== 0) pending.reject(new Error(`Android command failed (${code || 'unknown'})`));
+    else pending.resolve(output);
+  }
+
+  #fail(error) {
+    const pending = this.pending;
+    this.pending = null;
+    this.buffer = '';
+    this.closed = true;
+    if (pending) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    if (this.child) {
+      try { this.child.kill(); } catch {}
+      this.child = null;
+    }
+  }
+
+  async #run(script, timeout) {
+    if (this.closed) throw new Error('rish session is closed; create a new transport');
+    await this.#start();
+    const id = randomUUID().replaceAll('-', '');
+    const begin = `HB_BEGIN_${id}`;
+    const end = `HB_END_${id}`;
+    // The inner shell isolates a command's exit/trap from the long-lived
+    // session. The outer shell still writes the completion record.
+    const wrapped = `printf '\\n${begin}\\n'; /system/bin/sh -c ${quote(script)}; `
+      + `result=$?; printf '\\n${end}=%s\\n' "$result"`;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#fail(new Error('Command timed out; reconcile uncertain actions'));
+      }, timeout);
+      this.pending = { begin, end, resolve, reject, timer };
+      this.child.stdin.write(`${wrapped}\n`, error => {
+        if (error && this.pending) this.#fail(error);
+      });
+    });
+  }
+
+  shell(script, timeout = 15000) {
+    const run = () => this.#run(script, timeout);
+    const result = this.queue.then(run, run);
+    this.queue = result.catch(() => {});
+    return result;
+  }
+
+  close() {
+    this.closed = true;
+    const pending = this.pending;
+    this.pending = null;
+    this.buffer = '';
+    if (pending) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('rish session closed'));
+    }
+    const child = this.child;
+    this.child = null;
+    if (!child) return;
+    try { child.stdin.end(); } catch {}
+    const timer = setTimeout(() => { try { child.kill(); } catch {} }, 100);
+    timer.unref?.();
+  }
+}
