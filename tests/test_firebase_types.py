@@ -1,5 +1,6 @@
 """Unit tests for strict Firebase schema models."""
 
+import pytest
 from pydantic import TypeAdapter
 
 from huckleberry_api.firebase_types import (
@@ -14,6 +15,7 @@ from huckleberry_api.firebase_types import (
     FirebaseDiaperDocumentData,
     FirebaseFeedDocumentData,
     FirebaseFeedIntervalData,
+    FirebaseFeedTimerData,
     FirebaseGrowthData,
     FirebaseHealthDocumentData,
     FirebaseLastActivityData,
@@ -28,6 +30,7 @@ from huckleberry_api.firebase_types import (
     FirebasePumpTimerData,
     FirebaseSleepDocumentData,
     FirebaseTemperatureData,
+    to_firebase_dict,
 )
 
 
@@ -648,3 +651,42 @@ def test_activity_multi_container_model() -> None:
     assert len(model.data) == 2
     assert model.data["interval1"].mode == "bath"
     assert model.data["interval2"].mode == "storyTime"
+
+
+def test_feed_timer_normalizes_legacy_millisecond_feed_start_time() -> None:
+    """Millisecond feed start times should be read as seconds for history writes."""
+    feed_start_seconds = 1_783_786_636.818
+    timer = FirebaseFeedTimerData.model_validate(
+        {
+            "active": True,
+            "paused": False,
+            "feedStartTime": feed_start_seconds * 1000,
+            "timerStartTime": feed_start_seconds + 60,
+            "uuid": "nursing-session",
+            "leftDuration": 0.0,
+            "rightDuration": 0.0,
+            "lastSide": "left",
+            "activeSide": "left",
+        }
+    )
+
+    assert timer.feedStartTime == pytest.approx(feed_start_seconds)
+    assert timer.timerStartTime == pytest.approx(feed_start_seconds + 60)
+    assert to_firebase_dict(timer)["feedStartTime"] == pytest.approx(feed_start_seconds)
+
+
+def test_feed_timer_keeps_second_feed_start_time_and_timer_start_time() -> None:
+    """Normal seconds values and `timerStartTime` are not rewritten."""
+    feed_start_seconds = 1_783_786_636.818
+    timer = FirebaseFeedTimerData.model_validate(
+        {
+            "active": True,
+            "paused": False,
+            "feedStartTime": feed_start_seconds,
+            "timerStartTime": feed_start_seconds + 60,
+            "uuid": "nursing-session",
+        }
+    )
+
+    assert timer.feedStartTime == pytest.approx(feed_start_seconds)
+    assert timer.timerStartTime == pytest.approx(feed_start_seconds + 60)

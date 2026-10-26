@@ -2,6 +2,8 @@
 
 from unittest.mock import AsyncMock
 
+import pytest
+
 from huckleberry_api import HuckleberryAPI
 
 
@@ -95,3 +97,32 @@ async def test_get_nursing_returns_active_typed_timer(websession, monkeypatch) -
     assert nursing.timer.feedStartTime == 1_789_476_624.0
     assert nursing.timer.activeSide == "right"
     assert nursing.timer.lastSide == "left"
+
+
+async def test_get_nursing_normalizes_millisecond_feed_start_time(websession, monkeypatch) -> None:
+    feed_start_seconds = 1_789_476_624.0
+    client = _Client(
+        {
+            "feed": {
+                "timer": {
+                    "active": True,
+                    "paused": False,
+                    "feedStartTime": feed_start_seconds * 1000,
+                    "timerStartTime": feed_start_seconds + 60,
+                    "uuid": "nursing-session",
+                    "leftDuration": 12.0,
+                    "rightDuration": 4.0,
+                    "lastSide": "left",
+                    "activeSide": "right",
+                }
+            }
+        }
+    )
+    api = HuckleberryAPI(email="test", password="test", timezone="UTC", websession=websession)
+    monkeypatch.setattr(api, "_get_firestore_client", AsyncMock(return_value=client))
+
+    nursing = await api.get_nursing("child")
+
+    assert nursing is not None and nursing.timer is not None
+    assert nursing.timer.feedStartTime == pytest.approx(feed_start_seconds)
+    assert nursing.timer.timerStartTime == pytest.approx(feed_start_seconds + 60)
