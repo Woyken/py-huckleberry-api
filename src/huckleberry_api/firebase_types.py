@@ -6,11 +6,14 @@ Collection and field semantics are documented next to the models that enforce th
 
 from __future__ import annotations
 
+import logging
 from typing import Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Number: TypeAlias = int | float
+
+_LOGGER = logging.getLogger(__name__)
 JsonScalar: TypeAlias = str | int | float | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 JsonMap: TypeAlias = dict[str, JsonValue]
@@ -486,11 +489,31 @@ class FirebaseFeedPrefs(StrictModel):
     local_timestamp: Number | None = None
 
 
+# Epoch seconds stay below this until year ~5138; millisecond values passed it
+# in 1973.
+_MS_EPOCH_THRESHOLD = 100_000_000_000
+
+# The official app's nursing page tolerates either unit when reading
+# `feedStartTime`. `setBreastStartTime()` in the Capacitor nursing chunk
+# (`assets/public/775.*.js`) is:
+#     Math.ceil(Date.now() / value) >= 1000
+#         ? new Date(value * 1000)
+#         : new Date(value)
+# Observed in Android builds 0.9.300 (2026-07-15), 0.9.312 (2026-10-19), and
+# 0.9.314 (2026-10-21), which ship the shared Capacitor web app. Normal app
+# writes use seconds, but iOS sessions have been observed storing milliseconds
+# (py-huckleberry-api#51 and chrisdubya/huckleberry-iot-prototype#7). Normalize
+# this one field on read so completing such a session cannot write a
+# year-58496 history row.
+
+
 class FirebaseFeedTimerData(StrictModel):
     """feed/{child_uid}.timer structure.
 
     Timer behavior:
     - `timerStartTime` is seconds (unlike sleep milliseconds)
+    - `feedStartTime` is canonically seconds; legacy millisecond values are
+      normalized on read, matching the app's `setBreastStartTime()` tolerance
     - `activeSide` is the current active breast side
     - `timerStartTime` resets on resume/switch-side flows
     - `lastSide` can be `"none"` during transitions
@@ -502,7 +525,10 @@ class FirebaseFeedTimerData(StrictModel):
     local_timestamp: Number | None = None
     feedStartTime: Number | None = Field(
         default=None,
-        description="Feeding session start time in seconds since epoch.",
+        description=(
+            "Feeding session start time. Canonical unit is seconds; legacy "
+            "millisecond values are normalized on read (see validator)."
+        ),
     )
     timerStartTime: Number | None = Field(
         default=None,
@@ -519,6 +545,18 @@ class FirebaseFeedTimerData(StrictModel):
         default=None,
         description="Current active side used by UI for elapsed-time display.",
     )
+
+    @field_validator("feedStartTime")
+    @classmethod
+    def _normalize_legacy_millisecond_feed_start(cls, value: Number | None) -> Number | None:
+        """Normalize legacy millisecond feed start times to epoch seconds."""
+        if value is not None and value > _MS_EPOCH_THRESHOLD:
+            _LOGGER.warning(
+                "feedStartTime %r looks like milliseconds; normalizing to seconds",
+                value,
+            )
+            return value / 1000
+        return value
 
 
 class FirebaseFeedDocumentData(StrictModel):
