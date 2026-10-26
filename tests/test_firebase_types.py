@@ -670,9 +670,9 @@ def test_feed_timer_normalizes_legacy_millisecond_feed_start_time() -> None:
         }
     )
 
-    assert timer.feedStartTime == pytest.approx(feed_start_seconds)
-    assert timer.timerStartTime == pytest.approx(feed_start_seconds + 60)
-    assert to_firebase_dict(timer)["feedStartTime"] == pytest.approx(feed_start_seconds)
+    assert timer.feedStartTime == pytest.approx(feed_start_seconds, rel=0, abs=1e-3)
+    assert timer.timerStartTime == feed_start_seconds + 60
+    assert to_firebase_dict(timer)["feedStartTime"] == pytest.approx(feed_start_seconds, rel=0, abs=1e-3)
 
 
 def test_feed_timer_keeps_second_feed_start_time_and_timer_start_time() -> None:
@@ -688,5 +688,5 @@ def test_feed_timer_keeps_second_feed_start_time_and_timer_start_time() -> None:
         }
     )
 
-    assert timer.feedStartTime == pytest.approx(feed_start_seconds)
-    assert timer.timerStartTime == pytest.approx(feed_start_seconds + 60)
+    assert timer.feedStartTime == feed_start_seconds
+    assert timer.timerStartTime == feed_start_seconds + 60

@@ -13,6 +13,7 @@ def _mock_nursing_api(
     monkeypatch,
     timer: dict[str, object],
 ) -> tuple[HuckleberryAPI, MagicMock, MagicMock]:
+    """Build an API whose feed document contains the supplied timer state."""
     snapshot = MagicMock()
     snapshot.exists = True
     snapshot.to_dict.return_value = {"timer": timer}
@@ -59,11 +60,11 @@ async def test_complete_nursing_normalizes_millisecond_feed_start_time(websessio
     await api.complete_nursing("child")
 
     interval_payload = interval_document.set.await_args.args[0]
-    assert interval_payload["start"] == pytest.approx(feed_start_seconds, abs=1)
+    assert interval_payload["start"] == pytest.approx(feed_start_seconds, rel=0, abs=1e-3)
 
     update_payload = feed_document.update.await_args.args[0]
-    assert update_payload["prefs.lastNursing"]["start"] == pytest.approx(feed_start_seconds, abs=1)
-    assert update_payload["prefs.lastSide"]["start"] == pytest.approx(feed_start_seconds, abs=1)
+    assert update_payload["prefs.lastNursing"]["start"] == pytest.approx(feed_start_seconds, rel=0, abs=1e-3)
+    assert update_payload["prefs.lastSide"]["start"] == pytest.approx(feed_start_seconds, rel=0, abs=1e-3)
 
 
 async def test_complete_nursing_keeps_second_feed_start_time(websession, monkeypatch) -> None:
@@ -89,7 +90,7 @@ async def test_complete_nursing_keeps_second_feed_start_time(websession, monkeyp
     await api.complete_nursing("child")
 
     interval_payload = interval_document.set.await_args.args[0]
-    assert interval_payload["start"] == pytest.approx(feed_start_seconds, abs=1)
+    assert interval_payload["start"] == pytest.approx(feed_start_seconds, rel=0, abs=1e-3)
 
     update_payload = feed_document.update.await_args.args[0]
-    assert update_payload["prefs.lastNursing"]["start"] == pytest.approx(feed_start_seconds, abs=1)
+    assert update_payload["prefs.lastNursing"]["start"] == pytest.approx(feed_start_seconds, rel=0, abs=1e-3)

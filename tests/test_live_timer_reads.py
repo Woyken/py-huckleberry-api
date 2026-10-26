@@ -100,6 +100,7 @@ async def test_get_nursing_returns_active_typed_timer(websession, monkeypatch) -
 
 
 async def test_get_nursing_normalizes_millisecond_feed_start_time(websession, monkeypatch) -> None:
+    """Live reads expose legacy millisecond values as seconds."""
     feed_start_seconds = 1_789_476_624.0
     client = _Client(
         {
@@ -124,5 +125,5 @@ async def test_get_nursing_normalizes_millisecond_feed_start_time(websession, mo
     nursing = await api.get_nursing("child")
 
     assert nursing is not None and nursing.timer is not None
-    assert nursing.timer.feedStartTime == pytest.approx(feed_start_seconds)
-    assert nursing.timer.timerStartTime == pytest.approx(feed_start_seconds + 60)
+    assert nursing.timer.feedStartTime == pytest.approx(feed_start_seconds, rel=0, abs=1e-3)
+    assert nursing.timer.timerStartTime == feed_start_seconds + 60
