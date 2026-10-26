@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [0.4.10] - 2026-10-26
+
+### Bugfixes
+
+- Normalize legacy millisecond ``feedStartTime`` values when reading the nursing timer, matching the official app's seconds-or-milliseconds read tolerance. ([#51](https://github.com/Woyken/py-huckleberry-api/issues/51))
+
+
 ## [0.4.9] - 2026-10-22
 
 ### Features

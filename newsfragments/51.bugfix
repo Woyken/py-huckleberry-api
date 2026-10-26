@@ -1,1 +1,0 @@
-Normalize legacy millisecond ``feedStartTime`` values when reading the nursing timer, matching the official app's seconds-or-milliseconds read tolerance.
