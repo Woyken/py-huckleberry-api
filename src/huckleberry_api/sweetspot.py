@@ -731,7 +731,9 @@ def _allows_replacement(child: FirebaseChildDocument, age: int) -> bool:
     if child.sweetspotAdjust is not None and child.sweetspotAdjust.custom:
         return False
     custom = child.customNapWindow
-    return custom is None or not (custom.lowerAge <= age <= custom.upperAge)
+    if custom is None or custom.lowerAge is None or custom.upperAge is None:
+        return True
+    return not (custom.lowerAge <= age <= custom.upperAge)
 
 
 def _should_shorten_wake_window(

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from typing import cast
 import pytest
+
+from aiohttp import ClientSession
 
 from huckleberry_api import HuckleberryAPI
 from huckleberry_api.firebase_types import (
@@ -418,7 +421,7 @@ class _FakeSession:
 async def test_settings_fetch_is_cached() -> None:
     payload = _settings().model_dump(by_alias=True, exclude_none=True)
     session = _FakeSession(payload)
-    api = HuckleberryAPI(email="test", password="test", timezone="UTC", websession=session)
+    api = HuckleberryAPI(email="test", password="test", timezone="UTC", websession=cast(ClientSession, session))
     api.id_token = "token"
     api.token_expires_at = datetime.now().timestamp() + 3600
 
@@ -432,7 +435,7 @@ async def test_settings_fetch_is_cached() -> None:
 @pytest.mark.asyncio
 async def test_get_next_nap_wires_storage_and_sleep_data() -> None:
     session = _FakeSession(_settings().model_dump(by_alias=True, exclude_none=True))
-    api = HuckleberryAPI(email="test", password="test", timezone="UTC", websession=session)
+    api = HuckleberryAPI(email="test", password="test", timezone="UTC", websession=cast(ClientSession, session))
     api.id_token = "token"
     api.token_expires_at = datetime.now().timestamp() + 3600
     child = _child()
