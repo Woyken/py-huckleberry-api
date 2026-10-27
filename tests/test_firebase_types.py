@@ -1,7 +1,7 @@
 """Unit tests for strict Firebase schema models."""
 
 import pytest
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from huckleberry_api.firebase_types import (
     FirebaseActivityDocumentData,
@@ -395,6 +395,23 @@ def test_child_sweetspot_predictions_absent() -> None:
     assert model.sweetspotAdjust is None
     assert model.customNapWindow is None
     assert model.calculatedWakeWindows is None
+
+
+def test_child_sweetspot_prediction_source_is_constrained() -> None:
+    """Prediction sources accept only the two values `handleSweetSpotResult` writes."""
+    model = FirebaseChildDocument.model_validate({"sweetspot": {"ai": {"2": {"W1": {"source": "ai_ml"}}}}})
+
+    assert model.sweetspot is not None
+    assert model.sweetspot.ai["2"]["W1"].source == "ai_ml"
+
+    with pytest.raises(ValidationError):
+        FirebaseChildDocument.model_validate({"sweetspot": {"ai": {"2": {"W1": {"source": "default"}}}}})
+
+
+def test_custom_nap_window_extra_values_are_number_lists() -> None:
+    """Dynamic nap-count keys stay accepted but must hold wake-window number lists."""
+    with pytest.raises(ValidationError):
+        FirebaseChildDocument.model_validate({"customNapWindow": {"3": "invalid"}})
 
 
 def test_child_sweetspot_predictions_sparse() -> None:

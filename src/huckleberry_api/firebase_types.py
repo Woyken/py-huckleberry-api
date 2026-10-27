@@ -179,11 +179,13 @@ class FirebaseChildSweetspotPrediction(StrictModel):
     Nap-count keys contain `W1`-`W6` wake-window keys. `best_by_date` is a Unix
     timestamp in seconds, `value` is the wake-window duration in hours, and
     `source` is `ai_ml` for supervised or `ai_ml_rl` for reinforced predictions.
+    `handleSweetSpotResult` is the only writer and derives `source` from those
+    two branches.
     """
 
     best_by_date: Number | None = None
     value: Number | None = None
-    source: str | None = None
+    source: Literal["ai_ml", "ai_ml_rl"] | None = None
 
 
 class FirebaseChildSweetspotDisplayed(StrictModel):
@@ -219,6 +221,8 @@ class FirebaseChildSweetspotAdjust(StrictModel):
     custom: bool | None = None
     # Nap-count keys contain gap-index keys.
     windows: dict[str, dict[str, FirebaseChildSweetspotAdjustWindow]] | None = None
+    # The app writes `date_updated: new Date().getTime()`, so this is
+    # milliseconds since the Unix epoch.
     date_updated: Number | None = None
 
 
@@ -226,14 +230,15 @@ class FirebaseChildCustomNapWindow(StrictModel):
     """Known payload for childs/{child_id}.customNapWindow.
 
     Set by the sleep-consultant service. Numeric nap-count keys (for example
-    `"3"`) hold default wake-window durations in hours and are available through
-    `model_extra`.
+    `"3"`) hold default wake-window durations in hours and are validated as
+    number lists through `model_extra`.
     """
 
     model_config = ConfigDict(extra="allow", strict=True, populate_by_name=True, protected_namespaces=())
 
     lowerAge: Number | None = None
     upperAge: Number | None = None
+    __pydantic_extra__: dict[str, list[Number]] = Field(init=False)
 
 
 class FirebaseChildCalculatedWakeWindow(StrictModel):

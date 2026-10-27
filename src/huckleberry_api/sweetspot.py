@@ -349,7 +349,7 @@ def user_wake_windows(
         windows = adjust.windows.get(str(nap_count))
         if windows is not None:
             adjusted = False
-            for index in range(nap_count + 1):
+            for index in range(min(nap_count + 1, len(config.gaps))):
                 window = windows.get(str(index))
                 if window is None:
                     continue

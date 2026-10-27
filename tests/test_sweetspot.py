@@ -282,6 +282,28 @@ def test_absolute_adjustment() -> None:
     assert config.gaps[0] == 1.25
 
 
+def test_adjustment_beyond_gap_count_is_ignored() -> None:
+    child = _child(
+        customNapWindow={"lowerAge": 6, "upperAge": 6, "3": [1.5, 1.75]},
+        sweetspotAdjust={
+            "custom": True,
+            "windows": {"3": {"3": {"relative": 30}}},
+        },
+    )
+
+    config = user_wake_windows(
+        child,
+        _settings(),
+        nap_count=3,
+        age=6,
+        now=NOW,
+    )
+
+    assert config is not None
+    assert config.gaps == [1.5, 1.75]
+    assert config.source == "sc_custom"
+
+
 def test_displayed_sweetspot_overrides_today() -> None:
     child = _child(
         sweetspot={
