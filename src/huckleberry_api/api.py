@@ -8,7 +8,8 @@ import logging
 import math
 import time
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
+from datetime import time as dt_time
 from datetime import timezone as dt_timezone
 from typing import Callable, Literal, TypeVar, cast
 from urllib.parse import quote
@@ -64,6 +65,7 @@ from .firebase_types import (
     FirebaseLastSleepData,
     FirebaseLastSolidData,
     FirebaseLastTemperatureData,
+    FirebaseNextNapPrediction,
     FirebasePumpDocumentData,
     FirebasePumpIntervalData,
     FirebasePumpMultiContainer,
@@ -73,6 +75,7 @@ from .firebase_types import (
     FirebaseSleepDocumentData,
     FirebaseSleepIntervalData,
     FirebaseSleepLocations,
+    FirebaseSettingsPlusDocument,
     FirebaseSleepMultiContainer,
     FirebaseSleepTimerData,
     FirebaseSolidsFeedIntervalData,
@@ -94,9 +97,23 @@ from .firebase_types import (
     to_firebase_dict,
 )
 from .models import SolidsFoodReference
+from .sweetspot import (
+    DaySleepStats,
+    age_months,
+    build_sleep_minutes,
+    calculate_next_nap,
+    child_morning_cutoff,
+    child_night_start,
+    round_to_display_time,
+    sleep_stats_from_minutes,
+    user_nap_counts,
+)
 
 CURATED_FOODS_BUCKET = "simpleintervals.appspot.com"
 CURATED_FOODS_OBJECT = "foods/fooddb.json"
+SETTINGS_BUCKET = "simpleintervals.appspot.com"
+SETTINGS_OBJECT = "settings/settings_plus.json"
+SETTINGS_CACHE_SECONDS = 6 * 60 * 60
 
 # Type variable for listener callback typing
 TDocumentData = TypeVar(
@@ -242,6 +259,9 @@ class HuckleberryAPI:
         self._timezone = ZoneInfo(timezone)
         self._listeners: dict = {}  # Store active listeners
         self._listener_callbacks: dict = {}  # Store callbacks to recreate listeners
+        self._sweetspot_settings: FirebaseSettingsPlusDocument | None = None
+        self._sweetspot_settings_cached_at = 0.0
+        self._sweetspot_history_cache: dict[tuple[str, str, float, float], tuple[float, list[DaySleepStats]]] = {}
 
     async def authenticate(self) -> None:
         """Authenticate with Firebase."""
@@ -3040,6 +3060,148 @@ class HuckleberryAPI:
             _LOGGER.error("Error fetching sleep intervals: %s", err)
 
         return events
+
+    async def get_next_nap(
+        self,
+        child_uid: str,
+        *,
+        now: datetime | None = None,
+    ) -> FirebaseNextNapPrediction | None:
+        """Compute the app's local SweetSpot next nap without writing Firebase.
+
+        Args:
+            child_uid: Child unique identifier.
+            now: Optional local time used for date-sensitive checks. Defaults to
+                the current time in the client timezone.
+
+        Returns:
+            The computed next nap, or None when the child has no nap schedule or
+            no usable sleep data.
+        """
+        child = await self.get_child(child_uid)
+        if child is None:
+            return None
+
+        nap_counts = user_nap_counts(child.naps)
+        if not nap_counts:
+            return None
+
+        settings = await self._get_sweetspot_settings()
+        current = now or datetime.now(self._timezone)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=self._timezone)
+
+        day = current.date()
+        cutoff = child_morning_cutoff(child)
+        bedtime = child_night_start(child)
+        age = age_months(child, day)
+        day_start = datetime.combine(day, dt_time.min, tzinfo=self._timezone)
+        day_end = day_start + timedelta(days=1)
+        # Include yesterday so sleep crossing midnight is counted for today.
+        intervals = await self.list_sleep_intervals(child_uid, day_start - timedelta(days=1), day_end)
+        today_stats = sleep_stats_from_minutes(
+            build_sleep_minutes(intervals, day_start, day_end),
+            morning_cutoff=cutoff,
+            night_start=bedtime,
+        )
+        if today_stats.last_sleep is None:
+            return None
+
+        history = None
+        if age < 9 and 2 in nap_counts:
+            history = await self._get_sweetspot_history(child_uid, day, cutoff, bedtime)
+
+        result = calculate_next_nap(
+            child,
+            settings,
+            today_stats=today_stats,
+            nap_count=nap_counts[0],
+            age=age,
+            now=current,
+            timezone=self._timezone,
+            history=history,
+        )
+        if result is None:
+            return None
+
+        midnight = datetime.combine(day, dt_time.min, tzinfo=self._timezone).timestamp()
+        return FirebaseNextNapPrediction(
+            next_nap=round_to_display_time(midnight + result.next_nap),
+            wake_window=result.wake_window,
+            source=result.source,
+            wake_window_number=result.nap_num + 1,
+            nap_count=result.nap_count,
+        )
+
+    async def _get_sweetspot_settings(self) -> FirebaseSettingsPlusDocument:
+        """Fetch and cache settings/settings_plus.json from Firebase Storage."""
+        cached_at = time.time()
+        if (
+            self._sweetspot_settings is not None
+            and cached_at - self._sweetspot_settings_cached_at < SETTINGS_CACHE_SECONDS
+        ):
+            return self._sweetspot_settings
+
+        await self._ensure_authenticated()
+        if not self.id_token:
+            raise RuntimeError("Missing authentication token")
+
+        encoded_object = quote(SETTINGS_OBJECT, safe="")
+        url = f"https://firebasestorage.googleapis.com/v0/b/{SETTINGS_BUCKET}/o/{encoded_object}?alt=media"
+
+        async with self.websession.get(
+            url,
+            headers={"Authorization": f"Bearer {self.id_token}"},
+            timeout=aiohttp.ClientTimeout(total=30),
+        ) as response:
+            response.raise_for_status()
+            payload = await response.json()
+
+        if not isinstance(payload, dict):
+            raise RuntimeError("Unexpected settings payload shape")
+
+        settings = FirebaseSettingsPlusDocument.model_validate(payload)
+        self._sweetspot_settings = settings
+        self._sweetspot_settings_cached_at = cached_at
+        return settings
+
+    async def _get_sweetspot_history(
+        self,
+        child_uid: str,
+        day: date,
+        cutoff: float,
+        bedtime: float,
+    ) -> list[DaySleepStats]:
+        """Build the last 30 days of sleep stats needed for transition windows."""
+        cache_key = (child_uid, day.isoformat(), cutoff, bedtime)
+        cached_at = time.time()
+        cached = self._sweetspot_history_cache.get(cache_key)
+        if cached is not None and cached_at - cached[0] < 3600:
+            return cached[1]
+
+        day_start = datetime.combine(day, dt_time.min, tzinfo=self._timezone)
+        start = day_start - timedelta(days=31)
+        intervals = await self.list_sleep_intervals(child_uid, start, day_start)
+
+        history: list[DaySleepStats] = []
+        for offset in range(30, 0, -1):
+            history_day = day - timedelta(days=offset)
+            start_of_day = datetime.combine(history_day, dt_time.min, tzinfo=self._timezone)
+            end_of_day = start_of_day + timedelta(days=1)
+            history.append(
+                sleep_stats_from_minutes(
+                    build_sleep_minutes(intervals, start_of_day, end_of_day),
+                    morning_cutoff=cutoff,
+                    night_start=bedtime,
+                )
+            )
+
+        # Drop entries that already expired so the cache cannot grow per day.
+        self._sweetspot_history_cache = {
+            key: value for key, value in self._sweetspot_history_cache.items() if cached_at - value[0] < 3600
+        }
+        self._sweetspot_history_cache[cache_key] = (cached_at, history)
+        return history
 
     async def list_feed_intervals(
         self,

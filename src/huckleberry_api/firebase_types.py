@@ -263,6 +263,22 @@ class FirebaseChildSweetspot(StrictModel):
     meta: FirebaseChildSweetspotMeta | None = Field(default=None, alias="_meta")
 
 
+class FirebaseNextNapPrediction(StrictModel):
+    """Locally computed SweetSpot next-nap prediction.
+
+    This is not a Firebase document. It mirrors the app's `getNextNap` result
+    without writing `childs/{child_id}.sweetspot.sweetSpotTimes`.
+    """
+
+    # Absolute Unix timestamp in seconds, rounded to the app's 10-minute display precision.
+    next_nap: int
+    wake_window: Number
+    source: str
+    # 1-based wake-window slot, matching the app's W1-W6 keys.
+    wake_window_number: int
+    nap_count: int
+
+
 class FirebaseChildDocument(StrictModel):
     """Known fields from childs/{child_id}."""
 
@@ -293,6 +309,34 @@ class FirebaseChildDocument(StrictModel):
     questionnaireProgress: Number | None = None
     lastQuestionnaireAppVersion: str | None = None
     lastQuestionnaireCompleteTime: Number | None = None
+
+
+# ---------------------------------------------------------------------------
+# Firebase Storage settings/settings_plus.json
+# ---------------------------------------------------------------------------
+
+
+class FirebaseSettingsNapWindow(StrictModel):
+    """One age band from settings_plus.json `napWindow`.
+
+    Numeric nap-count keys (for example `"3"`) hold default wake-window
+    durations in hours and are available through `model_extra`. `extraNaps`
+    holds fallback wake windows when a day has more naps than the schedule, and
+    `limits` holds the app's minimum/maximum wake-window bounds.
+    """
+
+    model_config = ConfigDict(extra="allow", strict=True, populate_by_name=True, protected_namespaces=())
+
+    lowerAge: Number
+    upperAge: Number
+    extraNaps: dict[str, list[Number]] | None = None
+    limits: dict[str, list[Number]] | None = None
+
+
+class FirebaseSettingsPlusDocument(StrictModel):
+    """Known fields from Firebase Storage object settings/settings_plus.json."""
+
+    napWindow: list[FirebaseSettingsNapWindow] | None = None
 
 
 # ---------------------------------------------------------------------------
