@@ -402,6 +402,7 @@ def test_child_sweetspot_prediction_source_is_constrained() -> None:
     model = FirebaseChildDocument.model_validate({"sweetspot": {"ai": {"2": {"W1": {"source": "ai_ml"}}}}})
 
     assert model.sweetspot is not None
+    assert model.sweetspot.ai is not None
     assert model.sweetspot.ai["2"]["W1"].source == "ai_ml"
 
     with pytest.raises(ValidationError):
