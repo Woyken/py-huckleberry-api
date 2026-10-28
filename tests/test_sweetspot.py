@@ -317,6 +317,23 @@ def test_adjustment_beyond_gap_count_is_ignored() -> None:
     assert config.source == "sc_custom"
 
 
+def test_custom_nap_window_without_ages_still_predicts() -> None:
+    """A partial `customNapWindow` with nap keys but no ages must not break replacement checks."""
+    child = _child(customNapWindow={"3": [1.5, 1.75, 2.0, 2.25]})
+
+    result = calculate_next_nap(
+        child,
+        _settings(),
+        today_stats=_today_stats(),
+        nap_count=3,
+        age=6,
+        now=NOW,
+        timezone=UTC,
+    )
+
+    assert result is not None
+
+
 def test_displayed_sweetspot_overrides_today() -> None:
     child = _child(
         sweetspot={
