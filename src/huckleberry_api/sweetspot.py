@@ -191,7 +191,11 @@ def sleep_stats_from_minutes(
     state = 0
     run_start = 0
     block_start = -1
-    last_sleep: int | None = None
+    # The app starts its last-sleep slot at 0 and never revisits minutes below
+    # 30, so a night ending before minute 30 leaves the slot at an arbitrary
+    # midnight value. Seed it with the actual last slept minute so the first
+    # block midpoint reflects the real sleep end.
+    last_sleep = max((minute for minute in sleep_minutes if minute < 30), default=0)
 
     for minute in range(30, 24 * 60):
         in_sleep = minute in sleep_minutes
@@ -215,7 +219,6 @@ def sleep_stats_from_minutes(
                     stats.night_start = block_start
                 stats.linked_sleep.append(SleepSpan(run_start))
         elif state == 1:
-            assert last_sleep is not None
             half = (last_sleep + 1 - block_start) / 2
             block_before_cutoff = block_start < morning_cutoff_minutes
             midpoint_before_cutoff = block_start + half < morning_cutoff_minutes
@@ -506,6 +509,10 @@ def _create_transition_wake_window(
     defaults_3 = default_wake_windows(settings, 3, age)
     if defaults_2 is None or defaults_3 is None:
         return []
+    # The bands are paired by nap index: gaps 0-1 align, while the third
+    # 2-nap gap pairs with the fourth 3-nap gap.
+    if len(defaults_2.gaps) < 3 or len(defaults_3.gaps) < 4:
+        return []
 
     gaps: list[float] = []
     extracted_3 = extracted.get(3) or []
@@ -564,6 +571,10 @@ def _apply_calculated_wake_windows(
     stored = calculated.get("2")
     if stored is not None and stored.wakeWindow:
         gaps = _max_windows(gaps, [float(value) for value in stored.wakeWindow])
+    # A short settings band cannot produce transition windows; keep the
+    # nap-count defaults instead of clearing them.
+    if not gaps:
+        return
 
     config.gaps = gaps
     config.source = SOURCE_TRANSITION

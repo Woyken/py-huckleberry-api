@@ -144,6 +144,19 @@ def test_sleep_stats_from_minutes() -> None:
     assert stats.nap_type == 2
 
 
+def test_sleep_stats_handles_sleep_ending_before_minute_30() -> None:
+    """A night ending before minute 30 still yields wake stats instead of raising."""
+    stats = sleep_stats_from_minutes(
+        _sleep_minutes((0, 15)),
+        morning_cutoff=8,
+        night_start=6,
+    )
+
+    assert stats.morning_wake == 14
+    assert stats.last_sleep == 14
+    assert stats.naps == []
+
+
 def test_build_sleep_minutes_clips_to_day() -> None:
     day_start = datetime(2026, 10, 26, tzinfo=UTC)
     day_end = datetime(2026, 10, 27, tzinfo=UTC)
@@ -403,6 +416,41 @@ def test_calculated_wake_windows_detects_two_to_three_transition() -> None:
     assert 2 in extracted
     assert len(extracted[2]) == 3
     assert 3 in extracted
+
+
+def test_transition_wake_windows_require_full_bands() -> None:
+    """Short 2-nap or 3-nap bands skip the transition instead of indexing past the end."""
+    settings = FirebaseSettingsPlusDocument.model_validate(
+        {
+            "napWindow": [
+                {
+                    "lowerAge": 6,
+                    "upperAge": 6,
+                    "2": [2.5],
+                    "3": [1.75, 2.0, 2.25, 2.5],
+                }
+            ]
+        }
+    )
+    history = [DaySleepStats(nap_type=3, wake_windows=[2.0, 2.25, 2.5, 2.75]) for _ in range(30)]
+
+    transition, extracted = calculate_wake_windows(6, history, settings, nap_counts=[2])
+
+    assert transition is True
+    assert extracted[2] == []
+
+    config = user_wake_windows(
+        _child(naps="2-3"),
+        settings,
+        nap_count=2,
+        age=6,
+        now=NOW,
+        history=history,
+    )
+
+    assert config is not None
+    assert config.gaps == [2.5]
+    assert config.source == "default"
 
 
 def test_child_time_settings_fall_back_to_defaults() -> None:
