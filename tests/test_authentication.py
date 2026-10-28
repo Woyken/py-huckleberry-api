@@ -156,22 +156,26 @@ class TestAuthentication:
 
         api._listener_client = stale_listener_client
         api._listeners["sleep_child-123"] = SimpleNamespace(unsubscribe=unsubscribe)
-        api._listener_callbacks["sleep_child-123"] = ("sleep", "child-123", callback)
+        api._listener_callbacks["sleep_child-123"] = ("sleep", "child-123", callback, None)
 
         observed_listener_clients: list[object | None] = []
 
         def fake_post(*args, **kwargs) -> FakeResponse:
             return FakeResponse()
 
-        async def fake_setup_sleep_listener(child_uid: str, received_callback) -> None:
+        async def fake_setup_listener(
+            collection_name: str, child_uid: str, received_callback, *, listener_key: str | None = None
+        ) -> None:
+            assert collection_name == "sleep"
             assert child_uid == "child-123"
             assert received_callback is callback
+            assert listener_key == "sleep_child-123"
             observed_listener_clients.append(api._listener_client)
             api._listener_client = cast(firestore.Client, object())
 
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(websession, "post", fake_post)
-        monkeypatch.setattr(api, "setup_sleep_listener", fake_setup_sleep_listener)
+        monkeypatch.setattr(api, "_setup_listener", fake_setup_listener)
 
         try:
             await api.refresh_session_token()

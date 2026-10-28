@@ -284,6 +284,20 @@ class FirebaseNextNapPrediction(StrictModel):
     nap_count: int
 
 
+class FirebaseNextNapState(StrictModel):
+    """State yielded by `HuckleberryAPI.watch_next_nap()`.
+
+    This is not a Firebase document. `generated_at` is when the prediction was
+    computed and `refresh_at` is the next Unix timestamp at which the tracker
+    recomputes even without a Firebase write (local midnight, an AI prediction
+    expiry, or the wake-window settings cache expiry).
+    """
+
+    prediction: FirebaseNextNapPrediction | None = None
+    generated_at: int
+    refresh_at: int
+
+
 class FirebaseChildDocument(StrictModel):
     """Known fields from childs/{child_id}."""
 

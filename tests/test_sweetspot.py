@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+import asyncio
+from datetime import date, datetime, timedelta, timezone
 from typing import cast
 import pytest
 
 from aiohttp import ClientSession
+from google.cloud import firestore
 
 from huckleberry_api import HuckleberryAPI
 from huckleberry_api.firebase_types import (
@@ -567,3 +569,220 @@ def test_missing_settings_band_returns_none() -> None:
         )
         is None
     )
+
+
+def test_next_refresh_at_uses_midnight_and_ai_expiry() -> None:
+    api = HuckleberryAPI(
+        email="test",
+        password="test",
+        timezone="UTC",
+        websession=cast(ClientSession, _FakeSession({})),
+    )
+    midnight = datetime(2026, 10, 27, tzinfo=UTC).timestamp()
+
+    assert api._next_refresh_at(_child(), NOW) == int(midnight)
+
+    child = _child(
+        sweetspot={
+            "ai": {
+                "3": {
+                    "W1": {"best_by_date": NOW.timestamp() - 60, "source": "ai_ml"},
+                    "W2": {"best_by_date": NOW.timestamp() + 900, "source": "ai_ml"},
+                    "W3": {"best_by_date": NOW.timestamp() + 600, "source": "ai_ml_rl"},
+                }
+            }
+        }
+    )
+
+    assert api._next_refresh_at(child, NOW) == int(NOW.timestamp() + 900)
+
+
+@pytest.mark.asyncio
+async def test_watch_next_nap_emits_on_child_and_interval_updates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("huckleberry_api.api.NEXT_NAP_DEBOUNCE_SECONDS", 0.0)
+    session = _FakeSession(_settings().model_dump(by_alias=True, exclude_none=True))
+    api = HuckleberryAPI(email="test", password="test", timezone="UTC", websession=cast(ClientSession, session))
+    api.id_token = "token"
+    api.token_expires_at = datetime.now().timestamp() + 3600
+
+    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    birthdate = (today - timedelta(days=184)).date().isoformat()
+    children = [_child(birthdate=birthdate)]
+    intervals = [
+        _interval(today, 7 * 3600),
+        _interval(today.replace(hour=9), 3600),
+        _interval(today.replace(hour=12), 3600),
+    ]
+
+    async def fake_get_child(child_uid: str) -> FirebaseChildDocument:
+        return children[0]
+
+    async def fake_list_sleep_intervals(
+        child_uid: str, start_time: datetime, end_time: datetime
+    ) -> list[FirebaseSleepIntervalData]:
+        return intervals
+
+    api.get_child = fake_get_child  # type: ignore[method-assign]
+    api.list_sleep_intervals = fake_list_sleep_intervals  # type: ignore[method-assign]
+
+    notifications: dict[str, object] = {}
+
+    async def fake_setup_listener(
+        collection_name: str, child_uid: str, callback: object, *, listener_key: str | None = None
+    ) -> None:
+        notifications["child"] = callback
+
+    async def fake_setup_interval_listener(
+        collection_name: str, child_uid: str, callback: object, *, listener_key: str
+    ) -> None:
+        notifications["intervals"] = callback
+
+    stopped: list[str] = []
+    api._setup_listener = fake_setup_listener  # type: ignore[method-assign]
+    api._setup_interval_listener = fake_setup_interval_listener  # type: ignore[method-assign]
+    api._stop_listener = stopped.append  # type: ignore[method-assign]
+
+    stream = api.watch_next_nap("child")
+    first = await asyncio.wait_for(anext(stream), 2)
+    assert first.prediction is not None
+    assert first.prediction.nap_count == 3
+    assert first.refresh_at > first.generated_at
+
+    children[0] = _child(naps="2", birthdate=birthdate)
+    child_notify = notifications["child"]
+    assert callable(child_notify)
+    child_notify(None)
+    second = await asyncio.wait_for(anext(stream), 2)
+
+    assert second.prediction is not None
+    assert second.prediction.nap_count == 2
+    assert second.prediction.next_nap != first.prediction.next_nap
+
+    intervals.append(_interval(today.replace(hour=14), 1800))
+    interval_notify = notifications["intervals"]
+    assert callable(interval_notify)
+    interval_notify()
+    third = await asyncio.wait_for(anext(stream), 2)
+
+    assert third.prediction is not None
+    assert third.prediction.next_nap != second.prediction.next_nap
+
+    await stream.aclose()
+    assert len(stopped) == 2
+
+
+@pytest.mark.asyncio
+async def test_watch_next_nap_skips_unchanged_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("huckleberry_api.api.NEXT_NAP_DEBOUNCE_SECONDS", 0.0)
+    session = _FakeSession(_settings().model_dump(by_alias=True, exclude_none=True))
+    api = HuckleberryAPI(email="test", password="test", timezone="UTC", websession=cast(ClientSession, session))
+    api.id_token = "token"
+    api.token_expires_at = datetime.now().timestamp() + 3600
+
+    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    birthdate = (today - timedelta(days=184)).date().isoformat()
+    child = _child(birthdate=birthdate)
+
+    async def fake_get_child(child_uid: str) -> FirebaseChildDocument:
+        return child
+
+    async def fake_list_sleep_intervals(
+        child_uid: str, start_time: datetime, end_time: datetime
+    ) -> list[FirebaseSleepIntervalData]:
+        return [
+            _interval(today, 7 * 3600),
+            _interval(today.replace(hour=9), 3600),
+            _interval(today.replace(hour=12), 3600),
+        ]
+
+    api.get_child = fake_get_child  # type: ignore[method-assign]
+    api.list_sleep_intervals = fake_list_sleep_intervals  # type: ignore[method-assign]
+
+    notifications: list[object] = []
+
+    async def fake_setup_listener(
+        collection_name: str, child_uid: str, callback: object, *, listener_key: str | None = None
+    ) -> None:
+        notifications.append(callback)
+
+    async def fake_setup_interval_listener(
+        collection_name: str, child_uid: str, callback: object, *, listener_key: str
+    ) -> None:
+        pass
+
+    stopped: list[str] = []
+    api._setup_listener = fake_setup_listener  # type: ignore[method-assign]
+    api._setup_interval_listener = fake_setup_interval_listener  # type: ignore[method-assign]
+    api._stop_listener = stopped.append  # type: ignore[method-assign]
+
+    stream = api.watch_next_nap("child")
+    await asyncio.wait_for(anext(stream), 2)
+
+    notify = notifications[0]
+    assert callable(notify)
+    notify(None)
+
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(anext(stream), 0.3)
+
+    await stream.aclose()
+    assert len(stopped) == 2
+
+
+@pytest.mark.asyncio
+async def test_setup_interval_listener_watches_recent_intervals() -> None:
+    api = HuckleberryAPI(
+        email="test",
+        password="test",
+        timezone="UTC",
+        websession=cast(ClientSession, _FakeSession({})),
+    )
+    calls: dict[str, object] = {}
+    unsubscribe = object()
+
+    class FakeQuery:
+        def where(self, *, filter: object) -> FakeQuery:
+            calls["filter"] = filter
+            return self
+
+        def on_snapshot(self, callback: object) -> object:
+            calls["callback"] = callback
+            return unsubscribe
+
+    class FakeDocument:
+        def collection(self, name: str) -> FakeQuery:
+            calls["subcollection"] = name
+            return FakeQuery()
+
+    class FakeCollection:
+        def document(self, child_uid: str) -> FakeDocument:
+            calls["child_uid"] = child_uid
+            return FakeDocument()
+
+    class FakeClient:
+        def collection(self, name: str) -> FakeCollection:
+            calls["collection"] = name
+            return FakeCollection()
+
+    async def fake_ensure_listener_client() -> None:
+        return None
+
+    api._ensure_listener_client = fake_ensure_listener_client  # type: ignore[method-assign]
+    api._listener_client = cast(firestore.Client, FakeClient())
+    changed: list[None] = []
+
+    await api._setup_interval_listener("sleep", "child-1", lambda: changed.append(None), listener_key="next-nap")
+
+    assert calls["collection"] == "sleep"
+    assert calls["subcollection"] == "intervals"
+    filter = calls["filter"]
+    assert isinstance(filter, firestore.FieldFilter)
+    assert filter.field_path == "start"
+    assert filter.op_string == ">="
+    assert api._listeners["next-nap"] is unsubscribe
+    collection_name, child_uid, _, subcollection = api._listener_callbacks["next-nap"]
+    assert (collection_name, child_uid, subcollection) == ("sleep", "child-1", "intervals")
+    callback = calls["callback"]
+    assert callable(callback)
+    callback(None, None, None)
+    assert changed == [None]

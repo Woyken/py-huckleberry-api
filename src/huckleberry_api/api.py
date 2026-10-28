@@ -8,6 +8,7 @@ import logging
 import math
 import time
 import uuid
+from collections.abc import AsyncIterator
 from datetime import date, datetime, timedelta
 from datetime import time as dt_time
 from datetime import timezone as dt_timezone
@@ -66,6 +67,7 @@ from .firebase_types import (
     FirebaseLastSolidData,
     FirebaseLastTemperatureData,
     FirebaseNextNapPrediction,
+    FirebaseNextNapState,
     FirebasePumpDocumentData,
     FirebasePumpIntervalData,
     FirebasePumpMultiContainer,
@@ -114,6 +116,8 @@ CURATED_FOODS_OBJECT = "foods/fooddb.json"
 SETTINGS_BUCKET = "simpleintervals.appspot.com"
 SETTINGS_OBJECT = "settings/settings_plus.json"
 SETTINGS_CACHE_SECONDS = 6 * 60 * 60
+# Coalesce bursts of snapshot updates before recomputing a watched next nap.
+NEXT_NAP_DEBOUNCE_SECONDS = 1.0
 
 # Type variable for listener callback typing
 TDocumentData = TypeVar(
@@ -355,25 +359,15 @@ class HuckleberryAPI:
         # Recreate all listeners with new token
         _LOGGER.info("Recreating %d listeners with refreshed token", len(self._listener_callbacks))
         callbacks_copy = dict(self._listener_callbacks)  # Copy to avoid modification during iteration
-        for key, (listener_type, child_uid, callback) in callbacks_copy.items():
+        for key, (collection_name, child_uid, callback, subcollection) in callbacks_copy.items():
             try:
-                if listener_type == "sleep":
-                    await self.setup_sleep_listener(child_uid, callback)
-                elif listener_type == "feed":
-                    await self.setup_feed_listener(child_uid, callback)
-                elif listener_type == "health":
-                    await self.setup_health_listener(child_uid, callback)
-                elif listener_type == "diaper":
-                    await self.setup_diaper_listener(child_uid, callback)
-                elif listener_type == "activities":
-                    await self.setup_activity_listener(child_uid, callback)
-                elif listener_type == "pump":
-                    await self.setup_pump_listener(child_uid, callback)
-                elif listener_type == "childs":
-                    await self.setup_child_listener(child_uid, callback)
-                _LOGGER.debug("Recreated %s listener for child %s", listener_type, child_uid)
+                if subcollection is None:
+                    await self._setup_listener(collection_name, child_uid, callback, listener_key=key)
+                else:
+                    await self._setup_interval_listener(collection_name, child_uid, callback, listener_key=key)
+                _LOGGER.debug("Recreated %s listener for child %s", collection_name, child_uid)
             except (GoogleAPICallError, RuntimeError, TypeError, ValueError) as err:
-                _LOGGER.error("Error recreating %s listener for child %s: %s", listener_type, child_uid, err)
+                _LOGGER.error("Error recreating %s listener for child %s: %s", collection_name, child_uid, err)
 
     async def _ensure_authenticated(self) -> None:
         """Ensure we have a valid authentication token."""
@@ -1640,11 +1634,24 @@ class HuckleberryAPI:
 
         _LOGGER.info("Solids logged with %d references (updated_last=%s)", len(foods_dict), should_update_last_solid)
 
+    async def _ensure_listener_client(self) -> None:
+        """Ensure the synchronous Firestore client used by snapshot listeners exists."""
+        await self._ensure_authenticated()
+        if not self._listener_client:
+            assert self.id_token is not None, "id_token should be set after authentication"
+            credentials = FirebaseTokenCredentials(self.id_token)
+            self._listener_client = firestore.Client(
+                project="simpleintervals",
+                credentials=credentials,
+            )
+
     async def _setup_listener(
         self,
         collection_name: Literal["sleep", "feed", "health", "diaper", "activities", "pump", "childs"],
         child_uid: str,
         callback: Callable[[TDocumentData], None],
+        *,
+        listener_key: str | None = None,
     ) -> None:
         """Set up real-time listener for a Firestore document.
 
@@ -1654,17 +1661,12 @@ class HuckleberryAPI:
             collection_name: Name of the Firestore collection (e.g., 'sleep', 'feed', 'health', 'diaper')
             child_uid: Child unique identifier
             callback: Function to call when document changes, receives document data of the appropriate type
+            listener_key: Optional key so several listeners can share a collection and child
         """
         _LOGGER.info("Setting up real-time listener for %s/%s", collection_name, child_uid)
 
-        await self._ensure_authenticated()
-        if not self._listener_client:
-            assert self.id_token is not None, "id_token should be set after authentication"
-            credentials = FirebaseTokenCredentials(self.id_token)
-            self._listener_client = firestore.Client(
-                project="simpleintervals",
-                credentials=credentials,
-            )
+        await self._ensure_listener_client()
+        assert self._listener_client is not None
 
         doc_ref = self._listener_client.collection(collection_name).document(child_uid)
 
@@ -1693,12 +1695,62 @@ class HuckleberryAPI:
 
         # Start listening and store the unsubscribe function
         unsubscribe = doc_ref.on_snapshot(on_snapshot)
-        listener_key = f"{collection_name}_{child_uid}"
-        self._listeners[listener_key] = unsubscribe
+        key = listener_key or f"{collection_name}_{child_uid}"
+        self._listeners[key] = unsubscribe
         # Store callback for recreation after token refresh
-        self._listener_callbacks[listener_key] = (collection_name, child_uid, callback)
+        self._listener_callbacks[key] = (collection_name, child_uid, callback, None)
 
         _LOGGER.info("Real-time %s listener active for child %s", collection_name, child_uid)
+
+    async def _setup_interval_listener(
+        self,
+        collection_name: Literal["sleep"],
+        child_uid: str,
+        callback: Callable[[], None],
+        *,
+        listener_key: str,
+    ) -> None:
+        """Watch an intervals subcollection and call `callback` on any change.
+
+        Interval history lives in `{collection}/{child_uid}/intervals`, so the
+        root document listener does not see new or corrected entries.
+        """
+        _LOGGER.info("Setting up real-time %s/intervals listener for child %s", collection_name, child_uid)
+
+        await self._ensure_listener_client()
+        assert self._listener_client is not None
+
+        # Only the last 30 days feed the prediction; scoping the watch avoids
+        # streaming the child's full sleep history.
+        since = time.time() - 30 * 24 * 60 * 60
+        intervals_ref = self._listener_client.collection(collection_name).document(child_uid).collection("intervals")
+        query = intervals_ref.where(filter=firestore.FieldFilter("start", ">=", since))
+
+        def on_snapshot(_doc_snapshot, _changes, _read_time):
+            callback()
+
+        unsubscribe = query.on_snapshot(on_snapshot)
+        self._listeners[listener_key] = unsubscribe
+        self._listener_callbacks[listener_key] = (collection_name, child_uid, callback, "intervals")
+
+        _LOGGER.info("Real-time %s/intervals listener active for child %s", collection_name, child_uid)
+
+    def _stop_listener(self, listener_key: str) -> None:
+        """Stop one listener without touching the others."""
+        watch = self._listeners.pop(listener_key, None)
+        self._listener_callbacks.pop(listener_key, None)
+        if watch is None:
+            return
+        try:
+            if hasattr(watch, "unsubscribe") and callable(getattr(watch, "unsubscribe")):
+                watch.unsubscribe()
+            elif hasattr(watch, "close") and callable(getattr(watch, "close")):
+                watch.close()
+            else:
+                _LOGGER.debug("Listener %s object has no unsubscribe/close", listener_key)
+            _LOGGER.debug("Stopped listener: %s", listener_key)
+        except (AttributeError, RuntimeError, TypeError, ValueError) as err:
+            _LOGGER.error("Error stopping listener %s: %s", listener_key, err)
 
     async def setup_sleep_listener(self, child_uid: str, callback: Callable[[FirebaseSleepDocumentData], None]) -> None:
         """Set up real-time listener for sleep document changes."""
@@ -3082,14 +3134,23 @@ class HuckleberryAPI:
         if child is None:
             return None
 
+        current = now or datetime.now(self._timezone)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=self._timezone)
+        return await self._next_nap_for_child(child_uid, child, current)
+
+    async def _next_nap_for_child(
+        self,
+        child_uid: str,
+        child: FirebaseChildDocument,
+        current: datetime,
+    ) -> FirebaseNextNapPrediction | None:
+        """Compute the next nap from an already loaded child document."""
         nap_counts = user_nap_counts(child.naps)
         if not nap_counts:
             return None
 
         settings = await self._get_sweetspot_settings()
-        current = now or datetime.now(self._timezone)
-        if current.tzinfo is None:
-            current = current.replace(tzinfo=self._timezone)
 
         day = current.date()
         cutoff = child_morning_cutoff(child)
@@ -3132,6 +3193,90 @@ class HuckleberryAPI:
             wake_window_number=result.nap_num + 1,
             nap_count=result.nap_count,
         )
+
+    async def watch_next_nap(self, child_uid: str) -> AsyncIterator[FirebaseNextNapState]:
+        """Yield the locally computed next nap, then each change.
+
+        Watches `childs/{child_uid}` and `sleep/{child_uid}/intervals`, so app
+        writes to SweetSpot data and new or corrected sleep entries both refresh
+        the state. The iterator also recomputes at `refresh_at` (local midnight,
+        an AI prediction expiry, or the settings cache expiry) so consumers do
+        not have to poll.
+
+        The tracker is read-only: it never writes `sweetSpotTimes` or
+        `calculatedWakeWindows`. Each iterator owns its listeners; closing it
+        removes them. Computation errors end the iterator.
+
+        Args:
+            child_uid: Child unique identifier.
+
+        Yields:
+            The initial state, then every state whose prediction changed.
+        """
+        loop = asyncio.get_running_loop()
+        wake = asyncio.Event()
+        suffix = uuid.uuid4().hex[:8]
+        child_key = f"next_nap_childs_{child_uid}_{suffix}"
+        intervals_key = f"next_nap_intervals_{child_uid}_{suffix}"
+
+        def notify(_: object = None) -> None:
+            loop.call_soon_threadsafe(wake.set)
+
+        await self._setup_listener("childs", child_uid, notify, listener_key=child_key)
+        try:
+            await self._setup_interval_listener("sleep", child_uid, notify, listener_key=intervals_key)
+        except Exception:
+            self._stop_listener(child_key)
+            raise
+
+        last: FirebaseNextNapPrediction | None = None
+        emitted = False
+        try:
+            while True:
+                wake.clear()
+                state = await self._next_nap_state(child_uid)
+                if not emitted or state.prediction != last:
+                    emitted = True
+                    last = state.prediction
+                    yield state
+
+                timeout = max(0.0, state.refresh_at - time.time()) + 1.0
+                try:
+                    await asyncio.wait_for(wake.wait(), timeout=timeout)
+                except TimeoutError:
+                    continue
+                await asyncio.sleep(NEXT_NAP_DEBOUNCE_SECONDS)
+        finally:
+            self._stop_listener(child_key)
+            self._stop_listener(intervals_key)
+
+    async def _next_nap_state(self, child_uid: str) -> FirebaseNextNapState:
+        """Compute one watched state, including its next refresh boundary."""
+        now = datetime.now(self._timezone)
+        child = await self.get_child(child_uid)
+        prediction = None if child is None else await self._next_nap_for_child(child_uid, child, now)
+        return FirebaseNextNapState(
+            prediction=prediction,
+            generated_at=int(now.timestamp()),
+            refresh_at=self._next_refresh_at(child, now),
+        )
+
+    def _next_refresh_at(self, child: FirebaseChildDocument | None, now: datetime) -> int:
+        """Return when the prediction may change without a Firebase write."""
+        next_midnight = datetime.combine(now.date() + timedelta(days=1), dt_time.min, tzinfo=self._timezone)
+        boundaries = [next_midnight.timestamp()]
+
+        if child is not None and child.sweetspot is not None and child.sweetspot.ai:
+            for schedule in child.sweetspot.ai.values():
+                for entry in schedule.values():
+                    best_by_date = float(entry.best_by_date or 0)
+                    if entry.source == "ai_ml" and best_by_date > now.timestamp():
+                        boundaries.append(best_by_date)
+
+        if self._sweetspot_settings_cached_at:
+            boundaries.append(self._sweetspot_settings_cached_at + SETTINGS_CACHE_SECONDS)
+
+        return int(min(boundaries))
 
     async def _get_sweetspot_settings(self) -> FirebaseSettingsPlusDocument:
         """Fetch and cache settings/settings_plus.json from Firebase Storage."""
