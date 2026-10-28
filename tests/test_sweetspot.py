@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from typing import cast
 import pytest
@@ -625,17 +626,26 @@ async def test_watch_next_nap_emits_on_child_and_interval_updates(monkeypatch: p
     api.get_child = fake_get_child  # type: ignore[method-assign]
     api.list_sleep_intervals = fake_list_sleep_intervals  # type: ignore[method-assign]
 
-    notifications: dict[str, object] = {}
+    child_notifications: list[Callable[[object], None]] = []
+    interval_notifications: list[Callable[[], None]] = []
 
     async def fake_setup_listener(
-        collection_name: str, child_uid: str, callback: object, *, listener_key: str | None = None
+        collection_name: str,
+        child_uid: str,
+        callback: Callable[[object], None],
+        *,
+        listener_key: str | None = None,
     ) -> None:
-        notifications["child"] = callback
+        child_notifications.append(callback)
 
     async def fake_setup_interval_listener(
-        collection_name: str, child_uid: str, callback: object, *, listener_key: str
+        collection_name: str,
+        child_uid: str,
+        callback: Callable[[], None],
+        *,
+        listener_key: str,
     ) -> None:
-        notifications["intervals"] = callback
+        interval_notifications.append(callback)
 
     stopped: list[str] = []
     api._setup_listener = fake_setup_listener  # type: ignore[method-assign]
@@ -649,9 +659,7 @@ async def test_watch_next_nap_emits_on_child_and_interval_updates(monkeypatch: p
     assert first.refresh_at > first.generated_at
 
     children[0] = _child(naps="2", birthdate=birthdate)
-    child_notify = notifications["child"]
-    assert callable(child_notify)
-    child_notify(None)
+    child_notifications[0](None)
     second = await asyncio.wait_for(anext(stream), 2)
 
     assert second.prediction is not None
@@ -659,9 +667,7 @@ async def test_watch_next_nap_emits_on_child_and_interval_updates(monkeypatch: p
     assert second.prediction.next_nap != first.prediction.next_nap
 
     intervals.append(_interval(today.replace(hour=14), 1800))
-    interval_notify = notifications["intervals"]
-    assert callable(interval_notify)
-    interval_notify()
+    interval_notifications[0]()
     third = await asyncio.wait_for(anext(stream), 2)
 
     assert third.prediction is not None
@@ -698,15 +704,23 @@ async def test_watch_next_nap_skips_unchanged_state(monkeypatch: pytest.MonkeyPa
     api.get_child = fake_get_child  # type: ignore[method-assign]
     api.list_sleep_intervals = fake_list_sleep_intervals  # type: ignore[method-assign]
 
-    notifications: list[object] = []
+    notifications: list[Callable[[object], None]] = []
 
     async def fake_setup_listener(
-        collection_name: str, child_uid: str, callback: object, *, listener_key: str | None = None
+        collection_name: str,
+        child_uid: str,
+        callback: Callable[[object], None],
+        *,
+        listener_key: str | None = None,
     ) -> None:
         notifications.append(callback)
 
     async def fake_setup_interval_listener(
-        collection_name: str, child_uid: str, callback: object, *, listener_key: str
+        collection_name: str,
+        child_uid: str,
+        callback: Callable[[], None],
+        *,
+        listener_key: str,
     ) -> None:
         pass
 
@@ -718,9 +732,7 @@ async def test_watch_next_nap_skips_unchanged_state(monkeypatch: pytest.MonkeyPa
     stream = api.watch_next_nap("child")
     await asyncio.wait_for(anext(stream), 2)
 
-    notify = notifications[0]
-    assert callable(notify)
-    notify(None)
+    notifications[0](None)
 
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(anext(stream), 0.3)
@@ -738,6 +750,7 @@ async def test_setup_interval_listener_watches_recent_intervals() -> None:
         websession=cast(ClientSession, _FakeSession({})),
     )
     calls: dict[str, object] = {}
+    callbacks: list[Callable[[object, object, object], None]] = []
     unsubscribe = object()
 
     class FakeQuery:
@@ -745,8 +758,8 @@ async def test_setup_interval_listener_watches_recent_intervals() -> None:
             calls["filter"] = filter
             return self
 
-        def on_snapshot(self, callback: object) -> object:
-            calls["callback"] = callback
+        def on_snapshot(self, callback: Callable[[object, object, object], None]) -> object:
+            callbacks.append(callback)
             return unsubscribe
 
     class FakeDocument:
@@ -782,7 +795,5 @@ async def test_setup_interval_listener_watches_recent_intervals() -> None:
     assert api._listeners["next-nap"] is unsubscribe
     collection_name, child_uid, _, subcollection = api._listener_callbacks["next-nap"]
     assert (collection_name, child_uid, subcollection) == ("sleep", "child-1", "intervals")
-    callback = calls["callback"]
-    assert callable(callback)
-    callback(None, None, None)
+    callbacks[0](None, None, None)
     assert changed == [None]

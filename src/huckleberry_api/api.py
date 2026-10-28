@@ -8,7 +8,7 @@ import logging
 import math
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from datetime import date, datetime, timedelta
 from datetime import time as dt_time
 from datetime import timezone as dt_timezone
@@ -3194,7 +3194,7 @@ class HuckleberryAPI:
             nap_count=result.nap_count,
         )
 
-    async def watch_next_nap(self, child_uid: str) -> AsyncIterator[FirebaseNextNapState]:
+    async def watch_next_nap(self, child_uid: str) -> AsyncGenerator[FirebaseNextNapState]:
         """Yield the locally computed next nap, then each change.
 
         Watches `childs/{child_uid}` and `sleep/{child_uid}/intervals`, so app
