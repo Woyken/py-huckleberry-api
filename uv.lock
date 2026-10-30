@@ -315,6 +315,7 @@ version = "0.4.10"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "google-api-core" },
     { name = "google-cloud-firestore" },
     { name = "pydantic" },
     { name = "tzdata" },
@@ -332,6 +333,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.10.0" },
+    { name = "google-api-core", specifier = ">=2.28.0" },
     { name = "google-cloud-firestore", specifier = ">=2.11.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "tzdata", specifier = ">=2024.1" },
