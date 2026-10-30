@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [0.4.11] - 2026-10-30
+
+### Bugfixes
+
+- Require ``google-api-core>=2.28.0`` so ``google-cloud-firestore>=2.30`` can be imported. ([#77](https://github.com/Woyken/py-huckleberry-api/issues/77))
+
+
 ## [0.4.10] - 2026-10-26
 
 ### Bugfixes
