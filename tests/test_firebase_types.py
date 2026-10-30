@@ -1,7 +1,7 @@
 """Unit tests for strict Firebase schema models."""
 
 import pytest
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from huckleberry_api.firebase_types import (
     FirebaseActivityDocumentData,
@@ -313,6 +313,136 @@ def test_child_sweetspot_times_accepts_null_slots() -> None:
     assert model.sweetspot is not None
     assert model.sweetspot.sweetSpotTimes is not None
     assert model.sweetspot.sweetSpotTimes["2"] is None
+
+
+def test_child_sweetspot_predictions() -> None:
+    """App-written SweetSpot predictions and adjustments survive validation."""
+    model = FirebaseChildDocument.model_validate(
+        {
+            "sweetspot": {
+                "selectedNapDay": 2,
+                "sweetSpotTimes": {"0": 1760000000, "1": 1760003600, "2": None},
+                "uuid": "device-uuid",
+                "_meta": {
+                    "updatedAt": 1760007200,
+                    "updatedBy": "user-uid",
+                    "uuid": "device-uuid",
+                },
+                "ai": {
+                    "2": {
+                        "W1": {"best_by_date": 1760093600, "value": 1.75, "source": "ai_ml"},
+                        "W2": {"best_by_date": 1760093600, "value": 2, "source": "ai_ml_rl"},
+                    }
+                },
+                "shadowSweetSpotData": {"2": {"W1": {"best_by_date": 1760093600, "value": 1.5, "source": "ai_ml_rl"}}},
+                "displayedSweetSpot": {
+                    "2": {
+                        "W1": {
+                            "displayed_time": 1760000000,
+                            "timestamp": 1760000000.5,
+                            "value": 1.75,
+                            "source": "ai_ml",
+                        }
+                    }
+                },
+            },
+            "sweetspotAdjust": {
+                "custom": True,
+                "windows": {
+                    "2": {
+                        "0": {"relative": 15, "absolute": 0, "manual": False},
+                        "1": {"relative": 0, "absolute": 2.25, "manual": True},
+                    }
+                },
+                "date_updated": 1760007200000,
+            },
+            "customNapWindow": {"lowerAge": 4, "upperAge": 6, "3": [1.5, 1.75, 2.0]},
+            "calculatedWakeWindows": {
+                "2": {"timestamp": 1760007200, "wakeWindow": [1.75, 2.0, 2.25], "transition": True}
+            },
+        }
+    )
+
+    assert model.sweetspot is not None
+    assert model.sweetspot.meta is not None
+    assert model.sweetspot.meta.updatedAt == 1760007200
+    assert model.sweetspot.ai is not None
+    assert model.sweetspot.ai["2"]["W2"].best_by_date == 1760093600
+    assert model.sweetspot.shadowSweetSpotData is not None
+    assert model.sweetspot.shadowSweetSpotData["2"]["W1"].source == "ai_ml_rl"
+    assert model.sweetspot.displayedSweetSpot is not None
+    assert model.sweetspot.displayedSweetSpot["2"]["W1"].timestamp == 1760000000.5
+    assert model.sweetspotAdjust is not None
+    assert model.sweetspotAdjust.custom is True
+    assert model.sweetspotAdjust.windows is not None
+    assert model.sweetspotAdjust.windows["2"]["1"].absolute == 2.25
+    assert model.sweetspotAdjust.date_updated == 1760007200000
+    assert model.customNapWindow is not None
+    assert model.customNapWindow.model_extra == {"3": [1.5, 1.75, 2.0]}
+    assert model.calculatedWakeWindows is not None
+    assert model.calculatedWakeWindows["2"].transition is True
+    assert model.calculatedWakeWindows["2"].wakeWindow == [1.75, 2.0, 2.25]
+
+    dumped = model.model_dump(by_alias=True, exclude_none=True)
+    assert dumped["sweetspot"]["_meta"]["updatedAt"] == 1760007200
+
+
+def test_child_sweetspot_predictions_absent() -> None:
+    """Child docs without SweetSpot data validate with every field unset."""
+    model = FirebaseChildDocument.model_validate({"childsName": "Sponge"})
+
+    assert model.sweetspot is None
+    assert model.sweetspotAdjust is None
+    assert model.customNapWindow is None
+    assert model.calculatedWakeWindows is None
+
+
+def test_child_sweetspot_prediction_source_is_constrained() -> None:
+    """Prediction sources accept only the two values `handleSweetSpotResult` writes."""
+    model = FirebaseChildDocument.model_validate({"sweetspot": {"ai": {"2": {"W1": {"source": "ai_ml"}}}}})
+
+    assert model.sweetspot is not None
+    assert model.sweetspot.ai is not None
+    assert model.sweetspot.ai["2"]["W1"].source == "ai_ml"
+
+    with pytest.raises(ValidationError):
+        FirebaseChildDocument.model_validate({"sweetspot": {"ai": {"2": {"W1": {"source": "default"}}}}})
+
+
+def test_custom_nap_window_extra_values_are_number_lists() -> None:
+    """Dynamic nap-count keys stay accepted but must hold wake-window number lists."""
+    with pytest.raises(ValidationError):
+        FirebaseChildDocument.model_validate({"customNapWindow": {"3": "invalid"}})
+
+
+def test_child_sweetspot_predictions_sparse() -> None:
+    """Sparse SweetSpot payloads accept missing and null prediction slots."""
+    model = FirebaseChildDocument.model_validate(
+        {
+            "sweetspot": {
+                "ai": {"3": {"W1": {"value": None, "source": None}, "W2": {}}},
+                "shadowSweetSpotData": {},
+                "displayedSweetSpot": None,
+            },
+            "sweetspotAdjust": {"custom": False, "windows": None, "date_updated": None},
+            "customNapWindow": {"lowerAge": 4},
+            "calculatedWakeWindows": {"2": {}},
+        }
+    )
+
+    assert model.sweetspot is not None
+    assert model.sweetspot.meta is None
+    assert model.sweetspot.ai is not None
+    assert model.sweetspot.ai["3"]["W1"].value is None
+    assert model.sweetspot.ai["3"]["W2"].source is None
+    assert model.sweetspot.shadowSweetSpotData == {}
+    assert model.sweetspot.displayedSweetSpot is None
+    assert model.sweetspotAdjust is not None
+    assert model.sweetspotAdjust.windows is None
+    assert model.customNapWindow is not None
+    assert model.customNapWindow.upperAge is None
+    assert model.calculatedWakeWindows is not None
+    assert model.calculatedWakeWindows["2"].wakeWindow is None
 
 
 def test_pump_interval_model() -> None:

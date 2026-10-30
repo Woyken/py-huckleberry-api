@@ -160,6 +160,99 @@ class FirebaseChildSweetspotStrings(StrictModel):
     text3: str | None = None
 
 
+class FirebaseChildSweetspotMeta(StrictModel):
+    """Write metadata for childs/{child_id}.sweetspot._meta.
+
+    The app rewrites this object on every SweetSpot persist. `updatedAt` is a
+    Unix timestamp in seconds, `updatedBy` is the user uid, and `uuid` is the
+    writing device uuid.
+    """
+
+    updatedAt: Number | None = None
+    updatedBy: str | None = None
+    uuid: str | None = None
+
+
+class FirebaseChildSweetspotPrediction(StrictModel):
+    """Single wake-window prediction under sweetspot.ai or sweetspot.shadowSweetSpotData.
+
+    Nap-count keys contain `W1`-`W6` wake-window keys. `best_by_date` is a Unix
+    timestamp in seconds, `value` is the wake-window duration in hours, and
+    `source` is `ai_ml` for supervised or `ai_ml_rl` for reinforced predictions.
+    `handleSweetSpotResult` is the only writer and derives `source` from those
+    two branches.
+    """
+
+    best_by_date: Number | None = None
+    value: Number | None = None
+    source: Literal["ai_ml", "ai_ml_rl"] | None = None
+
+
+class FirebaseChildSweetspotDisplayed(StrictModel):
+    """Single shown prediction under childs/{child_id}.sweetspot.displayedSweetSpot.
+
+    Nap-count keys contain `W1`-`W6` wake-window keys. `displayed_time` is a
+    Unix timestamp in seconds for the shown nap time, `timestamp` records when
+    the prediction was displayed, and `value` is the wake-window duration in hours.
+    """
+
+    displayed_time: Number | None = None
+    timestamp: Number | None = None
+    value: Number | None = None
+    source: str | None = None
+
+
+class FirebaseChildSweetspotAdjustWindow(StrictModel):
+    """Per-gap adjustment under childs/{child_id}.sweetspotAdjust.windows.
+
+    `relative` is a minute offset from the default wake window and `absolute`
+    is an absolute wake window in hours. `absolute` only applies when `manual`
+    is true.
+    """
+
+    relative: Number | None = None
+    absolute: Number | None = None
+    manual: bool | None = None
+
+
+class FirebaseChildSweetspotAdjust(StrictModel):
+    """Known payload for childs/{child_id}.sweetspotAdjust."""
+
+    custom: bool | None = None
+    # Nap-count keys contain gap-index keys.
+    windows: dict[str, dict[str, FirebaseChildSweetspotAdjustWindow]] | None = None
+    # The app writes `date_updated: new Date().getTime()`, so this is
+    # milliseconds since the Unix epoch.
+    date_updated: Number | None = None
+
+
+class FirebaseChildCustomNapWindow(StrictModel):
+    """Known payload for childs/{child_id}.customNapWindow.
+
+    Set by the sleep-consultant service. Numeric nap-count keys (for example
+    `"3"`) hold default wake-window durations in hours and are validated as
+    number lists through `model_extra`.
+    """
+
+    model_config = ConfigDict(extra="allow", strict=True, populate_by_name=True, protected_namespaces=())
+
+    lowerAge: Number | None = None
+    upperAge: Number | None = None
+    __pydantic_extra__: dict[str, list[Number]] = Field(init=False)
+
+
+class FirebaseChildCalculatedWakeWindow(StrictModel):
+    """Single entry under childs/{child_id}.calculatedWakeWindows.
+
+    `timestamp` is a Unix timestamp in seconds, `wakeWindow` holds wake-window
+    durations in hours, and `transition` marks a computed 2-to-3 nap transition.
+    """
+
+    timestamp: Number | None = None
+    wakeWindow: list[Number] | None = None
+    transition: bool | None = None
+
+
 class FirebaseChildSweetspot(StrictModel):
     """Known payload for childs/{child_id}.sweetspot."""
 
@@ -168,6 +261,41 @@ class FirebaseChildSweetspot(StrictModel):
     sweetSpotTimes: dict[str, Number | None] | None = None
     sweetspotStrings: FirebaseChildSweetspotStrings | None = None
     uuid: str | None = None
+    # Nap-count keys contain W1-W6 wake-window keys.
+    ai: dict[str, dict[str, FirebaseChildSweetspotPrediction]] | None = None
+    shadowSweetSpotData: dict[str, dict[str, FirebaseChildSweetspotPrediction]] | None = None
+    displayedSweetSpot: dict[str, dict[str, FirebaseChildSweetspotDisplayed]] | None = None
+    meta: FirebaseChildSweetspotMeta | None = Field(default=None, alias="_meta")
+
+
+class FirebaseNextNapPrediction(StrictModel):
+    """Locally computed SweetSpot next-nap prediction.
+
+    This is not a Firebase document. It mirrors the app's `getNextNap` result
+    without writing `childs/{child_id}.sweetspot.sweetSpotTimes`.
+    """
+
+    # Absolute Unix timestamp in seconds, rounded to the app's 10-minute display precision.
+    next_nap: int
+    wake_window: Number
+    source: str
+    # 1-based wake-window slot, matching the app's W1-W6 keys.
+    wake_window_number: int
+    nap_count: int
+
+
+class FirebaseNextNapState(StrictModel):
+    """State yielded by `HuckleberryAPI.watch_next_nap()`.
+
+    This is not a Firebase document. `generated_at` is when the prediction was
+    computed and `refresh_at` is the next Unix timestamp at which the tracker
+    recomputes even without a Firebase write (local midnight, an AI prediction
+    expiry, or the wake-window settings cache expiry).
+    """
+
+    prediction: FirebaseNextNapPrediction | None = None
+    generated_at: int
+    refresh_at: int
 
 
 class FirebaseChildDocument(StrictModel):
@@ -184,6 +312,10 @@ class FirebaseChildDocument(StrictModel):
     morningCutoff: str | Number | None = None
     naps: str | None = None
     sweetspot: FirebaseChildSweetspot | None = None
+    sweetspotAdjust: FirebaseChildSweetspotAdjust | None = None
+    customNapWindow: FirebaseChildCustomNapWindow | None = None
+    # Nap-count keys map to calculated wake-window entries.
+    calculatedWakeWindows: dict[str, FirebaseChildCalculatedWakeWindow] | None = None
     # analytics: Any | None = None
     pre: Number | None = None
     singleIntervalCount: Number | None = None
@@ -196,6 +328,34 @@ class FirebaseChildDocument(StrictModel):
     questionnaireProgress: Number | None = None
     lastQuestionnaireAppVersion: str | None = None
     lastQuestionnaireCompleteTime: Number | None = None
+
+
+# ---------------------------------------------------------------------------
+# Firebase Storage settings/settings_plus.json
+# ---------------------------------------------------------------------------
+
+
+class FirebaseSettingsNapWindow(StrictModel):
+    """One age band from settings_plus.json `napWindow`.
+
+    Numeric nap-count keys (for example `"3"`) hold default wake-window
+    durations in hours and are available through `model_extra`. `extraNaps`
+    holds fallback wake windows when a day has more naps than the schedule, and
+    `limits` holds the app's minimum/maximum wake-window bounds.
+    """
+
+    model_config = ConfigDict(extra="allow", strict=True, populate_by_name=True, protected_namespaces=())
+
+    lowerAge: Number
+    upperAge: Number
+    extraNaps: dict[str, list[Number]] | None = None
+    limits: dict[str, list[Number]] | None = None
+
+
+class FirebaseSettingsPlusDocument(StrictModel):
+    """Known fields from Firebase Storage object settings/settings_plus.json."""
+
+    napWindow: list[FirebaseSettingsNapWindow] | None = None
 
 
 # ---------------------------------------------------------------------------
