@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
+import time
 from typing import cast
 import pytest
 
@@ -551,6 +552,29 @@ async def test_next_nap_for_child_wires_storage_and_sleep_data() -> None:
     assert result.source == "default"
 
 
+@pytest.mark.asyncio
+async def test_next_nap_for_child_skips_settings_without_sleep_today() -> None:
+    api = HuckleberryAPI(
+        email="test",
+        password="test",
+        timezone="UTC",
+        websession=cast(ClientSession, _FakeSession({})),
+    )
+
+    async def fake_list_sleep_intervals(
+        child_uid: str, start_time: datetime, end_time: datetime
+    ) -> list[FirebaseSleepIntervalData]:
+        return []
+
+    async def fake_settings() -> FirebaseSettingsPlusDocument:
+        raise AssertionError("settings must not be fetched without sleep data")
+
+    api.list_sleep_intervals = fake_list_sleep_intervals  # type: ignore[method-assign]
+    api._get_sweetspot_settings = fake_settings  # type: ignore[method-assign]
+
+    assert await api._next_nap_for_child("child", _child(), NOW) is None
+
+
 def test_missing_settings_band_returns_none() -> None:
     settings = FirebaseSettingsPlusDocument.model_validate({"napWindow": []})
 
@@ -680,11 +704,13 @@ async def test_watch_next_nap_emits_on_child_and_interval_updates(monkeypatch: p
     assert second.prediction.next_nap != first.prediction.next_nap
 
     intervals.append(_interval(today.replace(hour=14), 1800))
+    api._sweetspot_history_cache[("stale", "2026-10-26", 8.0, 6.0)] = (time.time(), [])
     interval_notifications[0]()
     third = await asyncio.wait_for(anext(stream), 2)
 
     assert third.prediction is not None
     assert third.prediction.next_nap != second.prediction.next_nap
+    assert ("stale", "2026-10-26", 8.0, 6.0) not in api._sweetspot_history_cache
 
     await stream.aclose()
     assert len(stopped) == 2
@@ -755,6 +781,63 @@ async def test_watch_next_nap_skips_unchanged_state(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.asyncio
+async def test_watch_next_nap_wakes_before_token_expiry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The listeners' token lasts about an hour; the wait must not run past it."""
+    monkeypatch.setattr("huckleberry_api.api.NEXT_NAP_DEBOUNCE_SECONDS", 0.0)
+    session = _FakeSession(_settings().model_dump(by_alias=True, exclude_none=True))
+    api = HuckleberryAPI(email="test", password="test", timezone="UTC", websession=cast(ClientSession, session))
+    api.id_token = "token"
+    api.token_expires_at = time.time() - 1
+    # A warm settings cache keeps this test off the network; the state
+    # computation then never touches authentication.
+    api._sweetspot_settings = _settings()
+    api._sweetspot_settings_cached_at = time.time()
+
+    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    child = _child(birthdate=(today - timedelta(days=184)).date().isoformat())
+    calls: list[str] = []
+
+    async def fake_get_child(child_uid: str) -> FirebaseChildDocument:
+        calls.append(child_uid)
+        return child
+
+    async def fake_list_sleep_intervals(
+        child_uid: str, start_time: datetime, end_time: datetime
+    ) -> list[FirebaseSleepIntervalData]:
+        return [
+            _interval(today, 7 * 3600),
+            _interval(today.replace(hour=9), 3600),
+            _interval(today.replace(hour=12), 3600),
+        ]
+
+    api.get_child = fake_get_child  # type: ignore[method-assign]
+    api.list_sleep_intervals = fake_list_sleep_intervals  # type: ignore[method-assign]
+
+    async def fake_setup_listener(*args: object, **kwargs: object) -> None:
+        return None
+
+    async def fake_setup_interval_listener(*args: object, **kwargs: object) -> None:
+        return None
+
+    api._setup_listener = fake_setup_listener  # type: ignore[method-assign]
+    api._setup_interval_listener = fake_setup_interval_listener  # type: ignore[method-assign]
+    api._stop_listener = lambda listener_key: None  # type: ignore[method-assign]
+
+    stream = api.watch_next_nap("child")
+    await asyncio.wait_for(anext(stream), 2)
+    assert len(calls) == 1
+
+    pending = asyncio.create_task(anext(stream))
+    await asyncio.sleep(1.5)
+    assert len(calls) >= 2
+
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    await stream.aclose()
+
+
+@pytest.mark.asyncio
 async def test_setup_interval_listener_watches_recent_and_batched_intervals() -> None:
     api = HuckleberryAPI(
         email="test",
@@ -813,6 +896,8 @@ async def test_setup_interval_listener_watches_recent_and_batched_intervals() ->
     assert calls["collection"] == "sleep"
     assert calls["subcollection"] == "intervals"
     assert [(item.field_path, item.op_string) for item in filters] == [("start", ">="), ("multi", "==")]
+    midnight = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    assert filters[0].value == (midnight - timedelta(days=31)).timestamp()
     assert len(api._listeners["next-nap"]) == 2
     collection_name, child_uid, _, subcollection = api._listener_callbacks["next-nap"]
     assert (collection_name, child_uid, subcollection) == ("sleep", "child-1", "intervals")

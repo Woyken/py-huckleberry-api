@@ -1717,13 +1717,16 @@ class HuckleberryAPI:
         await self._ensure_listener_client()
         assert self._listener_client is not None
 
-        # Only the last 30 days feed the prediction; scoping the watch avoids
-        # streaming the child's full sleep history.
-        since = time.time() - 30 * 24 * 60 * 60
+        # `_get_sweetspot_history` reads from local midnight 31 days back, so
+        # start the watch there too; a correction to that day must still wake
+        # the watcher. Scoping also avoids streaming the child's full history.
+        day_start = datetime.combine(datetime.now(self._timezone).date(), dt_time.min, tzinfo=self._timezone)
+        since = (day_start - timedelta(days=31)).timestamp()
         intervals_ref = self._listener_client.collection(collection_name).document(child_uid).collection("intervals")
         recent = intervals_ref.where(filter=firestore.FieldFilter("start", ">=", since))
-        # Batched entries store their starts under `data.*.start`, so the `start`
-        # filter cannot match them; watch the multi flag as well.
+        # Batched entries store their starts under `data.*.start`, which
+        # Firestore cannot filter on, so the query above misses them. Watch the
+        # multi flag as well; these documents are far rarer than intervals.
         batched = intervals_ref.where(filter=firestore.FieldFilter("multi", "==", True))
 
         def on_snapshot(_doc_snapshot, _changes, _read_time):
@@ -3132,8 +3135,6 @@ class HuckleberryAPI:
         if not nap_counts:
             return None
 
-        settings = await self._get_sweetspot_settings()
-
         day = current.date()
         cutoff = child_morning_cutoff(child)
         bedtime = child_night_start(child)
@@ -3149,6 +3150,8 @@ class HuckleberryAPI:
         )
         if today_stats.last_sleep is None:
             return None
+
+        settings = await self._get_sweetspot_settings()
 
         history = None
         if age < 9 and 2 in nap_counts:
@@ -3204,9 +3207,15 @@ class HuckleberryAPI:
         def notify(_: object = None) -> None:
             loop.call_soon_threadsafe(wake.set)
 
+        def notify_intervals(_: object = None) -> None:
+            # Corrected sleep entries must not be served from the history cache;
+            # clear it on the loop thread, where the cache is maintained.
+            loop.call_soon_threadsafe(self._invalidate_next_nap_history)
+            loop.call_soon_threadsafe(wake.set)
+
         await self._setup_listener("childs", child_uid, notify, listener_key=child_key)
         try:
-            await self._setup_interval_listener("sleep", child_uid, notify, listener_key=intervals_key)
+            await self._setup_interval_listener("sleep", child_uid, notify_intervals, listener_key=intervals_key)
         except BaseException:
             self._stop_listener(child_key)
             raise
@@ -3223,6 +3232,12 @@ class HuckleberryAPI:
                     yield state
 
                 timeout = max(0.0, state.refresh_at - time.time()) + 1.0
+                if self.token_expires_at:
+                    # Listener credentials expire with the token. `refresh_at`
+                    # can be hours away, so wake early enough for the next
+                    # state computation to renew the session.
+                    token_deadline = self.token_expires_at - 300
+                    timeout = min(timeout, max(0.0, token_deadline - time.time()) + 1.0)
                 try:
                     await asyncio.wait_for(wake.wait(), timeout=timeout)
                 except TimeoutError:
@@ -3231,6 +3246,10 @@ class HuckleberryAPI:
         finally:
             self._stop_listener(child_key)
             self._stop_listener(intervals_key)
+
+    def _invalidate_next_nap_history(self) -> None:
+        """Drop cached daily history so corrected intervals are re-read."""
+        self._sweetspot_history_cache.clear()
 
     async def _next_nap_state(self, child_uid: str) -> FirebaseNextNapState:
         """Compute one watched state, including its next refresh boundary."""
