@@ -828,7 +828,10 @@ async def test_watch_next_nap_wakes_before_token_expiry(monkeypatch: pytest.Monk
     assert len(calls) == 1
 
     pending = asyncio.create_task(anext(stream))
-    await asyncio.sleep(1.5)
+    for _ in range(20):
+        if len(calls) >= 2:
+            break
+        await asyncio.sleep(0.1)
     assert len(calls) >= 2
 
     pending.cancel()
