@@ -169,7 +169,7 @@ def build_sleep_minutes(
 
         # The app marks from floor(start) for round(duration) minutes.
         first = math.floor((start - day_start_ts) / 60)
-        length = round((end - start) / 60)
+        length = _round_half_up((end - start) / 60)
         for minute in range(first, first + length):
             if 0 <= minute <= _LAST_MINUTE:
                 minutes.add(minute)
@@ -457,9 +457,28 @@ def calculate_next_nap(
     )
 
 
+def _number(value: object) -> float | None:
+    """Coerce a numeric payload value, accepting the numeric strings the app stores."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _round_half_up(value: float) -> int:
+    """Round like JS `Math.round` (ties toward +infinity for the values used here)."""
+    return math.floor(value + 0.5)
+
+
 def round_to_display_time(timestamp: float) -> int:
     """Round an absolute Unix timestamp to the app's nearest 10 minutes."""
-    return int(10 * round(timestamp / 600) * 60)
+    return int(10 * _round_half_up(timestamp / 600) * 60)
 
 
 def calculate_wake_windows(
@@ -800,16 +819,16 @@ def _is_stale(timestamp: Number | None, now: datetime) -> bool:
 
 
 def child_morning_cutoff(child: FirebaseChildDocument) -> float:
-    value = child.morningCutoff
-    if isinstance(value, (int, float)) and 4 < value < 12:
-        return float(value)
+    value = _number(child.morningCutoff)
+    if value is not None and 4 < value < 12:
+        return value
     return 8.0
 
 
 def child_night_start(child: FirebaseChildDocument) -> float:
-    value = child.nightStart
-    if isinstance(value, (int, float)) and 3 < value < 11:
-        return float(value)
+    value = _number(child.nightStart)
+    if value is not None and 3 < value < 11:
+        return value
     return 6.0
 
 

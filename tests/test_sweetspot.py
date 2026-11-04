@@ -26,6 +26,7 @@ from huckleberry_api.sweetspot import (
     child_morning_cutoff,
     child_night_start,
     default_wake_windows,
+    round_to_display_time,
     sleep_stats_from_minutes,
     user_nap_counts,
     user_wake_windows,
@@ -593,6 +594,23 @@ def test_next_refresh_at_uses_midnight_and_ai_expiry() -> None:
     assert api._next_refresh_at(child, NOW) == int(NOW.timestamp() + 900)
 
 
+def test_next_refresh_at_ignores_expired_settings_cache() -> None:
+    api = HuckleberryAPI(
+        email="test",
+        password="test",
+        timezone="UTC",
+        websession=cast(ClientSession, _FakeSession({})),
+    )
+    midnight = datetime(2026, 10, 27, tzinfo=UTC).timestamp()
+    api._sweetspot_settings_cached_at = NOW.timestamp() - 7 * 3600
+
+    assert api._next_refresh_at(_child(), NOW) == int(midnight)
+
+    api._sweetspot_settings_cached_at = NOW.timestamp() - 3600
+
+    assert api._next_refresh_at(_child(), NOW) == int(NOW.timestamp() - 3600 + 6 * 3600)
+
+
 @pytest.mark.asyncio
 async def test_watch_next_nap_emits_on_child_and_interval_updates(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("huckleberry_api.api.NEXT_NAP_DEBOUNCE_SECONDS", 0.0)
@@ -737,7 +755,7 @@ async def test_watch_next_nap_skips_unchanged_state(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.asyncio
-async def test_setup_interval_listener_watches_recent_intervals() -> None:
+async def test_setup_interval_listener_watches_recent_and_batched_intervals() -> None:
     api = HuckleberryAPI(
         email="test",
         password="test",
@@ -745,22 +763,33 @@ async def test_setup_interval_listener_watches_recent_intervals() -> None:
         websession=cast(ClientSession, _FakeSession({})),
     )
     calls: dict[str, object] = {}
+    filters: list[firestore.FieldFilter] = []
     callbacks: list[Callable[[object, object, object], None]] = []
-    unsubscribe = object()
+    unsubscribed: list[str] = []
+
+    class Handle:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def unsubscribe(self) -> None:
+            unsubscribed.append(self.name)
 
     class FakeQuery:
-        def where(self, *, filter: object) -> FakeQuery:
-            calls["filter"] = filter
-            return self
+        def __init__(self, name: str) -> None:
+            self.name = name
 
-        def on_snapshot(self, callback: Callable[[object, object, object], None]) -> object:
+        def where(self, *, filter: firestore.FieldFilter) -> FakeQuery:
+            filters.append(filter)
+            return FakeQuery(filter.field_path)
+
+        def on_snapshot(self, callback: Callable[[object, object, object], None]) -> Handle:
             callbacks.append(callback)
-            return unsubscribe
+            return Handle(self.name)
 
     class FakeDocument:
         def collection(self, name: str) -> FakeQuery:
             calls["subcollection"] = name
-            return FakeQuery()
+            return FakeQuery("intervals")
 
     class FakeCollection:
         def document(self, child_uid: str) -> FakeDocument:
@@ -783,12 +812,24 @@ async def test_setup_interval_listener_watches_recent_intervals() -> None:
 
     assert calls["collection"] == "sleep"
     assert calls["subcollection"] == "intervals"
-    filter = calls["filter"]
-    assert isinstance(filter, firestore.FieldFilter)
-    assert filter.field_path == "start"
-    assert filter.op_string == ">="
-    assert api._listeners["next-nap"] is unsubscribe
+    assert [(item.field_path, item.op_string) for item in filters] == [("start", ">="), ("multi", "==")]
+    assert len(api._listeners["next-nap"]) == 2
     collection_name, child_uid, _, subcollection = api._listener_callbacks["next-nap"]
     assert (collection_name, child_uid, subcollection) == ("sleep", "child-1", "intervals")
     callbacks[0](None, None, None)
-    assert changed == [None]
+    callbacks[1](None, None, None)
+    assert changed == [None, None]
+    api._stop_listener("next-nap")
+    assert sorted(unsubscribed) == ["multi", "start"]
+
+
+def test_round_to_display_time_matches_js_rounding() -> None:
+    assert round_to_display_time(55500.0) == 55800
+    assert round_to_display_time(55499.0) == 55200
+
+
+def test_night_settings_accept_numeric_strings() -> None:
+    child = _child(nightStart="7.5", morningCutoff="9")
+
+    assert child_night_start(child) == 7.5
+    assert child_morning_cutoff(child) == 9.0

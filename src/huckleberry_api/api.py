@@ -336,10 +336,7 @@ class HuckleberryAPI:
         # Stop existing listeners (they use the old token)
         for key, watch in self._listeners.items():
             try:
-                if hasattr(watch, "unsubscribe") and callable(getattr(watch, "unsubscribe")):
-                    watch.unsubscribe()
-                elif hasattr(watch, "close") and callable(getattr(watch, "close")):
-                    watch.close()
+                self._unsubscribe(watch)
                 _LOGGER.debug("Stopped listener %s before token refresh", key)
             except (AttributeError, RuntimeError, TypeError, ValueError) as err:
                 _LOGGER.error("Error stopping listener %s before refresh: %s", key, err)
@@ -1724,16 +1721,28 @@ class HuckleberryAPI:
         # streaming the child's full sleep history.
         since = time.time() - 30 * 24 * 60 * 60
         intervals_ref = self._listener_client.collection(collection_name).document(child_uid).collection("intervals")
-        query = intervals_ref.where(filter=firestore.FieldFilter("start", ">=", since))
+        recent = intervals_ref.where(filter=firestore.FieldFilter("start", ">=", since))
+        # Batched entries store their starts under `data.*.start`, so the `start`
+        # filter cannot match them; watch the multi flag as well.
+        batched = intervals_ref.where(filter=firestore.FieldFilter("multi", "==", True))
 
         def on_snapshot(_doc_snapshot, _changes, _read_time):
             callback()
 
-        unsubscribe = query.on_snapshot(on_snapshot)
-        self._listeners[listener_key] = unsubscribe
+        self._listeners[listener_key] = [recent.on_snapshot(on_snapshot), batched.on_snapshot(on_snapshot)]
         self._listener_callbacks[listener_key] = (collection_name, child_uid, callback, "intervals")
 
         _LOGGER.info("Real-time %s/intervals listener active for child %s", collection_name, child_uid)
+
+    def _unsubscribe(self, watch: object) -> None:
+        """Unsubscribe one listener handle or a list of them."""
+        for handle in watch if isinstance(watch, list) else [watch]:
+            unsubscribe = getattr(handle, "unsubscribe", None)
+            close = getattr(handle, "close", None)
+            if callable(unsubscribe):
+                unsubscribe()
+            elif callable(close):
+                close()
 
     def _stop_listener(self, listener_key: str) -> None:
         """Stop one listener without touching the others."""
@@ -1742,12 +1751,7 @@ class HuckleberryAPI:
         if watch is None:
             return
         try:
-            if hasattr(watch, "unsubscribe") and callable(getattr(watch, "unsubscribe")):
-                watch.unsubscribe()
-            elif hasattr(watch, "close") and callable(getattr(watch, "close")):
-                watch.close()
-            else:
-                _LOGGER.debug("Listener %s object has no unsubscribe/close", listener_key)
+            self._unsubscribe(watch)
             _LOGGER.debug("Stopped listener: %s", listener_key)
         except (AttributeError, RuntimeError, TypeError, ValueError) as err:
             _LOGGER.error("Error stopping listener %s: %s", listener_key, err)
@@ -1791,12 +1795,7 @@ class HuckleberryAPI:
         _LOGGER.info("Stopping all real-time listeners")
         for key, watch in self._listeners.items():
             try:
-                if hasattr(watch, "unsubscribe") and callable(getattr(watch, "unsubscribe")):
-                    watch.unsubscribe()
-                elif hasattr(watch, "close") and callable(getattr(watch, "close")):
-                    watch.close()
-                else:
-                    _LOGGER.debug("Listener %s object has no unsubscribe/close", key)
+                self._unsubscribe(watch)
                 _LOGGER.debug("Stopped listener: %s", key)
             except (AttributeError, RuntimeError, TypeError, ValueError) as err:
                 _LOGGER.error("Error stopping listener %s: %s", key, err)
@@ -3199,7 +3198,7 @@ class HuckleberryAPI:
         await self._setup_listener("childs", child_uid, notify, listener_key=child_key)
         try:
             await self._setup_interval_listener("sleep", child_uid, notify, listener_key=intervals_key)
-        except Exception:
+        except BaseException:
             self._stop_listener(child_key)
             raise
 
@@ -3248,7 +3247,12 @@ class HuckleberryAPI:
                         boundaries.append(best_by_date)
 
         if self._sweetspot_settings_cached_at:
-            boundaries.append(self._sweetspot_settings_cached_at + SETTINGS_CACHE_SECONDS)
+            expires = self._sweetspot_settings_cached_at + SETTINGS_CACHE_SECONDS
+            # An expired cache is refreshed by the next prediction that needs
+            # it; adding it in the past would make the watcher retry every
+            # second while no prediction can be computed.
+            if expires > now.timestamp():
+                boundaries.append(expires)
 
         return int(min(boundaries))
 
@@ -3262,8 +3266,7 @@ class HuckleberryAPI:
             return self._sweetspot_settings
 
         await self._ensure_authenticated()
-        if not self.id_token:
-            raise RuntimeError("Missing authentication token")
+        assert self.id_token is not None, "id_token should be set after authentication"
 
         encoded_object = quote(SETTINGS_OBJECT, safe="")
         url = f"https://firebasestorage.googleapis.com/v0/b/{SETTINGS_BUCKET}/o/{encoded_object}?alt=media"
