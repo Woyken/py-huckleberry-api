@@ -1729,7 +1729,13 @@ class HuckleberryAPI:
         def on_snapshot(_doc_snapshot, _changes, _read_time):
             callback()
 
-        self._listeners[listener_key] = [recent.on_snapshot(on_snapshot), batched.on_snapshot(on_snapshot)]
+        recent_watch = recent.on_snapshot(on_snapshot)
+        try:
+            batched_watch = batched.on_snapshot(on_snapshot)
+        except Exception:
+            self._unsubscribe(recent_watch)
+            raise
+        self._listeners[listener_key] = [recent_watch, batched_watch]
         self._listener_callbacks[listener_key] = (collection_name, child_uid, callback, "intervals")
 
         _LOGGER.info("Real-time %s/intervals listener active for child %s", collection_name, child_uid)
@@ -1737,12 +1743,15 @@ class HuckleberryAPI:
     def _unsubscribe(self, watch: object) -> None:
         """Unsubscribe one listener handle or a list of them."""
         for handle in watch if isinstance(watch, list) else [watch]:
-            unsubscribe = getattr(handle, "unsubscribe", None)
-            close = getattr(handle, "close", None)
-            if callable(unsubscribe):
-                unsubscribe()
-            elif callable(close):
-                close()
+            try:
+                unsubscribe = getattr(handle, "unsubscribe", None)
+                close = getattr(handle, "close", None)
+                if callable(unsubscribe):
+                    unsubscribe()
+                elif callable(close):
+                    close()
+            except (AttributeError, RuntimeError, TypeError, ValueError) as err:
+                _LOGGER.error("Error stopping listener handle: %s", err)
 
     def _stop_listener(self, listener_key: str) -> None:
         """Stop one listener without touching the others."""
