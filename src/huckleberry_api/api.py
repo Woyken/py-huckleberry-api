@@ -3113,32 +3113,6 @@ class HuckleberryAPI:
 
         return events
 
-    async def get_next_nap(
-        self,
-        child_uid: str,
-        *,
-        now: datetime | None = None,
-    ) -> FirebaseNextNapPrediction | None:
-        """Compute the app's local SweetSpot next nap without writing Firebase.
-
-        Args:
-            child_uid: Child unique identifier.
-            now: Optional local time used for date-sensitive checks. Defaults to
-                the current time in the client timezone.
-
-        Returns:
-            The computed next nap, or None when the child has no nap schedule or
-            no usable sleep data.
-        """
-        child = await self.get_child(child_uid)
-        if child is None:
-            return None
-
-        current = now or datetime.now(self._timezone)
-        if current.tzinfo is None:
-            current = current.replace(tzinfo=self._timezone)
-        return await self._next_nap_for_child(child_uid, child, current)
-
     async def _next_nap_for_child(
         self,
         child_uid: str,

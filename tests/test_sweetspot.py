@@ -523,15 +523,11 @@ async def test_settings_fetch_is_cached() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_next_nap_wires_storage_and_sleep_data() -> None:
+async def test_next_nap_for_child_wires_storage_and_sleep_data() -> None:
     session = _FakeSession(_settings().model_dump(by_alias=True, exclude_none=True))
     api = HuckleberryAPI(email="test", password="test", timezone="UTC", websession=cast(ClientSession, session))
     api.id_token = "token"
     api.token_expires_at = datetime.now().timestamp() + 3600
-    child = _child()
-
-    async def fake_get_child(child_uid: str) -> FirebaseChildDocument:
-        return child
 
     async def fake_list_sleep_intervals(
         child_uid: str, start_time: datetime, end_time: datetime
@@ -542,10 +538,9 @@ async def test_get_next_nap_wires_storage_and_sleep_data() -> None:
             _interval(datetime(2026, 10, 26, 12, 0, tzinfo=UTC), 3600),
         ]
 
-    api.get_child = fake_get_child  # type: ignore[method-assign]
     api.list_sleep_intervals = fake_list_sleep_intervals  # type: ignore[method-assign]
 
-    result = await api.get_next_nap("child", now=NOW)
+    result = await api._next_nap_for_child("child", _child(), NOW)
 
     assert result is not None
     assert result.next_nap == datetime(2026, 10, 26, tzinfo=UTC).timestamp() + 15 * 3600 + 10 * 60

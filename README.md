@@ -236,6 +236,7 @@ async def main() -> None:
 - `await setup_health_listener(child_uid, callback)` - Listen to health updates
 - `await setup_pump_listener(child_uid, callback)` - Listen to pump updates
 - `await stop_all_listeners()` - Stop all active listeners
+- `async for state in watch_next_nap(child_uid)` - Yield the locally computed next nap, then re-emit when SweetSpot inputs, sleep intervals, or a time boundary change it
 
 ## Type Definitions
 
