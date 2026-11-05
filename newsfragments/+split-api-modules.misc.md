@@ -1,0 +1,1 @@
+Split ``api.py`` into one module per feature (sleep, feeding, solids, diaper, health, pump, activity, history, listeners, account) composed through mixins. The public ``HuckleberryAPI`` interface and behavior are unchanged.

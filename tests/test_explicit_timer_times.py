@@ -105,7 +105,7 @@ class _Store:
 
 @pytest_asyncio.fixture
 async def fixed_now(monkeypatch: pytest.MonkeyPatch) -> float:
-    monkeypatch.setattr("huckleberry_api.api.time.time", lambda: NOW)
+    monkeypatch.setattr("huckleberry_api.sleep.time.time", lambda: NOW)
     return NOW
 
 

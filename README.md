@@ -257,6 +257,18 @@ This library uses:
 - **Protocol Buffers** - Efficient data encoding
 - **Firebase Authentication** - Secure token-based auth
 
+### Package layout
+
+| Module | Responsibility |
+|---|---|
+| `api.py` | `HuckleberryAPI`, composed from the feature mixins |
+| `client.py` | Authentication, Firestore clients, timezone |
+| `sleep.py`, `feeding.py`, `solids.py`, `diaper.py`, `health.py`, `pump.py`, `activity.py` | Tracker features |
+| `history.py` | Date-range history queries |
+| `listeners.py` | Real-time snapshot listeners |
+| `const.py`, `common.py` | Constants and shared internals |
+| `firebase_types.py`, `models.py` | Firebase payload schemas and API input models |
+
 ### Why Not REST API?
 
 Huckleberry's Firebase Security Rules block non-SDK requests. Direct REST API calls return `403 Forbidden`. This library uses the official Firebase SDK which uses gRPC, the same protocol as the Huckleberry mobile app.
