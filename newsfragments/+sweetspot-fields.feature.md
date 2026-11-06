@@ -1,0 +1,1 @@
+Expose every SweetSpot field the app persists on `childs/{child_id}`: `sweetspot._meta`, `sweetspot.ai`, `sweetspot.shadowSweetSpotData`, `sweetspot.displayedSweetSpot`, `sweetspotAdjust`, `customNapWindow`, and `calculatedWakeWindows`. These are now returned by `get_child()` and `setup_child_listener()`.

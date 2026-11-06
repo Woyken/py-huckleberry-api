@@ -156,30 +156,50 @@ class TestAuthentication:
 
         api._listener_client = stale_listener_client
         api._listeners["sleep_child-123"] = SimpleNamespace(unsubscribe=unsubscribe)
-        api._listener_callbacks["sleep_child-123"] = ("sleep", "child-123", callback)
+        api._listener_callbacks["sleep_child-123"] = ("sleep", "child-123", callback, None)
+        api._listeners["next_nap_intervals_child-123"] = [
+            SimpleNamespace(unsubscribe=unsubscribe),
+            SimpleNamespace(unsubscribe=unsubscribe),
+        ]
+        api._listener_callbacks["next_nap_intervals_child-123"] = ("sleep", "child-123", callback, "intervals")
 
         observed_listener_clients: list[object | None] = []
+        interval_listener_keys: list[str] = []
 
         def fake_post(*args, **kwargs) -> FakeResponse:
             return FakeResponse()
 
-        async def fake_setup_sleep_listener(child_uid: str, received_callback) -> None:
+        async def fake_setup_listener(
+            collection_name: str, child_uid: str, received_callback, *, listener_key: str | None = None
+        ) -> None:
+            assert collection_name == "sleep"
             assert child_uid == "child-123"
             assert received_callback is callback
+            assert listener_key == "sleep_child-123"
             observed_listener_clients.append(api._listener_client)
             api._listener_client = cast(firestore.Client, object())
 
+        async def fake_setup_interval_listener(
+            collection_name: str, child_uid: str, received_callback, *, listener_key: str
+        ) -> None:
+            assert collection_name == "sleep"
+            assert child_uid == "child-123"
+            assert received_callback is callback
+            interval_listener_keys.append(listener_key)
+
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(websession, "post", fake_post)
-        monkeypatch.setattr(api, "setup_sleep_listener", fake_setup_sleep_listener)
+        monkeypatch.setattr(api, "_setup_listener", fake_setup_listener)
+        monkeypatch.setattr(api, "_setup_interval_listener", fake_setup_interval_listener)
 
         try:
             await api.refresh_session_token()
         finally:
             monkeypatch.undo()
 
-        unsubscribe.assert_called_once_with()
-        assert observed_listener_clients == [None]
+        assert unsubscribe.call_count == 3
+        assert interval_listener_keys == ["next_nap_intervals_child-123"]
+        assert observed_listener_clients[0] is None
         assert api._listener_client is not None
         assert api._listener_client is not stale_listener_client
         assert api.id_token == "fresh-id-token"
