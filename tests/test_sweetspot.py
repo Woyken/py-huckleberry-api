@@ -717,6 +717,31 @@ async def test_watch_next_nap_emits_on_child_and_interval_updates(monkeypatch: p
 
 
 @pytest.mark.asyncio
+async def test_history_read_invalidated_mid_flight_is_not_cached() -> None:
+    """An interval change during the 31-day read must not be overwritten by it."""
+    api = HuckleberryAPI(
+        email="test",
+        password="test",
+        timezone="UTC",
+        websession=cast(ClientSession, _FakeSession({})),
+    )
+
+    async def fake_list_sleep_intervals(
+        child_uid: str, start_time: datetime, end_time: datetime
+    ) -> list[FirebaseSleepIntervalData]:
+        # Stands in for an interval notification arriving while the read runs.
+        api._invalidate_next_nap_history()
+        return [_interval(datetime(2026, 10, 25, 23, 0, tzinfo=UTC), 3600)]
+
+    api.list_sleep_intervals = fake_list_sleep_intervals  # type: ignore[method-assign]
+
+    history = await api._get_sweetspot_history("child", NOW.date(), 8.0, 6.0)
+
+    assert len(history) == 30
+    assert api._sweetspot_history_cache == {}
+
+
+@pytest.mark.asyncio
 async def test_watch_next_nap_skips_unchanged_state(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("huckleberry_api.api.NEXT_NAP_DEBOUNCE_SECONDS", 0.0)
     session = _FakeSession(_settings().model_dump(by_alias=True, exclude_none=True))

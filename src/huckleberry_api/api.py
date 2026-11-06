@@ -266,6 +266,7 @@ class HuckleberryAPI:
         self._sweetspot_settings: FirebaseSettingsPlusDocument | None = None
         self._sweetspot_settings_cached_at = 0.0
         self._sweetspot_history_cache: dict[tuple[str, str, float, float], tuple[float, list[DaySleepStats]]] = {}
+        self._sweetspot_history_generation = 0
 
     async def authenticate(self) -> None:
         """Authenticate with Firebase."""
@@ -3185,8 +3186,8 @@ class HuckleberryAPI:
         Watches `childs/{child_uid}` and `sleep/{child_uid}/intervals`, so app
         writes to SweetSpot data and new or corrected sleep entries both refresh
         the state. The iterator also recomputes at `refresh_at` (local midnight,
-        an AI prediction expiry, or the settings cache expiry) so consumers do
-        not have to poll.
+        an AI prediction expiry, or the settings cache expiry) and wakes before
+        the session token expires, so consumers do not have to poll.
 
         The tracker is read-only: it never writes `sweetSpotTimes` or
         `calculatedWakeWindows`. Each iterator owns its listeners; closing it
@@ -3248,7 +3249,13 @@ class HuckleberryAPI:
             self._stop_listener(intervals_key)
 
     def _invalidate_next_nap_history(self) -> None:
-        """Drop cached daily history so corrected intervals are re-read."""
+        """Drop cached daily history so corrected intervals are re-read.
+
+        The generation counter also discards a history read that was already
+        in flight when the interval changed; otherwise its result would be
+        cached with a fresh timestamp.
+        """
+        self._sweetspot_history_generation += 1
         self._sweetspot_history_cache.clear()
 
     async def _next_nap_state(self, child_uid: str) -> FirebaseNextNapState:
@@ -3329,6 +3336,7 @@ class HuckleberryAPI:
         if cached is not None and cached_at - cached[0] < 3600:
             return cached[1]
 
+        generation = self._sweetspot_history_generation
         day_start = datetime.combine(day, dt_time.min, tzinfo=self._timezone)
         start = day_start - timedelta(days=31)
         intervals = await self.list_sleep_intervals(child_uid, start, day_start)
@@ -3345,6 +3353,11 @@ class HuckleberryAPI:
                     night_start=bedtime,
                 )
             )
+
+        if generation != self._sweetspot_history_generation:
+            # An interval changed while this history was being read; caching
+            # its result would hide the correction for the whole TTL.
+            return history
 
         # Drop entries that already expired so the cache cannot grow per day.
         self._sweetspot_history_cache = {
