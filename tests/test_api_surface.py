@@ -5,6 +5,7 @@ from __future__ import annotations
 from huckleberry_api import HuckleberryAPI
 from huckleberry_api.account import AccountMixin
 from huckleberry_api.activity import ActivityMixin
+from huckleberry_api.client import HuckleberryBase
 from huckleberry_api.diaper import DiaperMixin
 from huckleberry_api.feeding import FeedingMixin
 from huckleberry_api.health import HealthMixin
@@ -99,12 +100,15 @@ def test_public_api_surface_is_complete() -> None:
 
 def test_listener_recreation_hook_comes_from_listener_mixin() -> None:
     """Base-class ordering must not let the no-op hook win after a token refresh."""
-    assert HuckleberryAPI._recreate_listeners is ListenerMixin._recreate_listeners
+    assert "_recreate_listeners" in ListenerMixin.__dict__, (
+        "ListenerMixin must implement the hook, not inherit the no-op"
+    )
+    assert HuckleberryAPI._recreate_listeners is ListenerMixin.__dict__["_recreate_listeners"]
 
 
-def test_no_method_is_defined_by_two_mixins() -> None:
+def test_no_mixin_shadows_a_base_or_another_mixin_method() -> None:
     """A duplicate definition would silently shadow another feature's method."""
-    owners: dict[str, type] = {}
+    owners: dict[str, type] = {name: HuckleberryBase for name in HuckleberryBase.__dict__ if not name.startswith("__")}
     for mixin in MIXINS:
         for name in mixin.__dict__:
             if name.startswith("__") or name == "_recreate_listeners":

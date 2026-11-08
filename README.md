@@ -263,6 +263,7 @@ This library uses:
 |---|---|
 | `api.py` | `HuckleberryAPI`, composed from the feature mixins |
 | `client.py` | Authentication, Firestore clients, timezone |
+| `account.py` | Child and user profile reads |
 | `sleep.py`, `feeding.py`, `solids.py`, `diaper.py`, `health.py`, `pump.py`, `activity.py` | Tracker features |
 | `history.py` | Date-range history queries |
 | `listeners.py` | Real-time snapshot listeners |
