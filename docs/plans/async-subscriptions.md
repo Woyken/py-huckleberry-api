@@ -23,8 +23,14 @@ until this is fixed.
 Fix: parenthesize the tuple, ship as **0.4.12**, rebase this plan onto `origin/main`. A test alone
 cannot prevent recurrence: the locked `ruff` no longer has E999 and accepts this construct, `ty`
 accepts it too, and `publish.yml` triggers on `release: published` with no dependency on CI. So add
-an import check against the **built artifact** in `publish.yml` (`uv build && uv run --isolated
-python -c "import huckleberry_api"`) before the PyPI upload step.
+an import check against the **built artifact** in `publish.yml` before the PyPI upload step:
+
+```bash
+uv build
+uv run --isolated --no-project --with ./dist/*.whl python -c "import huckleberry_api"
+```
+
+`--isolated` alone is not enough: `uv run` still discovers the project and imports the source tree.
 
 ## 1. Does the change make sense?
 
@@ -100,6 +106,15 @@ async with api.watch_sleep(child_uid) as sub:      # Subscription[FirebaseSleepD
             await sub.reconnect()                  # document-wide; see contract 10
 ```
 
+A stale `snap.as_of` means either "no writes" or "the token expired": the SDK retries
+`Unauthenticated` forever without surfacing an error. `reconnect()` never touches credentials, so
+the credential path is explicit:
+
+```python
+await api.refresh_session_token()   # rotates the transport with fresh credentials
+await sub.reconnect()               # re-open the watch and resync
+```
+
 ```python
 @dataclass(frozen=True)
 class Snapshot(Generic[T]):
@@ -125,29 +140,38 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
    the last call. No backlog, no unbounded buffer, no backpressure fiction.
 2. **`__aenter__` does not wait.** It registers the subscription and returns. Consumers that need
    the current value call `await sub.ready(timeout=None)`, which raises `WatchFailed` on timeout
-   and leaves the subscription alive.
-3. **Deletion is a state.** `exists=False` is delivered and iteration continues.
+   **and on terminal watch failure**, and leaves the subscription alive. If the handle already has
+   a snapshot, the new subscription is seeded with it (`resync=True`, same `seq`), so a late
+   joiner never waits for the next write.
+3. **Deletion is a state.** The SDK does not hand the callback a `DocumentSnapshot` with
+   `exists=False`; on deletion it delivers an **empty** `doc_snapshot` list and a `REMOVED`
+   `DocumentChange`. The adapter maps "empty list, or a `REMOVED` change for this document" to
+   `Snapshot(value=None, exists=False)`, and iteration continues.
 4. **Errors are terminal, within what the SDK exposes.** A non-recoverable RPC termination raises
-   `WatchFailed` from `__anext__`; `__aexit__` closes without re-raising. A deliberate global stop
-   ends iteration with `StopAsyncIteration`. The gateway runs a watchdog on `Watch.is_active` and
-   maps "inactive without a requested close" to `WatchFailed`. The watchdog cannot see recoverable
-   failures: `Unauthenticated`, `ServiceUnavailable` and `DeadlineExceeded` are retried
-   indefinitely with `is_active` still true, so **token expiry is handled by `gateway.rotate()`
-   and by `as_of` staleness, not by `WatchFailed`.**
+   `WatchFailed` from both `__anext__` and `ready()`; `__aexit__` closes without re-raising. A
+   deliberate global stop ends iteration with `StopAsyncIteration`. The gateway runs a watchdog on
+   `Watch.is_active` and maps "inactive without a requested close" to `WatchFailed`. The watchdog
+   cannot see recoverable failures: `Unauthenticated`, `ServiceUnavailable` and
+   `DeadlineExceeded` are retried indefinitely with `is_active` still true, so **token expiry is
+   handled by `api.refresh_session_token()` (which calls `gateway.rotate()`) and by `as_of`
+   staleness, not by `WatchFailed`.** `reconnect()` alone cannot recover an expired token.
 5. **Rotation is invisible.** Token refresh restarts the transport; `seq` continues and
    `reconnects` increments. Sinks and subscriptions are not recreated. Both counters live on the
    document handle, so two subscribers on the same document see the same sequence numbers and a
    gap means conflation, not a missed write.
 6. **One watch, many consumers.** `watch_*()` returns a new `Subscription`; the underlying handle
-   is refcounted. Closing one subscription does not affect the others.
+   is refcounted. Closing one subscription does not affect the others. A new subscription is
+   seeded from the handle's last snapshot, so it starts with the current value instead of waiting
+   for the next write.
 7. **Cancellation is deterministic.** Leaving `async with` closes the subscription and awaits
    completion of the off-loop close.
 8. **Callback shim preserves 0.4.x delivery.** It registers a passthrough sink that invokes the
-   callback synchronously on the watch thread and skips `exists=False` snapshots exactly as
-   `_setup_listener` does today, so legacy callbacks never receive a `None` value. Payload parsing
-   happens **inside** the guarded dispatch, not before it: a `ValidationError` is logged and that
-   snapshot skipped. No exception may reach `Watch.push`, which would leave the SDK's change map
-   dirty and kill the consumer thread for every subscriber on that document.
+   callback synchronously on the watch thread and skips `exists=False` snapshots — including the
+   synthesized deletion snapshot — exactly as `_setup_listener` does today, so legacy callbacks
+   never receive a `None` value. Payload parsing happens **inside** the guarded dispatch, not
+   before it: a `ValidationError` is logged and that snapshot skipped. No exception may reach
+   `Watch.push`, which would leave the SDK's change map dirty and kill the consumer thread for
+   every subscriber on that document.
 9. **Any registration path ensures a live hub.** After `stop_all_listeners()`, both `watch_*()`
    and `setup_*_listener()` start a fresh hub.
 10. **`reconnect()` is document-wide.** It closes and reopens the handle, preserves `seq`,
@@ -165,13 +189,14 @@ Risk: none.
 
 **Slice 1 — primitives (no public change).**
 `subscriptions.py`: `Snapshot`, conflated slot, passthrough sink, `Subscription`, `WatchHub`,
-`WatchGateway`. Fake watch transport in `tests/fakes/watch.py` that can emit, delete, rotate, fail
-(non-recoverable, without emitting), stay active but silent (recoverable retry), stall, deliver a
-malformed payload, and block on close.
+`WatchGateway`. Fake watch transport in `tests/fakes/watch.py` that speaks the SDK's own callback
+shape — a document list plus changes, so deletion arrives as an empty list and a `REMOVED` change —
+and that can emit, delete, rotate, fail (non-recoverable, without emitting), stay active but silent
+(recoverable retry), stall, deliver a malformed payload, and block on close.
 Exit: offline tests for conflation, passthrough ordering, refcount, deletion, rotation,
-non-recoverable death, active-but-silent, malformed payload isolation, cancellation, `ready()`
-timeout, `reconnect()` + `resync`, and loop rebinding across two sequential `asyncio.run()`
-sessions plus a concurrent two-loop registration.
+non-recoverable death, active-but-silent, malformed payload isolation, late joiner seeding,
+cancellation, `ready()` timeout and death, `reconnect()` + `resync`, and loop rebinding across two
+sequential `asyncio.run()` sessions plus a concurrent two-loop registration.
 Risk: medium (thread hop must use `loop.call_soon_threadsafe` with `RuntimeError` → `WatchFailed`).
 
 **Slice 2 — one transport for both APIs.**
@@ -208,8 +233,16 @@ Risk: low.
 - Offline: a legacy callback that raises, plus a deletion, leaves the shared watch alive and other
   subscribers receiving.
 - Offline: a malformed payload is skipped, the watch stays active, and other sinks still receive.
+- Offline: the real adapter maps an empty `doc_snapshot` plus a `REMOVED` change to
+  `Snapshot(exists=False)`; the subscription yields it and the legacy callback is not invoked.
 - Offline: a fake watch that dies without emitting makes `__anext__` raise `WatchFailed`.
+- Offline: a fake watch that dies without emitting makes `await sub.ready()` raise `WatchFailed`
+  instead of hanging.
 - Offline: a fake watch that stays active but silent must **not** raise `WatchFailed`.
+- Offline: a late joiner — sub1 receives a snapshot, sub2 is created, `await sub2.ready()` returns
+  it immediately with `resync=True` and the same `seq`.
+- Offline: simulated token expiry (watch silent, `is_active` true) — `refresh_session_token()`
+  produces a `resync=True` snapshot on the existing subscription.
 - Offline: `reconnect()` preserves `seq`, increments `reconnects`, keeps the subscription live, and
   the next snapshot has `resync=True`.
 - Offline: closing one of two subscriptions leaves the other live.
