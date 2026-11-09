@@ -3,30 +3,11 @@
 from __future__ import annotations
 
 from huckleberry_api import HuckleberryAPI
-from huckleberry_api.account import AccountMixin
-from huckleberry_api.activity import ActivityMixin
 from huckleberry_api.client import HuckleberryBase
-from huckleberry_api.diaper import DiaperMixin
-from huckleberry_api.feeding import FeedingMixin
-from huckleberry_api.health import HealthMixin
-from huckleberry_api.history import HistoryMixin
 from huckleberry_api.listeners import ListenerMixin
-from huckleberry_api.pump import PumpMixin
-from huckleberry_api.sleep import SleepMixin
-from huckleberry_api.solids import SolidsMixin
 
-MIXINS = (
-    AccountMixin,
-    SleepMixin,
-    FeedingMixin,
-    SolidsMixin,
-    DiaperMixin,
-    HealthMixin,
-    PumpMixin,
-    ActivityMixin,
-    ListenerMixin,
-    HistoryMixin,
-)
+# Derived from the class itself so a newly added mixin cannot escape the guard.
+MIXINS = HuckleberryAPI.__bases__
 
 EXPECTED_PUBLIC_METHODS = {
     "authenticate",
