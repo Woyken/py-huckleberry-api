@@ -122,7 +122,7 @@ class Snapshot(Generic[T]):
     exists: bool
     as_of: datetime
     seq: int            # monotonic per document handle, survives rotation
-    resync: bool        # first snapshot after open, reconnect, or rotation
+    resync: bool        # first delivery to this subscription, and first after reconnect/rotation
 ```
 
 `Subscription` is generic; when domain models arrive it becomes `Subscription[SleepState]`
@@ -141,12 +141,15 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
 2. **`__aenter__` does not wait.** It registers the subscription and returns. Consumers that need
    the current value call `await sub.ready(timeout=None)`, which raises `WatchFailed` on timeout
    **and on terminal watch failure**, and leaves the subscription alive. If the handle already has
-   a snapshot, the new subscription is seeded with it (`resync=True`, same `seq`), so a late
-   joiner never waits for the next write.
+   a snapshot, the new subscription is seeded with it (same `seq`, first-delivery `resync=True`),
+   so a late joiner never waits for the next write. `ready()` checks the handle's failure state
+   before returning a seed.
 3. **Deletion is a state.** The SDK does not hand the callback a `DocumentSnapshot` with
    `exists=False`; on deletion it delivers an **empty** `doc_snapshot` list and a `REMOVED`
    `DocumentChange`. The adapter maps "empty list, or a `REMOVED` change for this document" to
-   `Snapshot(value=None, exists=False)`, and iteration continues.
+   `Snapshot(value=None, exists=False)`, and iteration continues. It must key on
+   `DocumentChange.type == REMOVED`, because the snapshot attached to that change still reports
+   `exists=True`.
 4. **Errors are terminal, within what the SDK exposes.** A non-recoverable RPC termination raises
    `WatchFailed` from both `__anext__` and `ready()`; `__aexit__` closes without re-raising. A
    deliberate global stop ends iteration with `StopAsyncIteration`. The gateway runs a watchdog on
@@ -158,11 +161,16 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
 5. **Rotation is invisible.** Token refresh restarts the transport; `seq` continues and
    `reconnects` increments. Sinks and subscriptions are not recreated. Both counters live on the
    document handle, so two subscribers on the same document see the same sequence numbers and a
-   gap means conflation, not a missed write.
+   gap means conflation, not a missed write. `gateway.rotate()` must build a **new**
+   `firestore.Client` from the fresh `id_token`: the credentials object is captured when the client
+   is constructed and `FirebaseTokenCredentials.refresh()` is a no-op, so reopening a watch on the
+   old client keeps presenting the expired token. `refresh_session_token()` therefore still clears
+   `_firestore_client` and `_firestore_client_loop`, exactly as it does today.
 6. **One watch, many consumers.** `watch_*()` returns a new `Subscription`; the underlying handle
    is refcounted. Closing one subscription does not affect the others. A new subscription is
    seeded from the handle's last snapshot, so it starts with the current value instead of waiting
-   for the next write.
+   for the next write. If the handle has already failed, `watch_*()` starts a fresh watch rather
+   than joining a dead one.
 7. **Cancellation is deterministic.** Leaving `async with` closes the subscription and awaits
    completion of the off-loop close.
 8. **Callback shim preserves 0.4.x delivery.** It registers a passthrough sink that invokes the
@@ -202,14 +210,18 @@ Risk: medium (thread hop must use `loop.call_soon_threadsafe` with `RuntimeError
 **Slice 2 — one transport for both APIs.**
 Migrate `_setup_listener` onto the gateway: the old callback becomes a passthrough sink, so
 behaviour is unchanged but the per-document watch is shared and refcounted. Replace
-`_listener_client` and `_listener_callbacks` with gateway state; replace `refresh_session_token`'s
-recreate-from-callbacks loop with `gateway.rotate()`; update `stop_all_listeners()` to close
-handles off-loop and concurrently. Add `api.watch_sleep(uid)` and `api.watch_pump(uid)`.
+`_listener_client` and `_listener_callbacks` with gateway state; rewrite `refresh_session_token` to
+clear `_firestore_client`/`_firestore_client_loop` and call `gateway.rotate()`, which rebuilds the
+sync client from the fresh token and reopens each watch without disturbing sinks; update
+`stop_all_listeners()` to close handles off-loop and concurrently. Add `api.watch_sleep(uid)` and
+`api.watch_pump(uid)`.
 Exit: `tests/test_listeners.py` passes, with `test_listener_survives_token_refresh` rewritten
-against the gateway; `tests/test_authentication.py::test_refresh_session_token_recreates_listener_client`
-rewritten to assert rotation closes the old watch exactly once and the new client is live. Add an
-offline test: `setup_*_listener` → `refresh_session_token` → `stop_all_listeners` → `setup_*_listener`
-delivers again. Add an offline test that a blocking `close()` does not stall a concurrent ticker.
+against the gateway and still asserting the client object changed;
+`tests/test_authentication.py::test_refresh_session_token_recreates_listener_client` rewritten to
+assert rotation closes the old watch exactly once, rebuilds the client from the new token, and
+leaves subscriptions intact. Add an offline test: `setup_*_listener` → `refresh_session_token` →
+`stop_all_listeners` → `setup_*_listener` delivers again. Add an offline test that a blocking
+`close()` does not stall a concurrent ticker.
 Risk: medium-high (largest slice; loop binding, rotation ordering).
 
 **Slice 3 — remaining domains.**
@@ -241,6 +253,9 @@ Risk: low.
 - Offline: a fake watch that stays active but silent must **not** raise `WatchFailed`.
 - Offline: a late joiner — sub1 receives a snapshot, sub2 is created, `await sub2.ready()` returns
   it immediately with `resync=True` and the same `seq`.
+- Offline: a late joiner race — sub2 is created, a new write lands before sub2's first
+  `__anext__`, and sub2's first delivered snapshot still has `resync=True`.
+- Offline: a subscription created on a failed handle starts a fresh watch rather than joining it.
 - Offline: simulated token expiry (watch silent, `is_active` true) — `refresh_session_token()`
   produces a `resync=True` snapshot on the existing subscription.
 - Offline: `reconnect()` preserves `seq`, increments `reconnects`, keeps the subscription live, and
@@ -255,15 +270,20 @@ Risk: low.
   the first session's handles were closed exactly once before rebinding.
 - Offline: registering from a second loop while the first is still running raises a clear error and
   the first loop's subscription keeps running.
-- Live (opt-in marker): sleep timer start/cancel via `watch_sleep()`, deletion, and token rotation
-  during an active subscription.
+- Live (`integration` marker, the repo's existing credential marker; no new marker, since
+  `pytest.ini` uses `--strict-markers`): sleep timer start/cancel via `watch_sleep()`, and token
+  rotation during an active subscription. Deletion is also covered live, but the test must read
+  the document first and restore it in a `finally` block — the library never deletes
+  `sleep/{child_uid}`, and the account is shared.
 
 ## 7. Rollout
 
-`0.4.12` fixes the syntax error. `0.5.0` adds subscriptions and deprecates the callback API.
-`1.0.0` removes it. CHANGELOG calls out three behaviour changes: conflation for subscribers, the
-removal of the global stop, and the fact that calling `setup_*_listener` twice for the same
-document now registers two callbacks instead of silently replacing the first.
+`0.4.12` fixes the syntax error. `0.5.0` adds subscriptions and deprecates the callback API;
+`stop_all_listeners()` keeps working but now also ends active subscriptions, and a later
+registration starts a fresh hub. `1.0.0` removes the shims and the global stop. The `0.5.0`
+CHANGELOG calls out three behaviour changes: conflation for subscribers, the new stop semantics,
+and the fact that calling `setup_*_listener` twice for the same document now registers two
+callbacks instead of silently replacing the first.
 
 ## 8. Decisions already made
 
