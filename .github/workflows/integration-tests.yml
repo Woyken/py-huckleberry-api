@@ -9,6 +9,12 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  # The integration suite reads and writes one shared live Huckleberry account.
+  # Serialize runs across branches and PRs so they queue instead of overlapping.
+  group: integration-tests-live-account
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
