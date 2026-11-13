@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from google.api_core.exceptions import GoogleAPICallError
 from pydantic import ValidationError
-from .client import HuckleberryBase
-from .common import _LOGGER
+from ._client import HuckleberryBase
+from ._common import _LOGGER
 from .firebase_types import FirebaseChildDocument
 from .firebase_types import FirebaseUserDocument
 

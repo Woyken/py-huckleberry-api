@@ -10,8 +10,8 @@ from datetime import timezone as dt_timezone
 from google.cloud.firestore import DELETE_FIELD
 from google.cloud.firestore_v1.async_document import AsyncDocumentReference
 from pydantic import TypeAdapter
-from .client import HuckleberryBase
-from .common import _LOGGER
+from ._client import HuckleberryBase
+from ._common import _LOGGER
 from .firebase_types import FirebaseLastPumpData
 from .firebase_types import FirebasePumpDocumentData
 from .firebase_types import FirebasePumpIntervalData

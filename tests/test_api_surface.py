@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import importlib
+import types
+
+import pytest
+
+import huckleberry_api
 from huckleberry_api import HuckleberryAPI
-from huckleberry_api.client import HuckleberryBase
-from huckleberry_api.listeners import ListenerMixin
+from huckleberry_api._client import HuckleberryBase
+from huckleberry_api._listeners import ListenerMixin
 
 # Derived from the class itself so a newly added mixin cannot escape the guard.
 MIXINS = HuckleberryAPI.__bases__
+
+EXPECTED_TOP_LEVEL = {"HuckleberryAPI"}
+PUBLIC_MODULES = ["huckleberry_api", "huckleberry_api.api", "huckleberry_api.models"]
 
 EXPECTED_PUBLIC_METHODS = {
     "authenticate",
@@ -96,3 +105,25 @@ def test_no_mixin_shadows_a_base_or_another_mixin_method() -> None:
                 continue
             assert name not in owners, f"{name} defined by {owners[name].__name__} and {mixin.__name__}"
             owners[name] = mixin
+
+
+def test_top_level_surface_is_curated() -> None:
+    """The package offers the client and nothing else."""
+    # Submodules are bound as attributes by the import system; ignore them.
+    public = {
+        name
+        for name, value in vars(huckleberry_api).items()
+        if not name.startswith("_") and not isinstance(value, types.ModuleType)
+    }
+    assert public == EXPECTED_TOP_LEVEL
+
+
+@pytest.mark.parametrize("module_name", PUBLIC_MODULES)
+def test_all_is_well_formed(module_name: str) -> None:
+    """``__all__`` must name existing, non-private attributes."""
+    module = importlib.import_module(module_name)
+    declared = list(module.__all__)
+    assert len(declared) == len(set(declared)), "duplicate name in __all__"
+    assert all(not name.startswith("_") for name in declared), "private name in __all__"
+    dangling = [name for name in declared if not hasattr(module, name)]
+    assert not dangling, f"__all__ names missing from module: {dangling}"

@@ -8,9 +8,9 @@ from typing import Callable
 from typing import Literal
 from typing import TypeVar
 from typing import cast
-from .client import FirebaseTokenCredentials
-from .client import HuckleberryBase
-from .common import _LOGGER
+from ._client import FirebaseTokenCredentials
+from ._client import HuckleberryBase
+from ._common import _LOGGER
 from .firebase_types import FirebaseActivityDocumentData
 from .firebase_types import FirebaseChildDocument
 from .firebase_types import FirebaseDiaperDocumentData

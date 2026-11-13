@@ -8,10 +8,10 @@ import uuid
 from datetime import datetime
 from datetime import timezone as dt_timezone
 from urllib.parse import quote
-from .client import HuckleberryBase
-from .common import _LOGGER
-from .const import CURATED_FOODS_BUCKET
-from .const import CURATED_FOODS_OBJECT
+from ._client import HuckleberryBase
+from ._common import _LOGGER
+from ._const import CURATED_FOODS_BUCKET
+from ._const import CURATED_FOODS_OBJECT
 from .firebase_types import FirebaseCuratedFoodDocument
 from .firebase_types import FirebaseCustomFoodTypeDocument
 from .firebase_types import FirebaseFeedDocumentData

@@ -7,8 +7,8 @@ from google.api_core.exceptions import GoogleAPICallError
 from google.cloud import firestore
 from pydantic import TypeAdapter
 from pydantic import ValidationError
-from .client import HuckleberryBase
-from .common import _LOGGER
+from ._client import HuckleberryBase
+from ._common import _LOGGER
 from .firebase_types import FirebaseActivityIntervalData
 from .firebase_types import FirebaseActivityMultiContainer
 from .firebase_types import FirebaseDiaperData

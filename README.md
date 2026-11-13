@@ -259,16 +259,19 @@ This library uses:
 
 ### Package layout
 
+Modules prefixed with `_` are internal implementation. The supported surface is
+`HuckleberryAPI`, `firebase_types.py`, and `models.py`.
+
 | Module | Responsibility |
 |---|---|
-| `api.py` | `HuckleberryAPI`, composed from the feature mixins |
-| `client.py` | Authentication, Firestore clients, timezone |
-| `account.py` | Child and user profile reads |
-| `sleep.py`, `feeding.py`, `solids.py`, `diaper.py`, `health.py`, `pump.py`, `activity.py` | Tracker features |
-| `history.py` | Date-range history queries |
-| `listeners.py` | Real-time snapshot listeners |
-| `const.py`, `common.py` | Constants and shared internals |
-| `firebase_types.py`, `models.py` | Firebase payload schemas and API input models |
+| `api.py` | `HuckleberryAPI`, composed from the feature mixins (public) |
+| `firebase_types.py`, `models.py` | Firebase payload schemas and API input models (public) |
+| `_client.py` | Authentication, Firestore clients, timezone |
+| `_account.py` | Child and user profile reads |
+| `_sleep.py`, `_feeding.py`, `_solids.py`, `_diaper.py`, `_health.py`, `_pump.py`, `_activity.py` | Tracker features |
+| `_history.py` | Date-range history queries |
+| `_listeners.py` | Real-time snapshot listeners |
+| `_const.py`, `_common.py` | Constants and shared internals |
 
 ### Why Not REST API?
 

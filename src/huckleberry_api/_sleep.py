@@ -6,8 +6,8 @@ import time
 import uuid
 from datetime import datetime
 from google.cloud import firestore
-from .client import HuckleberryBase
-from .common import _LOGGER
+from ._client import HuckleberryBase
+from ._common import _LOGGER
 from .firebase_types import FirebaseLastSleepData
 from .firebase_types import FirebaseSleepCondition
 from .firebase_types import FirebaseSleepDetails

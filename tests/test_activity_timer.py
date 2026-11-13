@@ -47,7 +47,7 @@ async def test_start_activity_reuses_shared_uuid_and_writes_app_shape(websession
             }
         },
     )
-    monkeypatch.setattr("huckleberry_api.activity.time.time", lambda: 1_789_567_721.255)
+    monkeypatch.setattr("huckleberry_api._activity.time.time", lambda: 1_789_567_721.255)
 
     await api.start_activity("child", "storyTime")
 
@@ -87,7 +87,7 @@ async def test_pause_activity_rounds_duration_and_sets_aligned_end_time(websessi
             }
         },
     )
-    monkeypatch.setattr("huckleberry_api.activity.time.time", lambda: 1_789_567_864.575)
+    monkeypatch.setattr("huckleberry_api._activity.time.time", lambda: 1_789_567_864.575)
 
     await api.pause_activity("child", "screenTime")
 
@@ -126,7 +126,7 @@ async def test_resume_activity_includes_paused_wall_clock_time_and_keeps_end_tim
             }
         },
     )
-    monkeypatch.setattr("huckleberry_api.activity.time.time", lambda: 1_789_567_909.825)
+    monkeypatch.setattr("huckleberry_api._activity.time.time", lambda: 1_789_567_909.825)
 
     await api.resume_activity("child", "screenTime")
 
@@ -163,7 +163,7 @@ async def test_cancel_activity_resets_without_writing_history(websession, monkey
             }
         },
     )
-    monkeypatch.setattr("huckleberry_api.activity.time.time", lambda: 1_789_567_774.064)
+    monkeypatch.setattr("huckleberry_api._activity.time.time", lambda: 1_789_567_774.064)
 
     await api.cancel_activity("child", "storyTime")
 
@@ -206,7 +206,7 @@ async def test_complete_paused_activity_uses_edits_and_frozen_timer_start(webses
             }
         },
     )
-    monkeypatch.setattr("huckleberry_api.activity.time.time", lambda: 1_789_568_178.097)
+    monkeypatch.setattr("huckleberry_api._activity.time.time", lambda: 1_789_568_178.097)
     log_activity = AsyncMock()
     monkeypatch.setattr(api, "_log_activity", log_activity)
     edited_start = datetime(2026, 9, 16, 16, 0, tzinfo=timezone.utc)
@@ -260,7 +260,7 @@ async def test_switch_activity_moves_running_or_paused_session(websession, monke
     if paused:
         source["endTime"] = 1_789_568_530_470.0
     api, document, _ = _mock_api(websession, monkeypatch, {"timer": {"brushTeeth": source}})
-    monkeypatch.setattr("huckleberry_api.activity.time.time", lambda: 1_789_568_561.578)
+    monkeypatch.setattr("huckleberry_api._activity.time.time", lambda: 1_789_568_561.578)
 
     await api.switch_activity("child", "tummyTime")
 
@@ -300,7 +300,7 @@ async def test_manual_activity_save_creates_inactive_timer_entry(websession, mon
         },
     )
     monkeypatch.setattr(api, "_get_timezone_offset_minutes", AsyncMock(return_value=-180))
-    monkeypatch.setattr("huckleberry_api.activity.time.time", lambda: 1_789_568_304.257)
+    monkeypatch.setattr("huckleberry_api._activity.time.time", lambda: 1_789_568_304.257)
 
     await api.log_activity(
         "child",
