@@ -40,7 +40,7 @@ async def test_start_pump_preserves_uuid_and_writes_minimal_timer_shape(websessi
             }
         },
     )
-    monkeypatch.setattr("huckleberry_api.api.time.time", lambda: 1_789_483_269.806)
+    monkeypatch.setattr("huckleberry_api._pump.time.time", lambda: 1_789_483_269.806)
 
     await api.start_pump("child")
 
@@ -74,7 +74,7 @@ async def test_pause_and_resume_pump_manage_end_time(websession, monkeypatch) ->
             }
         },
     )
-    monkeypatch.setattr("huckleberry_api.api.time.time", lambda: 1_789_482_916.021)
+    monkeypatch.setattr("huckleberry_api._pump.time.time", lambda: 1_789_482_916.021)
 
     await api.pause_pump("child")
 
@@ -118,7 +118,7 @@ async def test_cancel_pump_restores_observed_inactive_shape(websession, monkeypa
             }
         },
     )
-    monkeypatch.setattr("huckleberry_api.api.time.time", lambda: 1_789_483_139.988)
+    monkeypatch.setattr("huckleberry_api._pump.time.time", lambda: 1_789_483_139.988)
 
     await api.cancel_pump("child")
 
@@ -151,7 +151,7 @@ async def test_complete_paused_pump_uses_end_time_and_resets_after_write(websess
             }
         },
     )
-    monkeypatch.setattr("huckleberry_api.api.time.time", lambda: 1_789_483_098.562)
+    monkeypatch.setattr("huckleberry_api._pump.time.time", lambda: 1_789_483_098.562)
     log_pump = AsyncMock()
     monkeypatch.setattr(api, "_log_pump", log_pump)
 
@@ -196,7 +196,7 @@ async def test_complete_resumed_pump_includes_elapsed_wall_clock_time(websession
             }
         },
     )
-    monkeypatch.setattr("huckleberry_api.api.time.time", lambda: 1_789_483_098.562)
+    monkeypatch.setattr("huckleberry_api._pump.time.time", lambda: 1_789_483_098.562)
     log_pump = AsyncMock()
     monkeypatch.setattr(api, "_log_pump", log_pump)
 

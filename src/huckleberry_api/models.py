@@ -11,6 +11,8 @@ from .firebase_types import (
     StrictModel,
 )
 
+__all__ = ["SolidsFoodReference"]
+
 
 class SolidsFoodReference(StrictModel):
     """Reference to an existing curated/custom food."""

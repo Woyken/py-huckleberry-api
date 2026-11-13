@@ -13,3 +13,7 @@ REFRESH_URL: Final = "https://securetoken.googleapis.com/v1/token"
 FIRESTORE_BASE_URL: Final = (
     f"https://firestore.googleapis.com/v1/projects/{FIREBASE_PROJECT_ID}/databases/(default)/documents"
 )
+
+# Firebase Storage location for the curated solids food catalog.
+CURATED_FOODS_BUCKET: Final = "simpleintervals.appspot.com"
+CURATED_FOODS_OBJECT: Final = "foods/fooddb.json"
