@@ -16,7 +16,7 @@ from google.api_core.exceptions import FailedPrecondition
 from google.cloud import firestore
 
 from huckleberry_api import HuckleberryAPI
-from huckleberry_api.api import CURATED_FOODS_BUCKET, CURATED_FOODS_OBJECT
+from huckleberry_api.const import CURATED_FOODS_BUCKET, CURATED_FOODS_OBJECT
 from huckleberry_api.firebase_types import (
     FirebaseActivityDocumentData,
     FirebaseActivityIntervalData,
