@@ -1,42 +1,37 @@
 # Plan: replace listener callbacks with async subscriptions
 
 Status: draft for review
+Base: `origin/main` at `d2f3e92` (0.5.0, after the mixin split in #79)
 Scope: subscription transport and API (`setup_*_listener`, `stop_all_listeners`,
 `refresh_session_token` listener handling)
-Explicitly out of scope: the auth/transport/repository/service layering refactor, domain models,
-bound resources such as `api.sleep(uid)`
+Out of scope: the repository/service layering refactor, domain models, bound resources such as
+`api.sleep(uid)`
 
-## 0. Blocker found during review (must precede slice 1)
+## 0. Retraction: there is no syntax-error blocker
 
-`src/huckleberry_api/api.py:188` is invalid Python 3:
+Earlier drafts of this plan claimed `except aiohttp.ContentTypeError, json.JSONDecodeError,
+UnicodeDecodeError, ValueError:` was invalid Python and that every release since 0.4.0 was
+unimportable. **That was wrong.** The construct is valid under PEP 758, which landed in Python
+3.14, and this project requires `>=3.14`. All 17 modules parse cleanly under 3.14. The original
+check ran a Python 3.12 interpreter.
 
-```python
-except aiohttp.ContentTypeError, json.JSONDecodeError, UnicodeDecodeError, ValueError:
-```
+Consequences: no 0.4.12 rescue release, no emergency fix, no rebase-because-broken. The line now
+lives at `src/huckleberry_api/_client.py:31`.
 
-`ast.parse` fails with `SyntaxError: multiple exception types must be parenthesized`, so the package
-cannot be imported at all. The branch under review is the 0.4.10 commit, and **`v0.4.11`
-(4410479 on `origin/main`) ships the same line**, which dates from `4e13b61` and is present in
-**every release since 0.4.0** (`v0.4.0`–`v0.4.11`). Every "suite green" gate below is unverifiable
-until this is fixed.
+Two optional hygiene items remain, neither blocking and neither a prerequisite for this plan:
 
-Fix: parenthesize the tuple, ship as **0.4.12**, rebase this plan onto `origin/main`. A test alone
-cannot prevent recurrence: the locked `ruff` no longer has E999 and accepts this construct, `ty`
-accepts it too, and `publish.yml` triggers on `release: published` with no dependency on CI. So add
-an import check against the **built artifact** in `publish.yml` before the PyPI upload step:
-
-```bash
-uv build
-uv run --isolated --no-project --with ./dist/*.whl python -c "import huckleberry_api"
-```
-
-`--isolated` alone is not enough: `uv run` still discovers the project and imports the source tree.
+- Parenthesize the tuple. It is valid but surprises readers and older tooling.
+- Add an artifact import check to `publish.yml`
+  (`uv build && uv run --isolated --no-project --with ./dist/*.whl python -c "import huckleberry_api"`).
+  Useful against broken wheels, unrelated to this change.
 
 ## 1. Does the change make sense?
 
-Yes, for **document watches only**.
+Yes, for **document watches only**. 0.5.0 split the code by feature but left the listener design
+untouched: `_listeners.py` still holds the whole callback path, and `_client.py` still owns the
+listener registry.
 
-The current implementation cannot be fixed in place without changing its shape:
+The implementation cannot be fixed in place without changing its shape:
 
 - `doc_ref.on_snapshot(...)` runs on a `firestore.Client` worker thread. The callback type is
   `Callable[[T], None]`, so consumers cannot `await`, cannot `asyncio.create_task`, and cannot
@@ -48,7 +43,8 @@ The current implementation cannot be fixed in place without changing its shape:
 - There is no per-subscription teardown, only `stop_all_listeners()`, which is global.
 - `on_snapshot` has no error channel at all: recoverable failures retry forever, non-recoverable
   ones kill the consumer thread and go quiet.
-- `refresh_session_token` reaches into listener internals and rebuilds them from stored callbacks.
+- `refresh_session_token()` must tear down every listener and rebuild it from a stored
+  `(collection, child_uid, callback)` tuple via the `_recreate_listeners()` hook.
 
 An async subscription fixes all five, because lifetime becomes per-consumer and failures can be
 raised.
@@ -60,21 +56,21 @@ a single value.
 
 | # | Drawback | Severity | Mitigation |
 | --- | --- | --- | --- |
-| 1 | Breaking change to a published 0.4.x API | high | `setup_*_listener` kept as a deprecated shim over the same transport; removal at 1.0.0 |
+| 1 | Breaking change to a published 0.5.x API | high | `setup_*_listener` kept as a deprecated shim over the same transport; removal at 1.0.0 |
 | 2 | `async for` never terminates on its own; naive consumers hang | high | document it; `async with` closes deterministically; tests use timeouts |
 | 3 | Conflation drops intermediate snapshots | medium | explicit contract; the deprecated callback shim keeps per-snapshot delivery |
 | 4 | The sync `firestore.Client` and its thread remain — the iterator is a facade | medium | accepted; no async watch exists in the Python SDK. Stated in docs |
 | 5 | Iteration without `async with` leaks until GC | medium | `__aiter__` starts lazily, `aclose()` is explicit, docs show `async with` only |
 | 6 | Coalescing changes timing vs. per-snapshot callbacks | medium | `Snapshot.seq` lets consumers detect gaps; documented as a semantic change |
 | 7 | `latest` is unset until the first snapshot arrives | medium | `latest` is `Snapshot[T] \| None`; `await sub.ready()` returns it explicitly |
-| 8 | A global `stop_all_listeners()` is incompatible with a shared hub | medium | in 0.5.x it closes every subscription and sink; pending `__anext__` ends with `StopAsyncIteration` |
+| 8 | A global `stop_all_listeners()` is incompatible with a shared hub | medium | it keeps working but now also ends active subscriptions; pending `__anext__` ends with `StopAsyncIteration` |
 | 9 | Closing a watch blocks the SDK thread for up to 1s (`BackgroundConsumer.stop()` joins) | medium | close off-loop via `asyncio.to_thread`; close all handles concurrently in `stop_all_listeners()` |
 | 10 | A hub bound to one loop breaks the existing cross-loop usage (`asyncio.run()` per call) | medium | bind to the running loop; rebind only when the previously bound loop `is_closed()`, closing old handles off-loop; if it is still running, raise a clear error rather than killing its subscriptions |
 | 11 | More test surface: async generators, timeouts, leaked subscriptions | medium | fake watch transport in the first PR; all new tests offline |
 | 12 | `DocumentChange` deltas are not exposed | low | `Snapshot` stays extensible; deltas belong to query watches, added later |
-| 13 | The deprecated callback still runs on the watch thread, so it still cannot touch the loop | low | unchanged 0.4.x contract, documented; deprecation steers users to subscriptions |
-| 14 | Sharing one watch means a slow deprecated callback now delays new-style subscribers on the same document | medium | documented caveat for 0.5.x; the fix is to move to subscriptions. If it bites, dispatch passthrough sinks on a dedicated single-thread executor (preserves order, off the watch thread) |
-| 15 | The SDK retries recoverable errors forever, so token expiry is invisible: `is_active` stays true and no `WatchFailed` is raised | medium | token expiry is handled by `gateway.rotate()` plus `as_of` staleness, not by the watchdog; documented in contract 4 |
+| 13 | The deprecated callback still runs on the watch thread, so it still cannot touch the loop | low | unchanged 0.5.x contract, documented; deprecation steers users to subscriptions |
+| 14 | Sharing one watch means a slow deprecated callback now delays new-style subscribers on the same document | medium | documented caveat; the fix is to move to subscriptions. If it bites, dispatch passthrough sinks on a dedicated single-thread executor (preserves order, off the watch thread) |
+| 15 | The SDK retries recoverable errors forever, so token expiry is invisible: `is_active` stays true and no `WatchFailed` is raised | medium | token expiry is handled by `api.refresh_session_token()` → `gateway.rotate()` plus `as_of` staleness, not by the watchdog; see contract 4 |
 
 Two corrections to earlier discussion, recorded so the plan is not built on them:
 
@@ -86,10 +82,12 @@ Two corrections to earlier discussion, recorded so the plan is not built on them
 
 ## 3. Target API
 
-Flat, matching the existing 0.4.x surface. Bound resources (`api.sleep(uid)`) are a later,
-separate decision and are not assumed here.
+Flat, matching the current surface. Bound resources (`api.sleep(uid)`) are a later, separate
+decision and are not assumed here.
 
 ```python
+from huckleberry_api.firebase_types import FirebaseSleepDocumentData  # no longer re-exported
+
 async with api.watch_sleep(child_uid) as sub:      # Subscription[FirebaseSleepDocumentData]
     sub.latest        # Snapshot[FirebaseSleepDocumentData] | None
     sub.reconnects    # how many transport restarts occurred
@@ -173,7 +171,7 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
    than joining a dead one.
 7. **Cancellation is deterministic.** Leaving `async with` closes the subscription and awaits
    completion of the off-loop close.
-8. **Callback shim preserves 0.4.x delivery.** It registers a passthrough sink that invokes the
+8. **Callback shim preserves 0.5.x delivery.** It registers a passthrough sink that invokes the
    callback synchronously on the watch thread and skips `exists=False` snapshots — including the
    synthesized deletion snapshot — exactly as `_setup_listener` does today, so legacy callbacks
    never receive a `None` value. Payload parsing happens **inside** the guarded dispatch, not
@@ -189,18 +187,14 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
 
 ## 5. Implementation slices
 
-**Slice 0 — unbreak the package.** Parenthesize `api.py:188` on top of `origin/main`. Add an
-import check against the built artifact in `publish.yml`. Release `0.4.12`.
-Exit: `uv run python -c "import huckleberry_api"` succeeds; the publish workflow fails if the
-built wheel cannot be imported.
-Risk: none.
-
 **Slice 1 — primitives (no public change).**
-`subscriptions.py`: `Snapshot`, conflated slot, passthrough sink, `Subscription`, `WatchHub`,
-`WatchGateway`. Fake watch transport in `tests/fakes/watch.py` that speaks the SDK's own callback
-shape — a document list plus changes, so deletion arrives as an empty list and a `REMOVED` change —
-and that can emit, delete, rotate, fail (non-recoverable, without emitting), stay active but silent
-(recoverable retry), stall, deliver a malformed payload, and block on close.
+New `src/huckleberry_api/_subscriptions.py` (internal module, `Snapshot`, conflated slot,
+passthrough sink, `Subscription`, `WatchHub`, `WatchGateway`). Not wired into
+`HuckleberryAPI.__bases__` yet, so `tests/test_api_surface.py` is untouched. Fake watch transport
+in `tests/fakes/watch.py` that speaks the SDK's own callback shape — a document list plus changes,
+so deletion arrives as an empty list and a `REMOVED` change — and that can emit, delete, rotate,
+fail (non-recoverable, without emitting), stay active but silent (recoverable retry), stall,
+deliver a malformed payload, and block on close.
 Exit: offline tests for conflation, passthrough ordering, refcount, deletion, rotation,
 non-recoverable death, active-but-silent, malformed payload isolation, late joiner seeding,
 cancellation, `ready()` timeout and death, `reconnect()` + `resync`, and loop rebinding across two
@@ -208,29 +202,37 @@ sequential `asyncio.run()` sessions plus a concurrent two-loop registration.
 Risk: medium (thread hop must use `loop.call_soon_threadsafe` with `RuntimeError` → `WatchFailed`).
 
 **Slice 2 — one transport for both APIs.**
-Migrate `_setup_listener` onto the gateway: the old callback becomes a passthrough sink, so
-behaviour is unchanged but the per-document watch is shared and refcounted. Replace
-`_listener_client` and `_listener_callbacks` with gateway state; rewrite `refresh_session_token` to
-clear `_firestore_client`/`_firestore_client_loop` and call `gateway.rotate()`, which rebuilds the
-sync client from the fresh token and reopens each watch without disturbing sinks; update
-`stop_all_listeners()` to close handles off-loop and concurrently. Add `api.watch_sleep(uid)` and
-`api.watch_pump(uid)`.
-Exit: `tests/test_listeners.py` passes, with `test_listener_survives_token_refresh` rewritten
-against the gateway and still asserting the client object changed;
-`tests/test_authentication.py::test_refresh_session_token_recreates_listener_client` rewritten to
-assert rotation closes the old watch exactly once, rebuilds the client from the new token, and
-leaves subscriptions intact. Add an offline test: `setup_*_listener` → `refresh_session_token` →
-`stop_all_listeners` → `setup_*_listener` delivers again. Add an offline test that a blocking
-`close()` does not stall a concurrent ticker.
+Move the callback path from `_listeners.py` onto the gateway: the old callback becomes a
+passthrough sink, so behaviour is unchanged but the per-document watch is shared and refcounted.
+Replace `_listener_client`, `_listeners` and `_listener_callbacks` in `_client.py` with gateway
+state; replace the `_recreate_listeners()` hook (no-op in `HuckleberryBase`, override in
+`ListenerMixin`) with `gateway.rotate()`; rewrite `refresh_session_token()` to clear
+`_firestore_client`/`_firestore_client_loop` and rebuild the sync client from the fresh token;
+update `stop_all_listeners()` to close handles off-loop and concurrently. Add
+`api.watch_sleep(uid)` and `api.watch_pump(uid)` to a `SubscriptionMixin` (or to `ListenerMixin`).
+Exit:
+- `tests/test_listeners.py` passes, with `test_listener_survives_token_refresh` rewritten against
+  the gateway and still asserting the client object changed.
+- `tests/test_authentication.py::test_refresh_session_token_recreates_listener_client` rewritten to
+  assert rotation closes the old watch exactly once, rebuilds the client from the new token, and
+  leaves subscriptions intact.
+- `tests/test_api_surface.py` updated: add the `watch_*` names to `EXPECTED_PUBLIC_METHODS`, and
+  replace `test_listener_recreation_hook_comes_from_listener_mixin` (the hook it pins is what this
+  slice deletes) with a gateway-rotation equivalent. Keep
+  `test_no_mixin_shadows_a_base_or_another_mixin_method` passing by registering the new mixin in
+  `HuckleberryAPI.__bases__` exactly once.
+- New offline tests: `setup_*_listener` → `refresh_session_token` → `stop_all_listeners` →
+  `setup_*_listener` delivers again; a blocking `close()` does not stall a concurrent ticker.
 Risk: medium-high (largest slice; loop binding, rotation ordering).
 
 **Slice 3 — remaining domains.**
 `feed`, `health`, `diaper`, `activity`, `child`. Deprecation warnings on the callback API.
-Exit: all seven `watch_*()` methods share one hub; no per-collection transport duplication remains.
+Exit: all seven `watch_*()` methods share one hub; no per-collection transport duplication remains;
+`EXPECTED_PUBLIC_METHODS` covers the full new surface.
 Risk: low.
 
 **Slice 4 — release.**
-README rewrite with both APIs, towncrier fragment, `0.5.0`.
+README rewrite with both APIs, towncrier fragment, `0.6.0`.
 Exit: every README example runs.
 Risk: low.
 
@@ -278,12 +280,11 @@ Risk: low.
 
 ## 7. Rollout
 
-`0.4.12` fixes the syntax error. `0.5.0` adds subscriptions and deprecates the callback API;
-`stop_all_listeners()` keeps working but now also ends active subscriptions, and a later
-registration starts a fresh hub. `1.0.0` removes the shims and the global stop. The `0.5.0`
-CHANGELOG calls out three behaviour changes: conflation for subscribers, the new stop semantics,
-and the fact that calling `setup_*_listener` twice for the same document now registers two
-callbacks instead of silently replacing the first.
+`0.6.0` adds subscriptions and deprecates the callback API; `stop_all_listeners()` keeps working
+but now also ends active subscriptions, and a later registration starts a fresh hub. `1.0.0`
+removes the shims and the global stop. The `0.6.0` CHANGELOG calls out three behaviour changes:
+conflation for subscribers, the new stop semantics, and the fact that calling `setup_*_listener`
+twice for the same document now registers two callbacks instead of silently replacing the first.
 
 ## 8. Decisions already made
 
@@ -294,3 +295,5 @@ callbacks instead of silently replacing the first.
 - `__aenter__` does not wait; `ready()` is explicit.
 - No `api.close()`: the injected `aiohttp` session is caller-owned, so a closing method that
   touched it would be wrong. `async with` is the supported teardown.
+- Build on the mixin layout rather than re-splitting modules: subscription code belongs in
+  `_subscriptions.py` / `_listeners.py`, and `_client.py` keeps the client plumbing.
