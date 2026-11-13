@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [0.5.0] - 2026-11-13
+
+### Deprecations and Removals
+
+- Remove the compatibility re-exports from ``huckleberry_api.api``. Names that were only importable there as a side effect of the old monolithic module must now be imported from the module that defines them: Firebase payload models and the value literals from ``huckleberry_api.firebase_types``, and input models from ``huckleberry_api.models``. ``from huckleberry_api import HuckleberryAPI`` is unchanged.
+
+### Misc
+
+- Bump `@babel/core` from 7.29.0 to 7.29.13 in the APK deobfuscation tooling.
+- Bump aiohttp from 3.13.3 to 3.14.1.
+- Bump aiohttp from 3.14.1 to 3.14.4.
+- Bump certifi from 2025.11.12 to 2026.10.18.
+- Bump idna from 3.11 to 3.15.
+- Bump multidict from 6.7.1 to 6.9.1.
+- Bump prettier from 3.8.1 to 3.10.1 in the APK deobfuscation tooling.
+- Bump pyasn1 from 0.6.3 to 0.6.5.
+- Bump pygments from 2.19.2 to 2.20.0.
+- Bump pytest from 9.0.1 to 9.0.3.
+- Bump requests from 2.32.5 to 2.33.0.
+- Bump urllib3 from 2.6.3 to 2.7.0.
+- Bump urllib3 from 2.7.0 to 2.8.0.
+- Enable Renovate for dependency version updates.
+- Serialize integration test workflow runs so they do not share the live Huckleberry account concurrently.
+- Split ``api.py`` into one module per feature composed through mixins. Feature and plumbing modules are internal and prefixed with an underscore (``_sleep``, ``_feeding``, ``_solids``, ``_diaper``, ``_health``, ``_pump``, ``_activity``, ``_history``, ``_listeners``, ``_account``, ``_client``, ``_const``, ``_common``); the supported import surface is ``HuckleberryAPI``, ``firebase_types`` and ``models``. The public ``HuckleberryAPI`` interface and behavior are unchanged.
+- Update `actions/checkout` to v7.
+- Update `actions/setup-python` to v7.
+- Update `actions/upload-artifact` to v7.
+- Update `astral-sh/setup-uv` to v10.3.3.
+- Update the `uv_build` backend constraint to `>=0.13.8,<0.14.0`.
+
+
 ## [0.4.11] - 2026-10-30
 
 ### Bugfixes
