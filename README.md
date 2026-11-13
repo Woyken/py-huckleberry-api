@@ -18,6 +18,7 @@ This is a reverse-engineered API client that connects directly to Huckleberry's 
 - 🧷 **Diaper Changes**: Log pee, poo, both, or dry checks with color/consistency
 - 📏 **Growth Measurements**: Record weight, height, and head circumference
 - 💊 **Medicine Tracking**: Manage medicine types and record doses
+- 🌱 **Milestones**: Browse the verified app catalog and log predefined or custom milestones
 - 🔄 **Real-time Updates**: Firebase snapshot listeners for instant synchronization
 - 👶 **Child Management**: Support for multiple children profiles
 
@@ -34,6 +35,7 @@ pip install huckleberry-api
 ```python
 import asyncio
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import aiohttp
 
 from huckleberry_api import HuckleberryAPI
@@ -229,6 +231,23 @@ async def main() -> None:
   - `medicine_type`: A type returned by `list_medicine_types()` or `create_medicine_type()`
   - `amount`: Optional; the app-compatible blank value is stored as `0.0`
   - `units`: `"ml"`, `"oz"`, `"tsp"`, or `"drops"`
+
+### Milestones
+- `api.list_predefined_milestones()` - Return the immutable predefined catalog bundled from app version 0.9.305
+- `await api.list_available_predefined_milestones(child_uid)` - Return catalog entries not already logged for the child
+- `await api.list_milestones(child_uid)` - List custom and predefined milestone records
+- `await api.create_predefined_milestone(child_uid, milestone=..., start_time=..., notes=None)` - Log an exact catalog milestone once
+- `await api.create_custom_milestone(child_uid, name=..., start_time=..., notes=None)` - Log a trimmed, non-empty custom milestone
+
+```python
+catalog = api.list_predefined_milestones()
+first_smile = next(item for item in catalog if item.title == "First smile")
+await api.create_predefined_milestone(
+    child_uid,
+    milestone=first_smile,
+    start_time=datetime.now(ZoneInfo("Europe/London")),
+)
+```
 
 ### Real-time Listeners
 - `await setup_sleep_listener(child_uid, callback)` - Listen to sleep updates
