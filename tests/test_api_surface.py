@@ -101,7 +101,11 @@ def test_no_mixin_shadows_a_base_or_another_mixin_method() -> None:
     owners: dict[str, type] = {name: HuckleberryBase for name in HuckleberryBase.__dict__ if not name.startswith("__")}
     for mixin in MIXINS:
         for name in mixin.__dict__:
-            if name.startswith("__") or name == "_recreate_listeners":
+            if name.startswith("__"):
+                continue
+            if name == "_recreate_listeners" and mixin is ListenerMixin:
+                # The hook belongs to the listener mixin; any other override is a bug.
+                owners[name] = mixin
                 continue
             assert name not in owners, f"{name} defined by {owners[name].__name__} and {mixin.__name__}"
             owners[name] = mixin
