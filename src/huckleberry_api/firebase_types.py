@@ -805,12 +805,15 @@ class FirebaseLastMedicationData(FirebaseMedicationData):
     The latest summary adds the history document ID and health metadata.
     Live app data observed on 2026-09-16 can use a distinct 20-character
     document ID string for `multientry_key`; API-created summaries use null.
+    The app rebuilds this summary from a health data row, which omits `isNight`,
+    so app-logged doses leave it out (verified against Huckleberry 0.9.316 on
+    2026-11-14). API-created summaries set it to False.
     """
 
     id_: str = Field(alias="_id")
     type: Literal["health"]
     lastUpdated: Number
-    isNight: bool
+    isNight: bool | None = None
     multientry_key: str | None = None
 
 
