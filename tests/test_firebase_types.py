@@ -167,6 +167,39 @@ def test_last_medication_accepts_live_multientry_key() -> None:
     assert model.multientry_key == "second-medicine-id"
 
 
+def test_health_document_accepts_app_medication_without_is_night() -> None:
+    """The app omits `isNight` when it rebuilds `prefs.lastMedication` after a dose.
+
+    Huckleberry 0.9.316 derives that summary from a health data row, and its
+    sanitizer never copies `isNight` into medication rows (verified 2026-11-14).
+    A required field here killed the health listener after app-logged doses.
+    """
+    model = FirebaseHealthDocumentData.model_validate(
+        {
+            "prefs": {
+                "lastMedication": {
+                    "_id": "1763081234567-a762313500b521fee51f",
+                    "type": "health",
+                    "mode": "medication",
+                    "start": 1_789_568_304.0,
+                    "lastUpdated": 1_789_568_305.0,
+                    "offset": -180,
+                    "medication_id": "medicine-type-id",
+                    "medication_name": "Vitamin D",
+                    "amount": 1.0,
+                    "units": "ml",
+                    "notes": "",
+                    "multientry_key": "1763081234567-a762313500b521fee51f",
+                }
+            }
+        }
+    )
+
+    assert model.prefs is not None
+    assert model.prefs.lastMedication is not None
+    assert model.prefs.lastMedication.isNight is None
+
+
 def test_temperature_models_accept_distinct_live_history_and_latest_payloads() -> None:
     """Temperature history and latest-pref rows have different live shapes."""
     history = FirebaseTemperatureData.model_validate(
