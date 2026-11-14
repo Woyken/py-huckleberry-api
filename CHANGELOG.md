@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [0.5.1] - 2026-11-14
+
+### Bugfixes
+
+- Accept ``prefs.lastMedication`` payloads without ``isNight``. The Huckleberry app rebuilds that summary from a health data row, which omits ``isNight``, so the health listener stopped after a dose was logged in the app. ([#105](https://github.com/Woyken/py-huckleberry-api/issues/105))
+
+
 ## [0.5.0] - 2026-11-13
 
 ### Deprecations and Removals
