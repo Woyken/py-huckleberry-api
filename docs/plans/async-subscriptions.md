@@ -39,8 +39,8 @@ The implementation cannot be fixed in place without changing its shape:
   touch loop-owned objects. Calling `create_task` from the callback raises
   `RuntimeError: no running event loop`.
 - The registry key is `f"{collection}_{child_uid}"`, so a second subscribe for the same document
-  overwrites the `unsubscribe` handle without calling it: the first consumer is silently dropped
-  and its watch leaks.
+  overwrites the `unsubscribe` handle and the recreation tuple without calling it. The first
+  callback keeps delivering, but it can no longer be stopped or recreated, so its watch leaks.
 - There is no per-subscription teardown, only `stop_all_listeners()`, which is global.
 - `on_snapshot` has no error channel at all: recoverable failures retry forever, non-recoverable
   ones kill the consumer thread and go quiet.
@@ -61,7 +61,7 @@ a single value.
 | 2 | `async for` never terminates on its own; naive consumers hang | high | document it; `async with` closes deterministically; tests use timeouts |
 | 3 | Conflation drops intermediate snapshots | medium | explicit contract; the deprecated callback shim keeps per-snapshot delivery |
 | 4 | The sync `firestore.Client` and its thread remain — the iterator is a facade | medium | accepted; no async watch exists in the Python SDK. Stated in docs |
-| 5 | Iteration without `async with` leaks until GC | medium | `__aiter__` starts lazily, `aclose()` is explicit, docs show `async with` only |
+| 5 | Iteration without `async with` is never released — the hub holds a strong reference, so the subscription outlives the local variable | medium | `aclose()` is explicit; the true lifetime is until `stop_all_listeners()`/rebind, and docs show `async with` only |
 | 6 | Coalescing changes timing vs. per-snapshot callbacks | medium | `Snapshot.seq` lets consumers detect gaps; documented as a semantic change |
 | 7 | `latest` is unset until the first snapshot arrives | medium | `latest` is `Snapshot[T] \| None`; `await sub.ready()` returns it explicitly |
 | 8 | A global `stop_all_listeners()` is incompatible with a shared hub | medium | it keeps working but now also ends active subscriptions; pending `__anext__` ends with `StopAsyncIteration` |
@@ -85,6 +85,10 @@ Two corrections to earlier discussion, recorded so the plan is not built on them
 
 Flat, matching the current surface. Bound resources (`api.sleep(uid)`) are a later, separate
 decision and are not assumed here.
+
+`watch_*()` is a **sync factory**: it performs no I/O and returns the `Subscription`.
+Authentication, hub lookup and watch creation happen in `__aenter__` (or on the first
+`__anext__`), which is why the example needs no `await` between `async with` and the call.
 
 ```python
 from huckleberry_api.subscriptions import Subscription  # public module, see §8
@@ -123,8 +127,8 @@ await sub.reconnect()               # document-wide; see contract 10
 class Snapshot(Generic[T]):
     value: T | None
     exists: bool
-    as_of: datetime    # always aware UTC; from read_time.ToDatetime(tzinfo=timezone.utc)
-    seq: int           # never repeats or rewinds; every delivered snapshot gets a fresh value
+    as_of: datetime    # aware UTC; read_time arrives as proto-plus DatetimeWithNanoseconds
+    seq: int           # handle receipt counter; gaps mean snapshots were conflated away
     resync: bool       # sticky per subscription; set on open/rotate/reconnect, cleared on delivery
 ```
 
@@ -145,7 +149,8 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
    the current value call `await sub.ready(timeout=None)`: `TimeoutError` when the timeout expires,
    `WatchFailed` when the watch has terminally failed. The subscription stays alive either way, so
    a timeout never costs a healthy watch. If the handle already has a snapshot, the new subscription
-   is seeded with it (fresh `seq`, `resync=True`), so a late joiner never waits for the next write.
+   is seeded with it (same `seq` as the receipt it replays, `resync=True`), so a late joiner never
+   waits for the next write.
    `ready()` checks the handle's failure state before returning a seed.
 3. **Deletion is a state.** The SDK does not hand the callback a `DocumentSnapshot` with
    `exists=False`; on deletion it delivers an **empty** `doc_snapshot` list and a `REMOVED`
@@ -155,7 +160,8 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
    `exists=True`.
 4. **Errors are terminal, within what the SDK exposes.** A non-recoverable RPC termination raises
    `WatchFailed` from both `__anext__` and `ready()`; `__aexit__` closes without re-raising. A
-   deliberate global stop ends iteration with `StopAsyncIteration`. The gateway runs a watchdog on
+   deliberate global stop ends iteration with `StopAsyncIteration`, and a `ready()` blocked at that
+   moment ends the same way rather than hanging. The gateway runs a watchdog on
    `Watch.is_active` and maps "inactive without a requested close" to `WatchFailed`. The watchdog
    cannot see recoverable failures: `Unauthenticated`, `ServiceUnavailable` and
    `DeadlineExceeded` are retried indefinitely with `is_active` still true, so **token expiry is
@@ -164,37 +170,44 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
 5. **Rotation is invisible.** Token refresh restarts the transport; `reconnects` increments and
    every affected subscription gets one `resync=True` delivery. Sinks and subscriptions are not
    recreated. `reconnect` counts live on the document handle, so two subscribers on the same
-   document see the same count. `gateway.rotate()` must build a **new** `firestore.Client` with the
-   fresh `id_token`. The reason is that nothing ever updates the existing credential: `refresh()`
+   document see the same count. `gateway.rotate()` builds a **new** `firestore.Client` with the
+   fresh `id_token` and closes the one it replaces, so hourly refreshes do not leak a channel. The
+   reason a new client is needed is that nothing ever updates the existing credential: `refresh()`
    is a no-op, so `.token` keeps the expired value and every RPC on the old client keeps presenting
    it. `refresh_session_token()` therefore still clears `_firestore_client` and
    `_firestore_client_loop`, exactly as it does today.
 6. **One watch, many consumers.** `watch_*()` returns a new `Subscription`; the underlying handle is
    refcounted over **subscriptions plus registered sinks**. Closing one subscription does not
    affect the others, and a handle whose only consumer is a deprecated `setup_*_listener` sink
-   stays open. A handle whose refcount reaches zero is closed, releasing its watch thread and sync
-   client. A new subscription is seeded from the handle's last snapshot, so it starts with the
-   current value instead of waiting for the next write. If the handle has already failed,
-   `watch_*()` starts a fresh watch rather than joining a dead one.
+   stays open. A handle whose refcount reaches zero releases its watch. The sync client itself is
+   **gateway-scoped and shared** by every handle, so it is closed only when the last handle goes,
+   on rotation, and on `stop_all_listeners()` — never because one document's last consumer left. A
+   new subscription is seeded from the handle's last snapshot, so it starts with the current value
+   instead of waiting for the next write. If the handle has already failed, `watch_*()` starts a
+   fresh watch rather than joining a dead one.
 7. **Cancellation is deterministic.** Leaving `async with` closes the subscription and awaits
    completion of the off-loop close, shielded so a second cancellation cannot abandon a half-closed
    handle. A cancelled exit still results in exactly one transport `close`.
-8. **Callback shim preserves 0.5.x delivery.** It registers a passthrough sink that invokes the
-   callback synchronously on the watch thread and skips `exists=False` snapshots — including the
-   synthesized deletion snapshot — exactly as `_setup_listener` does today, so legacy callbacks
-   never receive a `None` value. Payload parsing happens **inside** the guarded dispatch, not
-   before it: a `ValidationError` is logged and that snapshot skipped. No exception may reach
-   `Watch.push`, which would leave the SDK's change map dirty and kill the consumer thread for
-   every subscriber on that document.
+8. **Payload validation happens once per handle, inside the guarded dispatch.** The document's
+   collection fixes its wire type, so the adapter validates once, before fan-out. A
+   `ValidationError` is logged and that snapshot is skipped for every consumer on the handle: the
+   watch stays alive, a callback is not invoked, a subscriber is not woken, and a later good
+   payload is delivered normally. No exception may reach `Watch.push`, which would leave the SDK's
+   change map dirty and kill the consumer thread for every subscriber on that document. The legacy
+   shim additionally skips `exists=False` snapshots — including the synthesized deletion snapshot —
+   exactly as `_setup_listener` does today, so legacy callbacks never receive a `None` value.
 9. **Any registration path ensures a live hub.** After `stop_all_listeners()`, both `watch_*()`
    and `setup_*_listener()` start a fresh hub.
 10. **`reconnect()` is document-wide.** It closes and reopens the handle, increments `reconnects`,
-    and leaves every subscription on that handle alive. `seq` never repeats or rewinds: the
-    reopened watch's current state is delivered with a fresh `seq`, so gap detection still works.
-    Because the handle is shared, that redelivery is flagged `resync=True` on every subscription,
-    so other consumers can tell a resync from a real transition. `resync` is sticky per
-    subscription: it is set on open, rotate and reconnect, and cleared only by the next *delivered*
-    snapshot, so conflation cannot swallow it. It never touches credentials.
+    and leaves every subscription on that handle alive. `seq` is a per-receipt counter on the
+    handle: it increments for every snapshot the transport delivers, including seeds, resyncs and
+    snapshots that conflation later discards. It never repeats or rewinds, and a gap in a
+    subscriber's `seq` therefore means "snapshots were coalesced away", which is exactly what
+    drawback 6 relies on. Because the handle is shared, the post-reconnect redelivery is flagged
+    `resync=True` on every subscription, so other consumers can tell a resync from a real
+    transition. `resync` is sticky per subscription: it is set on open, rotate and reconnect, and
+    cleared only by the next *delivered* snapshot, so conflation cannot swallow it. It never
+    touches credentials.
 
 ## 5. Implementation slices
 
@@ -205,18 +218,20 @@ same module. Add `huckleberry_api.subscriptions` to `PUBLIC_MODULES` in
 `tests/test_api_surface.py`; `EXPECTED_TOP_LEVEL` is unchanged because the package still exports
 only `HuckleberryAPI`. Not wired into `HuckleberryAPI.__bases__` yet.
 Tests fake the Firestore boundary — `Client`, `DocumentReference`, `Watch` — in
-`tests/fakes/watch.py`, so the real adapter is under test and the fake passes a real protobuf
-`Timestamp` as `read_time`. It can emit, delete (empty document list plus a `REMOVED` change),
+`tests/fakes/watch.py`, so the real adapter is under test and the fake passes an aware
+`DatetimeWithNanoseconds` as `read_time`, the way proto-plus does for `TargetChange.read_time`.
+It can emit, delete (empty document list plus a `REMOVED` change),
 rotate, fail non-recoverably without emitting, go silent while staying active (one mode; this is
 both the recoverable-retry and the stall case, since there is no signal to distinguish them),
 deliver a malformed payload, and block on close.
 Exit: offline tests for conflation, passthrough ordering, refcount over subscriptions **and**
 sinks (a sink-only handle survives another subscription's exit), deletion, rotation,
-non-recoverable death, active-but-silent, malformed payload isolation, late joiner seeding,
-sticky `resync` under a slow consumer, `seq` monotonicity across reconnect and rotation,
-aware-UTC `as_of`, cancellation including cancel-during-close, `ready()` timeout vs death,
-`reconnect()`, and loop rebinding across two sequential `asyncio.run()` sessions plus a concurrent
-two-loop registration.
+non-recoverable death, active-but-silent, malformed payload isolation and recovery, late joiner
+seeding, sticky `resync` under a slow consumer, `seq` gap behaviour across conflation, reconnect
+and rotation, aware-UTC `as_of` from a `DatetimeWithNanoseconds`, cancellation including
+cancel-during-close, `ready()` timeout vs death vs stop, `reconnect()`, gateway client lifetime on
+rotate/stop/last-handle, and loop rebinding across two sequential `asyncio.run()` sessions plus a
+concurrent two-loop registration.
 Risk: medium (thread hop must use `loop.call_soon_threadsafe` with `RuntimeError` → `WatchFailed`).
 
 **Slice 2 — one transport for both APIs.**
@@ -265,7 +280,8 @@ Risk: low.
   deliveries with exact values.
 - Offline: a legacy callback that raises, plus a deletion, leaves the shared watch alive and other
   subscribers receiving.
-- Offline: a malformed payload is skipped, the watch stays active, and other sinks still receive.
+- Offline: a malformed payload is skipped, the watch stays active, other sinks still receive, and a
+  later good payload reaches the subscription (no silent stall).
 - Offline: the real adapter maps an empty `doc_snapshot` plus a `REMOVED` change to
   `Snapshot(exists=False)`; the subscription yields it and the legacy callback is not invoked.
 - Offline: a fake watch that dies without emitting makes `__anext__` raise `WatchFailed`.
@@ -275,18 +291,27 @@ Risk: low.
 - Offline: `ready(timeout=...)` on a silent watch raises `TimeoutError`, not `WatchFailed`, and the
   subscription stays usable.
 - Offline: a late joiner — sub1 receives a snapshot, sub2 is created, `await sub2.ready()` returns
-  it immediately with `resync=True` and a fresh `seq`.
+  it immediately with `resync=True` and the replayed receipt's `seq`.
 - Offline: a late joiner race — sub2 is created, a new write lands before sub2's first
   `__anext__`, and sub2's first delivered snapshot still has `resync=True`.
 - Offline: sticky resync under conflation — slow consumer, rotate, then a write before its next
   `__anext__`; the first delivered snapshot is flagged `resync=True`.
-- Offline: `seq` never repeats or rewinds across reconnect and rotation.
-- Offline: `as_of` is timezone-aware UTC (`utcoffset() == timedelta(0)`) on every snapshot.
+- Offline: `seq` is a receipt counter — a subscriber that skips a conflated snapshot sees a gap,
+  and `seq` never repeats or rewinds across reconnect and rotation.
+- Offline: `as_of` is timezone-aware UTC (`utcoffset() == timedelta(0)`) and passes through the
+  `DatetimeWithNanoseconds` the SDK supplies, with no `.ToDatetime()` call.
 - Offline: a subscription created on a failed handle starts a fresh watch rather than joining it.
 - Offline: simulated token expiry (watch silent, `is_active` true) — `refresh_session_token()`
   produces a `resync=True` snapshot on the existing subscription.
 - Offline: `reconnect()` increments `reconnects`, keeps the subscription live, and the next
-  snapshot has `resync=True` and a fresh `seq`.
+  snapshot has `resync=True` and a higher `seq`.
+- Offline: `ready()` blocked when `stop_all_listeners()` runs ends with `StopAsyncIteration`
+  instead of hanging.
+- Offline: two subscriptions on one document — the fake counts exactly one `on_snapshot`, and after
+  both `rotate()` and `reconnect()` each subscriber gets `resync=True` with the same incremented
+  `reconnects`.
+- Offline: the gateway-scoped client is closed on rotation, on `stop_all_listeners()`, and when the
+  last handle closes — but not when one document's last consumer leaves while others remain.
 - Offline: closing one of two subscriptions leaves the other live.
 - Offline: a sink-only handle survives another subscription's exit — register via
   `setup_*_listener`, then run and exit an unrelated `async with watch_*()` for the same document.
@@ -319,7 +344,8 @@ Risk: low.
 but now also ends active subscriptions, and a later registration starts a fresh hub. `1.0.0`
 removes the shims and the global stop. The `0.6.0` CHANGELOG calls out three behaviour changes:
 conflation for subscribers, the new stop semantics, and the fact that calling `setup_*_listener`
-twice for the same document now registers two callbacks instead of silently replacing the first.
+twice for the same document now registers two callbacks instead of leaving the first one delivering
+but unstoppable.
 
 ## 8. Decisions already made
 
@@ -337,5 +363,10 @@ twice for the same document now registers two callbacks instead of silently repl
   adapter is exercised by the same fake that drives the semantics.
 - A handle's refcount covers subscriptions **and** sinks: the deprecated callback path must keep a
   document alive on its own, exactly as it does today.
+- `watch_*()` is a sync factory: no I/O until `__aenter__`/`__anext__`, so the documented
+  `async with api.watch_sleep(uid) as sub` works without an `await`.
+- The sync `firestore.Client` is gateway-scoped and shared; handles own watches, not clients.
+- `as_of` passes `read_time` through unchanged; it is an aware `DatetimeWithNanoseconds`, not a
+  protobuf `Timestamp`, so no conversion is applied.
 - Build on the mixin layout rather than re-splitting modules: subscription code belongs in
   `subscriptions.py` / `_listeners.py`, and `_client.py` keeps the client plumbing.
