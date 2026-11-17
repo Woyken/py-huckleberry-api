@@ -24,11 +24,18 @@ class FakeDocumentSnapshot:
         return None if self._payload is None else dict(self._payload)
 
 
+class FakeChangeType:
+    """Mirror of ``firestore_v1.watch.ChangeType``; ``.type`` is an enum."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
 class FakeChange:
     """The subset of ``DocumentChange`` the adapter reads."""
 
     def __init__(self, change_type: str) -> None:
-        self.type = change_type
+        self.type = FakeChangeType(change_type)
 
 
 class FakeWatch:
@@ -94,8 +101,25 @@ class FakeCollection:
         return self._documents[child_uid]
 
 
+class _FakeTransport:
+    def __init__(self, client: "FakeFirestoreClient") -> None:
+        self._client = client
+
+    def close(self) -> None:
+        self._client.closed = True
+
+
+class _FakeFirestoreApi:
+    def __init__(self, client: "FakeFirestoreClient") -> None:
+        self.transport = _FakeTransport(client)
+
+
 class FakeFirestoreClient:
-    """Stand-in for the sync ``firestore.Client`` used by watches."""
+    """Stand-in for the sync ``firestore.Client`` used by watches.
+
+    ``Client`` has no ``close()``; the transport under ``_firestore_api`` is the
+    real release path, so the fake mirrors that.
+    """
 
     def __init__(self, token: str | None = None) -> None:
         self.token = token
@@ -103,6 +127,7 @@ class FakeFirestoreClient:
         self.watches: list[FakeWatch] = []
         self._by_doc: dict[tuple[str, str], FakeWatch] = {}
         self._collections: dict[str, FakeCollection] = {}
+        self._firestore_api = _FakeFirestoreApi(self)
 
     def collection(self, name: str) -> FakeCollection:
         if name not in self._collections:
@@ -112,6 +137,3 @@ class FakeFirestoreClient:
     def watch(self, collection: str, child_uid: str) -> FakeWatch:
         """The single watch currently attached to a document."""
         return self._by_doc[(collection, child_uid)]
-
-    def close(self) -> None:
-        self.closed = True

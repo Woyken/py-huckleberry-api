@@ -35,10 +35,6 @@ __all__ = ["Snapshot", "Subscription", "WatchFailed"]
 
 T = TypeVar("T")
 
-# DocumentChange.REMOVED, kept as a literal so the adapter does not depend on
-# the SDK re-exporting a class attribute.
-_REMOVED = "REMOVED"
-
 
 class WatchFailed(Exception):
     """A document watch failed terminally and will not deliver again."""
@@ -133,23 +129,29 @@ class _Handle(Generic[T]):
         if self._error is not None:
             raise self._error
         self._subscribers.add(subscription)
-        if self._last is not None:
-            subscription._seed(self._last)
-        if self._watch is None:
-            self._open()
+        try:
+            if self._last is not None:
+                subscription._seed(self._last)
+            if self._watch is None:
+                self._open()
+        except Exception:
+            self._subscribers.discard(subscription)
+            raise
 
-    def detach(self, subscription: "Subscription[T]") -> None:
+    def detach(self, subscription: "Subscription[T]") -> "asyncio.Task[None] | None":
         self._subscribers.discard(subscription)
-        self._close_if_idle()
+        return self._close_if_idle()
 
     def add_sink(self, sink: Callable[[Snapshot[T]], None]) -> None:
         if self._error is not None:
             raise self._error
         self._sinks.append(sink)
-        if self._last is not None:
-            self._invoke_sink(sink, self._last)
-        if self._watch is None:
-            self._open()
+        try:
+            if self._watch is None:
+                self._open()
+        except Exception:
+            self._sinks.remove(sink)
+            raise
 
     def remove_sink(self, sink: Callable[[Snapshot[T]], None]) -> None:
         try:
@@ -199,6 +201,9 @@ class _Handle(Generic[T]):
                 # The consumer's loop is closed; nothing can be delivered to it.
                 _LOGGER.debug("Dropping subscriber for %s/%s: loop closed", self._collection, self._child_uid)
                 self._subscribers.discard(subscription)
+        if self.refcount == 0:
+            # Clean up from the hub loop, never from the watch thread.
+            self._owner.reclaim(self)
 
     def _invoke_sink(self, sink: Callable[[Snapshot[T]], None], snapshot: Snapshot[T]) -> None:
         try:
@@ -220,7 +225,7 @@ class _Handle(Generic[T]):
                     seq=0,
                     resync=False,
                 )
-        removed = any(getattr(change, "type", None) == _REMOVED for change in (changes or ()))
+        removed = any(_is_removed(change) for change in (changes or ()))
         if removed or not documents:
             # Deletion, or an initially absent document: a state, not a
             # termination.  The SDK sends an empty document list for both.
@@ -229,18 +234,22 @@ class _Handle(Generic[T]):
 
     # -- lifecycle --------------------------------------------------------
 
-    def _close_if_idle(self) -> None:
-        if self.refcount == 0:
-            self._owner.forget(self)
-            self._close()
+    def _close_if_idle(self) -> "asyncio.Task[None] | None":
+        if self.refcount:
+            return None
+        self._owner.forget(self)
+        task = self._close()
+        self._owner.maybe_close_client()
+        return task
 
-    def _close(self) -> None:
+    def _close(self) -> "asyncio.Task[None] | None":
         watch = self._watch
         self._watch = None
         self._closing = True
         self._requested_close = True
-        if watch is not None:
-            self._owner.close_watch(watch)
+        if watch is None:
+            return None
+        return self._owner.close_watch(watch)
 
     def _fail(self, error: WatchFailed) -> None:
         if self._error is not None:
@@ -269,6 +278,7 @@ class _Handle(Generic[T]):
 
     def _rotate(self) -> None:
         self._reconnects += 1
+        self._closing = True
         if self._watch is not None:
             watch = self._watch
             self._watch = None
@@ -323,22 +333,29 @@ class _WatchHub:
         collection: str,
         child_uid: str,
         parser: Callable[[dict[str, Any]], Any],
+        *,
+        for_subscription: bool = True,
     ) -> _Handle[Any]:
         if self._loop is not asyncio.get_running_loop():
             if not self._loop.is_closed():
-                raise RuntimeError(
-                    "Watch hub is bound to a different running event loop; "
-                    "create one HuckleberryAPI per loop"
-                )
-            # The previous loop is gone: drop its subscriptions, keep handles
-            # that sinks still reference, and rebind delivery.
-            for handle in list(self._handles.values()):
-                for subscription in list(handle._subscribers):
-                    handle._subscribers.discard(subscription)
-                if handle.refcount == 0:
-                    self.forget(handle)
-                    handle._close()
-            self._loop = asyncio.get_running_loop()
+                if for_subscription:
+                    raise RuntimeError(
+                        "Watch hub is bound to a different running event loop; "
+                        "create one HuckleberryAPI per loop"
+                    )
+                # Sinks have no loop affinity and need no delivery loop, so a
+                # sink-only registration from another live loop is fine.
+            else:
+                # The previous loop is gone: drop its subscriptions, keep handles
+                # that sinks still reference, and rebind delivery.
+                for handle in list(self._handles.values()):
+                    for subscription in list(handle._subscribers):
+                        handle._subscribers.discard(subscription)
+                    if handle.refcount == 0:
+                        self.forget(handle)
+                        handle._close()
+                self._loop = asyncio.get_running_loop()
+                self._lock = asyncio.Lock()
         key = (collection, child_uid)
         handle = self._handles.get(key)
         if handle is not None and handle._error is not None:
@@ -364,23 +381,50 @@ class _WatchHub:
         for handle in list(self._handles.values()):
             handle._rotate()
 
-    def close_watch(self, watch: Any) -> None:
+    def close_watch(self, watch: Any) -> "asyncio.Task[None] | None":
         """Close a watch off the event loop; the SDK joins its thread for ~1s."""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             _close_watch_sync(watch)
-            return
+            return None
         task = loop.create_task(asyncio.to_thread(_close_watch_sync, watch))
         self._close_tasks.add(task)
         task.add_done_callback(self._close_tasks.discard)
         task.add_done_callback(_log_close_failure)
+        return task
 
     async def _close_client(self, client: Any) -> None:
         try:
-            await asyncio.shield(asyncio.to_thread(client.close))
+            await asyncio.shield(asyncio.to_thread(_close_watch_client, client))
         except Exception:  # noqa: BLE001
             _LOGGER.debug("Error closing watch client", exc_info=True)
+
+    def maybe_close_client(self) -> None:
+        """Release the shared client once no handle needs it."""
+        if self._handles or self._client is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # Called from a worker thread; a later rotate/stop releases it.
+            return
+        client = self._client
+        self._client = None
+        self._token = None
+        task = loop.create_task(asyncio.to_thread(_close_watch_client, client))
+        self._close_tasks.add(task)
+        task.add_done_callback(self._close_tasks.discard)
+        task.add_done_callback(_log_close_failure)
+
+    def reclaim(self, handle: _Handle[Any]) -> None:
+        """Close an orphaned handle from the hub loop, if that loop still runs."""
+        try:
+            if self._loop.is_closed():
+                return
+            self._loop.call_soon_threadsafe(handle._close_if_idle)
+        except RuntimeError:
+            return
 
     async def stop(self) -> None:
         watchdog = self._watchdog
@@ -420,6 +464,24 @@ def _close_watch_sync(watch: Any) -> None:
         if callable(method):
             method()
             return
+
+
+def _close_watch_client(client: Any) -> None:
+    """Release the sync client's transport; ``Client`` has no ``close()``."""
+    transport = getattr(getattr(client, "_firestore_api", None), "transport", None)
+    close = getattr(transport, "close", None)
+    if callable(close):
+        close()
+        return
+    close = getattr(client, "close", None)
+    if callable(close):
+        close()
+
+
+def _is_removed(change: Any) -> bool:
+    """``DocumentChange.type`` is a ``ChangeType`` enum, not a string."""
+    change_type = getattr(change, "type", None)
+    return getattr(change_type, "name", change_type) == "REMOVED"
 
 
 def _log_close_failure(task: asyncio.Task[None]) -> None:
@@ -480,6 +542,7 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
     async def __anext__(self) -> Snapshot[T]:
         if self._closed:
             raise StopAsyncIteration
+        await self._ensure_started()
         return await self._next()
 
     async def ready(self, timeout: float | None = None) -> Snapshot[T]:
@@ -501,7 +564,16 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
             ) from None
 
     async def reconnect(self) -> None:
-        """Reopen this document's watch, resyncing every subscription on it."""
+        """Reopen this document's watch, resyncing every subscription on it.
+
+        Safe after a failure or a global stop: it re-resolves the handle, so a
+        dead or stopped transport is replaced instead of being reopened in place.
+        """
+        if self._closed:
+            raise StopAsyncIteration
+        if self._handle is not None:
+            self._handle.detach(self)
+            self._handle = None
         await self._ensure_started()
         assert self._handle is not None
         self._handle.reconnect()
@@ -511,9 +583,18 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
         if self._closed:
             return
         self._closed = True
-        if self._handle is not None:
-            self._handle.detach(self)
-            self._handle = None
+        if self._handle is None:
+            return
+        handle = self._handle
+        self._handle = None
+        task = handle.detach(self)
+        if task is not None:
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - closing must not mask the exit
+                _LOGGER.debug("Error closing %s/%s watch", self._collection, self._child_uid, exc_info=True)
 
     # -- internals --------------------------------------------------------
 
@@ -529,6 +610,12 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
 
     async def _next(self) -> Snapshot[T]:
         snapshot = await self._slot.take()
+        # A newer receipt may have landed after this slot value was queued;
+        # conflation promises the newest state, so prefer it.
+        if self._handle is not None and self._handle._last is not None:
+            latest = self._handle._last
+            if latest.seq > snapshot.seq:
+                snapshot = latest
         if self._resync_pending:
             self._resync_pending = False
             snapshot = replace(snapshot, resync=True)

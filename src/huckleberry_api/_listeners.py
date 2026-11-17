@@ -8,6 +8,7 @@ surfaces share one transport.
 
 from __future__ import annotations
 
+import warnings
 from typing import Any, Callable, Literal, TypeVar, cast
 
 from google.cloud import firestore
@@ -76,9 +77,11 @@ class ListenerMixin(HuckleberryBase):
         collection: str,
         child_uid: str,
         parser: Callable[[dict[str, Any]], Any],
+        *,
+        for_subscription: bool = True,
     ) -> Any:
         hub = await self._get_watch_hub()
-        return hub.handle(collection, child_uid, parser)
+        return hub.handle(collection, child_uid, parser, for_subscription=for_subscription)
 
     async def _on_credentials_refreshed(self) -> None:
         """Reopen every watch with the refreshed token, keeping subscribers."""
@@ -126,8 +129,15 @@ class ListenerMixin(HuckleberryBase):
         callback: Callable[[TDocumentData], None],
     ) -> None:
         """Register a callback sink on the document's shared watch."""
+        warnings.warn(
+            "setup_*_listener() is deprecated; use watch_*() and async for instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         _LOGGER.info("Setting up real-time listener for %s/%s", collection_name, child_uid)
-        handle = await self._watch_handle(collection_name, child_uid, _PARSERS[collection_name])
+        handle = await self._watch_handle(
+            collection_name, child_uid, _PARSERS[collection_name], for_subscription=False
+        )
 
         def sink(snapshot: Snapshot[Any]) -> None:
             if not snapshot.exists:

@@ -58,6 +58,24 @@ async def started(owner: DummyOwner) -> Subscription[Any]:
     return subscription
 
 
+def make_api() -> HuckleberryAPI:
+    """An API instance whose watch transport is a fake and auth is a no-op."""
+    api = HuckleberryAPI(
+        email="test@example.com",
+        password="password",
+        timezone="UTC",
+        websession=SimpleNamespace(),  # type: ignore[arg-type]
+    )
+    api.id_token = "token"
+    api._create_watch_client = lambda token: FakeFirestoreClient(token)  # type: ignore[method-assign]
+
+    async def no_auth() -> None:
+        return None
+
+    api._ensure_authenticated = no_auth  # type: ignore[method-assign]
+    return api
+
+
 async def test_conflated_newest_wins() -> None:
     owner = DummyOwner()
     sub = await started(owner)
@@ -87,18 +105,20 @@ async def test_sink_receives_every_snapshot_in_order() -> None:
 
 
 async def test_deletion_is_a_state_and_skips_callbacks() -> None:
-    owner = DummyOwner()
-    handle = await owner._watch_handle("sleep", "child", PARSE_SLEEP)
-    callback = []
-    handle.add_sink(lambda snapshot: callback.append(snapshot))
-    sub = await started(owner)
+    api = make_api()
+    calls: list[Any] = []
+    await api.setup_sleep_listener("child", calls.append)
 
-    owner.client.watch("sleep", "child").push(None, deleted=True)
+    sub = api.watch_sleep("child")
+    await sub.__aenter__()
+
+    client = api._watch_hub._client  # type: ignore[union-attr]
+    client.watch("sleep", "child").push(None, deleted=True)
 
     snapshot = await sub.ready()
     assert snapshot.exists is False
     assert snapshot.value is None
-    assert callback == []
+    assert calls == []
 
 
 async def test_malformed_payload_is_skipped_and_recovery_works() -> None:
@@ -226,6 +246,7 @@ async def test_rotation_keeps_one_watch_and_resyncs_every_subscriber() -> None:
     await owner.hub.rotate("fresh-token")
 
     assert len(owner.client.watches) == 1
+    assert owner.clients[0].closed is True
     assert sub1.reconnects == sub2.reconnects == 1
     owner.client.watch("sleep", "child").push(payload("after"))
     assert (await sub1.ready()).resync is True
@@ -257,6 +278,18 @@ async def test_sink_only_handle_survives_subscription_exit() -> None:
 
     assert ("sleep", "child") in owner.hub._handles
     assert owner.client.watches[-1].close_count == 0
+
+
+async def test_anext_first_use_registers_the_watch() -> None:
+    owner = DummyOwner()
+    sub: Subscription[Any] = Subscription(owner, "sleep", "child", PARSE_SLEEP)
+
+    task = asyncio.create_task(sub.__anext__())
+    await asyncio.sleep(0)
+    owner.client.watch("sleep", "child").push(payload("iterated"))
+
+    snapshot = await asyncio.wait_for(task, timeout=1)
+    assert snapshot.value.timer.uuid == "iterated"
 
 
 async def test_leaving_context_closes_the_watch_once() -> None:
@@ -309,20 +342,59 @@ def test_loop_rebind_across_two_asyncio_run_sessions() -> None:
     asyncio.run(second())
 
 
+class _FakeRefreshResponse:
+    status = 200
+    reason = "OK"
+    headers: dict[str, str] = {}
+    request_info = SimpleNamespace(real_url="https://securetoken.googleapis.com/")
+    history: tuple[Any, ...] = ()
+
+    async def __aenter__(self) -> "_FakeRefreshResponse":
+        return self
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+    async def json(self, *args: Any, **kwargs: Any) -> dict[str, str]:
+        return {"id_token": "fresh-token", "refresh_token": "fresh-refresh", "expires_in": "3600"}
+
+    async def text(self) -> str:
+        return "{}"
+
+
+async def test_refresh_session_token_rebuilds_client_and_resyncs() -> None:
+    api = make_api()
+    api.id_token = "stale-token"
+    api.refresh_token = "stale-refresh"
+    api.websession = SimpleNamespace(post=lambda *args, **kwargs: _FakeRefreshResponse())  # type: ignore[assignment]
+
+    sub = api.watch_sleep("child")
+    await sub.__aenter__()
+
+    old_client = api._watch_hub._client  # type: ignore[union-attr]
+    old_watch = old_client.watch("sleep", "child")
+
+    await api.refresh_session_token()
+
+    new_client = api._watch_hub._client  # type: ignore[union-attr]
+    assert new_client is not old_client
+    assert new_client.token == "fresh-token"
+    assert old_client.closed is True
+
+    for _ in range(50):
+        if old_watch.close_count:
+            break
+        await asyncio.sleep(0.02)
+    assert old_watch.close_count == 1
+
+    new_client.watch("sleep", "child").push(payload("after"))
+    snapshot = await sub.ready()
+    assert snapshot.resync is True
+    assert snapshot.value.timer.uuid == "after"
+
+
 def test_legacy_registrations_survive_a_loop_change() -> None:
-    api = HuckleberryAPI(
-        email="test@example.com",
-        password="password",
-        timezone="UTC",
-        websession=SimpleNamespace(),  # type: ignore[arg-type]
-    )
-    api.id_token = "token"
-    api._create_watch_client = lambda token: FakeFirestoreClient(token)  # type: ignore[method-assign]
-
-    async def no_auth() -> None:
-        return None
-
-    api._ensure_authenticated = no_auth  # type: ignore[method-assign]
+    api = make_api()
 
     sleep_updates: list[Any] = []
     feed_updates: list[Any] = []
