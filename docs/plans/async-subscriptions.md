@@ -87,8 +87,9 @@ Flat, matching the current surface. Bound resources (`api.sleep(uid)`) are a lat
 decision and are not assumed here.
 
 `watch_*()` is a **sync factory**: it performs no I/O and returns the `Subscription`.
-Authentication, hub lookup and watch creation happen in `__aenter__` (or on the first
-`__anext__`), which is why the example needs no `await` between `async with` and the call.
+Authentication, hub lookup and watch creation happen on first use — `__aenter__`, the first
+`__anext__`, or `ready()` — which is why the example needs no `await` between `async with` and the
+call.
 
 ```python
 from huckleberry_api.subscriptions import Subscription  # public module, see §8
@@ -145,13 +146,15 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
 
 1. **Conflated, not queued (iterators only).** Each `__anext__` returns the newest snapshot since
    the last call. No backlog, no unbounded buffer, no backpressure fiction.
-2. **`__aenter__` does not wait.** It registers the subscription and returns. Consumers that need
-   the current value call `await sub.ready(timeout=None)`: `TimeoutError` when the timeout expires,
-   `WatchFailed` when the watch has terminally failed. The subscription stays alive either way, so
-   a timeout never costs a healthy watch. If the handle already has a snapshot, the new subscription
-   is seeded with it (same `seq` as the receipt it replays, `resync=True`), so a late joiner never
-   waits for the next write.
-   `ready()` checks the handle's failure state before returning a seed.
+2. **`__aenter__` does not wait for the first snapshot.** It performs authentication and
+   registration — so it can do credential I/O — but it never waits for data, and it returns
+   immediately. Consumers that need the current value call `await sub.ready(timeout=None)`, which
+   registers first if the subscription has not been started, then returns the current or next
+   snapshot. Its three outcomes are `TimeoutError` (timeout), `WatchFailed` (terminal failure) and
+   `StopAsyncIteration` (global stop, see contract 4). The subscription stays alive after a
+   timeout, so a timeout never costs a healthy watch. If the handle already has a snapshot, the
+   subscription is seeded with it (`resync=True`, reusing that receipt's `seq`), so a late joiner
+   never waits for the next write.
 3. **Deletion is a state.** The SDK does not hand the callback a `DocumentSnapshot` with
    `exists=False`; on deletion it delivers an **empty** `doc_snapshot` list and a `REMOVED`
    `DocumentChange`. The adapter maps "empty list, or a `REMOVED` change for this document" to
@@ -183,8 +186,8 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
    **gateway-scoped and shared** by every handle, so it is closed only when the last handle goes,
    on rotation, and on `stop_all_listeners()` — never because one document's last consumer left. A
    new subscription is seeded from the handle's last snapshot, so it starts with the current value
-   instead of waiting for the next write. If the handle has already failed, `watch_*()` starts a
-   fresh watch rather than joining a dead one.
+   instead of waiting for the next write. If the handle has already failed, first use — `__aenter__`,
+   `__anext__` or `ready()` — starts a fresh watch rather than joining a dead one.
 7. **Cancellation is deterministic.** Leaving `async with` closes the subscription and awaits
    completion of the off-loop close, shielded so a second cancellation cannot abandon a half-closed
    handle. A cancelled exit still results in exactly one transport `close`.
@@ -196,14 +199,15 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
    change map dirty and kill the consumer thread for every subscriber on that document. The legacy
    shim additionally skips `exists=False` snapshots — including the synthesized deletion snapshot —
    exactly as `_setup_listener` does today, so legacy callbacks never receive a `None` value.
-9. **Any registration path ensures a live hub.** After `stop_all_listeners()`, both `watch_*()`
-   and `setup_*_listener()` start a fresh hub.
+9. **Any registration path ensures a live hub.** After `stop_all_listeners()`, the next
+   registration — `setup_*_listener()`, or the first use of a `watch_*()` subscription — starts a
+   fresh hub.
 10. **`reconnect()` is document-wide.** It closes and reopens the handle, increments `reconnects`,
     and leaves every subscription on that handle alive. `seq` is a per-receipt counter on the
-    handle: it increments for every snapshot the transport delivers, including seeds, resyncs and
-    snapshots that conflation later discards. It never repeats or rewinds, and a gap in a
-    subscriber's `seq` therefore means "snapshots were coalesced away", which is exactly what
-    drawback 6 relies on. Because the handle is shared, the post-reconnect redelivery is flagged
+    handle: it increments for every snapshot the transport delivers, including resyncs and
+    snapshots that conflation later discards. The seed of a late joiner is not a new receipt — it
+    replays the last one and reuses its `seq` — so a joiner's first value carries no artificial
+    gap, and a gap still means "snapshots were coalesced away". Because the handle is shared, the post-reconnect redelivery is flagged
     `resync=True` on every subscription, so other consumers can tell a resync from a real
     transition. `resync` is sticky per subscription: it is set on open, rotate and reconnect, and
     cleared only by the next *delivered* snapshot, so conflation cannot swallow it. It never
@@ -280,8 +284,8 @@ Risk: low.
   deliveries with exact values.
 - Offline: a legacy callback that raises, plus a deletion, leaves the shared watch alive and other
   subscribers receiving.
-- Offline: a malformed payload is skipped, the watch stays active, other sinks still receive, and a
-  later good payload reaches the subscription (no silent stall).
+- Offline: a malformed payload reaches no consumer — no callback, no wake-up — the watch stays
+  active, and a later good payload reaches both a sink and a subscription.
 - Offline: the real adapter maps an empty `doc_snapshot` plus a `REMOVED` change to
   `Snapshot(exists=False)`; the subscription yields it and the legacy callback is not invoked.
 - Offline: a fake watch that dies without emitting makes `__anext__` raise `WatchFailed`.
@@ -296,8 +300,9 @@ Risk: low.
   `__anext__`, and sub2's first delivered snapshot still has `resync=True`.
 - Offline: sticky resync under conflation — slow consumer, rotate, then a write before its next
   `__anext__`; the first delivered snapshot is flagged `resync=True`.
-- Offline: `seq` is a receipt counter — a subscriber that skips a conflated snapshot sees a gap,
-  and `seq` never repeats or rewinds across reconnect and rotation.
+- Offline: `seq` is a receipt counter — a subscriber that skips a conflated snapshot sees a gap, a
+  seed reuses the last receipt's `seq`, and `seq` never repeats or rewinds across reconnect and
+  rotation.
 - Offline: `as_of` is timezone-aware UTC (`utcoffset() == timedelta(0)`) and passes through the
   `DatetimeWithNanoseconds` the SDK supplies, with no `.ToDatetime()` call.
 - Offline: a subscription created on a failed handle starts a fresh watch rather than joining it.
@@ -353,7 +358,8 @@ but unstoppable.
   is the documented escape hatch for per-snapshot consumers.
 - No heartbeat: `as_of` + `reconnect()` instead.
 - `watch_*()` returns a new `Subscription` per call; no shared mutable subscription object.
-- `__aenter__` does not wait; `ready()` is explicit.
+- `__aenter__` does not wait for a snapshot — it still authenticates and registers; `ready()` is
+  the explicit wait, and it also works as the first call (lazy registration).
 - No `api.close()`: the injected `aiohttp` session is caller-owned, so a closing method that
   touched it would be wrong. `async with` is the supported teardown.
 - `Snapshot`, `Subscription` and `WatchFailed` are public in `huckleberry_api.subscriptions`; the
