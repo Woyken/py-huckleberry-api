@@ -1,13 +1,17 @@
-"""Real-time Firestore listeners and token-refresh recreation."""
+"""Real-time document watches: async subscriptions and the callback shim.
+
+``watch_*()`` returns a :class:`~huckleberry_api.subscriptions.Subscription`
+for a document.  ``setup_*_listener()`` keeps the historical callback API and is
+implemented as a passthrough sink over the same per-document watch, so both
+surfaces share one transport.
+"""
 
 from __future__ import annotations
 
-from google.api_core.exceptions import GoogleAPICallError
+from typing import Any, Callable, Literal, TypeVar, cast
+
 from google.cloud import firestore
-from typing import Callable
-from typing import Literal
-from typing import TypeVar
-from typing import cast
+
 from ._client import FirebaseTokenCredentials
 from ._client import HuckleberryBase
 from ._common import _LOGGER
@@ -18,7 +22,9 @@ from .firebase_types import FirebaseFeedDocumentData
 from .firebase_types import FirebaseHealthDocumentData
 from .firebase_types import FirebasePumpDocumentData
 from .firebase_types import FirebaseSleepDocumentData
-
+from .subscriptions import Snapshot
+from .subscriptions import Subscription
+from .subscriptions import _WatchHub
 
 TDocumentData = TypeVar(
     "TDocumentData",
@@ -31,68 +37,105 @@ TDocumentData = TypeVar(
     FirebaseChildDocument,
 )
 
+CollectionName = Literal["sleep", "feed", "health", "diaper", "activities", "pump", "childs"]
+
+_PARSERS: dict[str, Callable[[dict[str, Any]], Any]] = {
+    "sleep": FirebaseSleepDocumentData.model_validate,
+    "feed": FirebaseFeedDocumentData.model_validate,
+    "health": FirebaseHealthDocumentData.model_validate,
+    "diaper": FirebaseDiaperDocumentData.model_validate,
+    "activities": FirebaseActivityDocumentData.model_validate,
+    "pump": FirebasePumpDocumentData.model_validate,
+    "childs": FirebaseChildDocument.model_validate,
+}
+
 
 class ListenerMixin(HuckleberryBase):
-    """Real-time snapshot listener methods."""
+    """Real-time snapshot listeners and async subscriptions."""
+
+    # -- transport --------------------------------------------------------
+
+    def _create_watch_client(self, token: str) -> firestore.Client:
+        """Build a sync client for watches; a new one is required per token."""
+        return firestore.Client(
+            project="simpleintervals",
+            credentials=FirebaseTokenCredentials(token),
+        )
+
+    async def _get_watch_hub(self) -> _WatchHub:
+        await self._ensure_authenticated()
+        if self._watch_hub is None:
+            self._watch_hub = _WatchHub(self._create_watch_client)
+        assert self.id_token is not None, "id_token should be set after authentication"
+        hub = cast(_WatchHub, self._watch_hub)
+        await hub.ensure_client(self.id_token)
+        return hub
+
+    async def _watch_handle(
+        self,
+        collection: str,
+        child_uid: str,
+        parser: Callable[[dict[str, Any]], Any],
+    ) -> Any:
+        hub = await self._get_watch_hub()
+        return hub.handle(collection, child_uid, parser)
+
+    async def _on_credentials_refreshed(self) -> None:
+        """Reopen every watch with the refreshed token, keeping subscribers."""
+        if self._watch_hub is None:
+            return
+        assert self.id_token is not None, "id_token should be set after refresh"
+        await cast(_WatchHub, self._watch_hub).rotate(self.id_token)
+
+    # -- async subscriptions ---------------------------------------------
+
+    def watch_sleep(self, child_uid: str) -> Subscription[FirebaseSleepDocumentData]:
+        """Subscribe to ``sleep/{child_uid}``.  No I/O until first use."""
+        return Subscription(self, "sleep", child_uid, _PARSERS["sleep"])
+
+    def watch_feed(self, child_uid: str) -> Subscription[FirebaseFeedDocumentData]:
+        """Subscribe to ``feed/{child_uid}``.  No I/O until first use."""
+        return Subscription(self, "feed", child_uid, _PARSERS["feed"])
+
+    def watch_health(self, child_uid: str) -> Subscription[FirebaseHealthDocumentData]:
+        """Subscribe to ``health/{child_uid}``.  No I/O until first use."""
+        return Subscription(self, "health", child_uid, _PARSERS["health"])
+
+    def watch_diaper(self, child_uid: str) -> Subscription[FirebaseDiaperDocumentData]:
+        """Subscribe to ``diaper/{child_uid}``.  No I/O until first use."""
+        return Subscription(self, "diaper", child_uid, _PARSERS["diaper"])
+
+    def watch_activity(self, child_uid: str) -> Subscription[FirebaseActivityDocumentData]:
+        """Subscribe to ``activities/{child_uid}``.  No I/O until first use."""
+        return Subscription(self, "activities", child_uid, _PARSERS["activities"])
+
+    def watch_pump(self, child_uid: str) -> Subscription[FirebasePumpDocumentData]:
+        """Subscribe to ``pump/{child_uid}``.  No I/O until first use."""
+        return Subscription(self, "pump", child_uid, _PARSERS["pump"])
+
+    def watch_child(self, child_uid: str) -> Subscription[FirebaseChildDocument]:
+        """Subscribe to ``childs/{child_uid}``.  No I/O until first use."""
+        return Subscription(self, "childs", child_uid, _PARSERS["childs"])
+
+    # -- deprecated callback API -----------------------------------------
 
     async def _setup_listener(
         self,
-        collection_name: Literal["sleep", "feed", "health", "diaper", "activities", "pump", "childs"],
+        collection_name: CollectionName,
         child_uid: str,
         callback: Callable[[TDocumentData], None],
     ) -> None:
-        """Set up real-time listener for a Firestore document.
-
-        Generic listener setup method that works for any collection type.
-
-        Args:
-            collection_name: Name of the Firestore collection (e.g., 'sleep', 'feed', 'health', 'diaper')
-            child_uid: Child unique identifier
-            callback: Function to call when document changes, receives document data of the appropriate type
-        """
+        """Register a callback sink on the document's shared watch."""
         _LOGGER.info("Setting up real-time listener for %s/%s", collection_name, child_uid)
+        handle = await self._watch_handle(collection_name, child_uid, _PARSERS[collection_name])
 
-        await self._ensure_authenticated()
-        if not self._listener_client:
-            assert self.id_token is not None, "id_token should be set after authentication"
-            credentials = FirebaseTokenCredentials(self.id_token)
-            self._listener_client = firestore.Client(
-                project="simpleintervals",
-                credentials=credentials,
-            )
+        def sink(snapshot: Snapshot[Any]) -> None:
+            if not snapshot.exists:
+                return
+            callback(cast(TDocumentData, snapshot.value))
 
-        doc_ref = self._listener_client.collection(collection_name).document(child_uid)
-
-        # Create snapshot listener
-        def on_snapshot(doc_snapshot, _changes, _read_time):
-            """Handle snapshot updates."""
-            for doc in doc_snapshot:
-                if doc.exists:
-                    _LOGGER.debug("Real-time %s update received for child %s", collection_name, child_uid)
-                    payload = doc.to_dict() or {}
-                    if collection_name == "sleep":
-                        validated = FirebaseSleepDocumentData.model_validate(payload)
-                    elif collection_name == "feed":
-                        validated = FirebaseFeedDocumentData.model_validate(payload)
-                    elif collection_name == "health":
-                        validated = FirebaseHealthDocumentData.model_validate(payload)
-                    elif collection_name == "activities":
-                        validated = FirebaseActivityDocumentData.model_validate(payload)
-                    elif collection_name == "pump":
-                        validated = FirebasePumpDocumentData.model_validate(payload)
-                    elif collection_name == "childs":
-                        validated = FirebaseChildDocument.model_validate(payload)
-                    else:
-                        validated = FirebaseDiaperDocumentData.model_validate(payload)
-                    callback(cast(TDocumentData, validated))
-
-        # Start listening and store the unsubscribe function
-        unsubscribe = doc_ref.on_snapshot(on_snapshot)
-        listener_key = f"{collection_name}_{child_uid}"
-        self._listeners[listener_key] = unsubscribe
-        # Store callback for recreation after token refresh
-        self._listener_callbacks[listener_key] = (collection_name, child_uid, callback)
-
+        handle.add_sink(sink)
+        self._listener_sinks.append((handle, sink))
         _LOGGER.info("Real-time %s listener active for child %s", collection_name, child_uid)
 
     async def setup_sleep_listener(self, child_uid: str, callback: Callable[[FirebaseSleepDocumentData], None]) -> None:
@@ -130,43 +173,16 @@ class ListenerMixin(HuckleberryBase):
         await self._setup_listener("childs", child_uid, callback)
 
     async def stop_all_listeners(self) -> None:
-        """Stop all active real-time listeners."""
-        _LOGGER.info("Stopping all real-time listeners")
-        for key, watch in self._listeners.items():
-            try:
-                if hasattr(watch, "unsubscribe") and callable(getattr(watch, "unsubscribe")):
-                    watch.unsubscribe()
-                elif hasattr(watch, "close") and callable(getattr(watch, "close")):
-                    watch.close()
-                else:
-                    _LOGGER.debug("Listener %s object has no unsubscribe/close", key)
-                _LOGGER.debug("Stopped listener: %s", key)
-            except (AttributeError, RuntimeError, TypeError, ValueError) as err:
-                _LOGGER.error("Error stopping listener %s: %s", key, err)
-        self._listeners.clear()
-        self._listener_callbacks.clear()
-        self._listener_client = None
+        """Stop every callback listener and every subscription on this client.
 
-    async def _recreate_listeners(self) -> None:
-        """Recreate every registered listener with the refreshed token."""
-        _LOGGER.info("Recreating %d listeners with refreshed token", len(self._listener_callbacks))
-        callbacks_copy = dict(self._listener_callbacks)  # Copy to avoid modification during iteration
-        for key, (listener_type, child_uid, callback) in callbacks_copy.items():
-            try:
-                if listener_type == "sleep":
-                    await self.setup_sleep_listener(child_uid, callback)
-                elif listener_type == "feed":
-                    await self.setup_feed_listener(child_uid, callback)
-                elif listener_type == "health":
-                    await self.setup_health_listener(child_uid, callback)
-                elif listener_type == "diaper":
-                    await self.setup_diaper_listener(child_uid, callback)
-                elif listener_type == "activities":
-                    await self.setup_activity_listener(child_uid, callback)
-                elif listener_type == "pump":
-                    await self.setup_pump_listener(child_uid, callback)
-                elif listener_type == "childs":
-                    await self.setup_child_listener(child_uid, callback)
-                _LOGGER.debug("Recreated %s listener for child %s", listener_type, child_uid)
-            except (GoogleAPICallError, RuntimeError, TypeError, ValueError) as err:
-                _LOGGER.error("Error recreating %s listener for child %s: %s", listener_type, child_uid, err)
+        Kept for compatibility.  Pending ``__anext__``/``ready()`` calls end with
+        ``StopAsyncIteration``; a later registration starts a fresh hub.
+        """
+        _LOGGER.info("Stopping all real-time listeners")
+        for handle, sink in list(self._listener_sinks):
+            handle.remove_sink(sink)
+        self._listener_sinks.clear()
+        hub = self._watch_hub
+        self._watch_hub = None
+        if hub is not None:
+            await cast(_WatchHub, hub).stop()

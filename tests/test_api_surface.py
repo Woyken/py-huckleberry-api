@@ -16,7 +16,7 @@ from huckleberry_api._listeners import ListenerMixin
 MIXINS = HuckleberryAPI.__bases__
 
 EXPECTED_TOP_LEVEL = {"HuckleberryAPI"}
-PUBLIC_MODULES = ["huckleberry_api", "huckleberry_api.api", "huckleberry_api.models"]
+PUBLIC_MODULES = ["huckleberry_api", "huckleberry_api.api", "huckleberry_api.models", "huckleberry_api.subscriptions"]
 
 EXPECTED_PUBLIC_METHODS = {
     "authenticate",
@@ -79,6 +79,13 @@ EXPECTED_PUBLIC_METHODS = {
     "stop_all_listeners",
     "switch_activity",
     "switch_nursing_side",
+    "watch_activity",
+    "watch_child",
+    "watch_diaper",
+    "watch_feed",
+    "watch_health",
+    "watch_pump",
+    "watch_sleep",
 }
 
 
@@ -88,12 +95,12 @@ def test_public_api_surface_is_complete() -> None:
     assert actual == EXPECTED_PUBLIC_METHODS
 
 
-def test_listener_recreation_hook_comes_from_listener_mixin() -> None:
+def test_credentials_refresh_hook_comes_from_listener_mixin() -> None:
     """Base-class ordering must not let the no-op hook win after a token refresh."""
-    assert "_recreate_listeners" in ListenerMixin.__dict__, (
+    assert "_on_credentials_refreshed" in ListenerMixin.__dict__, (
         "ListenerMixin must implement the hook, not inherit the no-op"
     )
-    assert HuckleberryAPI._recreate_listeners is ListenerMixin.__dict__["_recreate_listeners"]
+    assert HuckleberryAPI._on_credentials_refreshed is ListenerMixin.__dict__["_on_credentials_refreshed"]
 
 
 def test_no_mixin_shadows_a_base_or_another_mixin_method() -> None:
@@ -103,7 +110,7 @@ def test_no_mixin_shadows_a_base_or_another_mixin_method() -> None:
         for name in mixin.__dict__:
             if name.startswith("__"):
                 continue
-            if name == "_recreate_listeners" and mixin is ListenerMixin:
+            if name == "_on_credentials_refreshed" and mixin is ListenerMixin:
                 # The hook belongs to the listener mixin; any other override is a bug.
                 owners[name] = mixin
                 continue

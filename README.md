@@ -123,6 +123,9 @@ asyncio.run(main())
 
 ## Real-time Listeners
 
+> The callback API below is deprecated in favour of [async subscriptions](#async-subscriptions).
+> It keeps working through 0.x and will be removed in 1.0.
+
 Set up real-time listeners for instant updates:
 
 ```python
@@ -148,6 +151,60 @@ async def main() -> None:
         await api.setup_sleep_listener(child_uid, on_sleep_update)
         await api.stop_all_listeners()
 ```
+
+## Async Subscriptions
+
+`watch_*(child_uid)` returns an async subscription for one document. It performs
+no I/O until first use, and it conflates updates: each step of `async for` gives
+you the newest state, never a backlog of stale ones.
+
+```python
+from huckleberry_api.firebase_types import FirebaseSleepDocumentData
+from huckleberry_api.subscriptions import Snapshot, Subscription, WatchFailed
+
+async def main() -> None:
+    async with aiohttp.ClientSession() as websession:
+        api = HuckleberryAPI(
+            email="your-email@example.com",
+            password="your-password",
+            timezone="Europe/London",
+            websession=websession,
+        )
+        await api.authenticate()
+
+        async with api.watch_sleep(child_uid) as sub:
+            print(sub.latest)          # Snapshot[FirebaseSleepDocumentData] | None
+            async for snap in sub:
+                if not snap.exists:
+                    continue           # document was deleted; the watch stays open
+                print(snap.value.timer, snap.as_of)
+```
+
+Every `Snapshot` carries `value`, `exists`, `as_of` (aware UTC), `seq` and
+`resync`:
+
+- `seq` is a per-receipt counter on the shared watch. A gap means snapshots were
+  conflated away while you were busy.
+- `resync` marks the first delivery to a subscription and the first delivery
+  after `reconnect()` or a token rotation, so you can tell "state restated" from
+  "state changed".
+
+`Subscription` methods:
+
+- `await sub.ready(timeout=None)` — current or next snapshot. Raises
+  `TimeoutError` on timeout, `WatchFailed` on terminal failure, and
+  `StopAsyncIteration` after a global stop.
+- `await sub.reconnect()` — reopen this document's watch and resync every
+  subscription on it.
+- `await sub.aclose()` — unsubscribe; leaving `async with` does this for you.
+
+`watch_sleep`, `watch_feed`, `watch_health`, `watch_diaper`, `watch_activity`,
+`watch_pump` and `watch_child` all share one watch per document, so several
+subscribers cost one connection.
+
+A stale `as_of` can mean "no writes" or "the token expired" — the SDK retries
+`Unauthenticated` forever. Call `await api.refresh_session_token()` if you suspect
+credentials; it rotates the transport and resyncs every subscription.
 
 ## API Methods
 
@@ -236,6 +293,11 @@ async def main() -> None:
 - `await setup_health_listener(child_uid, callback)` - Listen to health updates
 - `await setup_pump_listener(child_uid, callback)` - Listen to pump updates
 - `await stop_all_listeners()` - Stop all active listeners
+- `watch_sleep(child_uid)` / `watch_feed` / `watch_health` / `watch_diaper` /
+  `watch_activity` / `watch_pump` / `watch_child` - Async subscription for one document
+- `await sub.ready(timeout=None)` - Current or next snapshot
+- `await sub.reconnect()` - Reopen the document's watch and resync
+- `await sub.aclose()` - Unsubscribe
 
 ## Type Definitions
 

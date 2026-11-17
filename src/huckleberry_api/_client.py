@@ -7,7 +7,6 @@ import asyncio
 import json
 from datetime import datetime
 from google.auth.credentials import Credentials
-from google.cloud import firestore
 from google.cloud.firestore_v1 import AsyncClient
 from zoneinfo import ZoneInfo
 from ._common import _LOGGER
@@ -81,10 +80,9 @@ class HuckleberryBase:
         self.token_expires_at: float | None = None
         self._firestore_client: AsyncClient | None = None
         self._firestore_client_loop: asyncio.AbstractEventLoop | None = None
-        self._listener_client: firestore.Client | None = None
+        self._watch_hub: object | None = None
+        self._listener_sinks: list[tuple[object, object]] = []
         self._timezone = ZoneInfo(timezone)
-        self._listeners: dict = {}  # Store active listeners
-        self._listener_callbacks: dict = {}  # Store callbacks to recreate listeners
 
     async def authenticate(self) -> None:
         """Authenticate with Firebase."""
@@ -152,30 +150,15 @@ class HuckleberryBase:
         self.refresh_token = data["refresh_token"]
         self.token_expires_at = datetime.now().timestamp() + int(data["expires_in"])
 
-        # Stop existing listeners (they use the old token)
-        for key, watch in self._listeners.items():
-            try:
-                if hasattr(watch, "unsubscribe") and callable(getattr(watch, "unsubscribe")):
-                    watch.unsubscribe()
-                elif hasattr(watch, "close") and callable(getattr(watch, "close")):
-                    watch.close()
-                _LOGGER.debug("Stopped listener %s before token refresh", key)
-            except (AttributeError, RuntimeError, TypeError, ValueError) as err:
-                _LOGGER.error("Error stopping listener %s before refresh: %s", key, err)
-        self._listeners.clear()
-
-        # Invalidate both Firestore clients so they get recreated with new token.
-        # The async client is used for reads/writes; the sync client backs the
-        # snapshot listeners. Without resetting the sync client, recreated
-        # listeners reuse the old credentials and silently stop receiving
-        # updates after the first token refresh (~1 hour).
+        # Rebuild both Firestore clients so they use the new token. Nothing
+        # updates the credential in place: FirebaseTokenCredentials.refresh()
+        # is a no-op, so an old client keeps presenting the expired token.
         self._firestore_client = None
         self._firestore_client_loop = None
-        self._listener_client = None
 
         _LOGGER.debug("Successfully refreshed authentication token")
 
-        await self._recreate_listeners()
+        await self._on_credentials_refreshed()
 
     async def _ensure_authenticated(self) -> None:
         """Ensure we have a valid authentication token."""
@@ -227,5 +210,5 @@ class HuckleberryBase:
             return 0.0
         return -offset.total_seconds() / 60
 
-    async def _recreate_listeners(self) -> None:
-        """Recreate listeners after a token refresh (implemented by ListenerMixin)."""
+    async def _on_credentials_refreshed(self) -> None:
+        """Hook: ListenerMixin reopens its watches with the new token."""

@@ -13,6 +13,7 @@ mixin per feature so each tracker can be read and changed in isolation:
     _activity.py   activity timers and logs
     _history.py    date-range queries over saved history
     _listeners.py  real-time snapshot listeners
+    subscriptions.py  async document subscriptions (public types)
     _client.py     authentication, Firestore clients, timezone plumbing
 
 Modules prefixed with an underscore are internal. Shared constants live in
