@@ -372,6 +372,32 @@ async def test_offer_from_a_replaced_generation_is_ignored() -> None:
         await sub.ready(timeout=0.05)
 
 
+async def test_offer_from_a_replaced_handle_is_ignored() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    handle = sub._handle
+    assert handle is not None
+
+    owner.client.watch("sleep", "child").die()
+    owner.hub.check_health()
+    await asyncio.sleep(0)
+    with pytest.raises(WatchFailed):
+        await sub.ready()
+
+    await sub.reconnect()
+    assert sub._handle is not handle
+
+    # Same generation number, different handle: identity must reject it.
+    sub._offer(
+        Snapshot(value=None, exists=False, as_of=datetime.now(timezone.utc), seq=999, resync=True),
+        handle,
+        handle._generation,
+    )
+
+    with pytest.raises(TimeoutError):
+        await sub.ready(timeout=0.05)
+
+
 async def test_reconnect_failure_keeps_terminal_state() -> None:
     owner = DummyOwner()
     sub = await started(owner)
