@@ -1,0 +1,1 @@
+Accept ``prefs.lastGrowthEntry`` payloads whose ``multientry_key`` is the history document ID written by the Huckleberry app. The health listener no longer rejects the health document after a growth entry is logged in the app.
