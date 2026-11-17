@@ -37,6 +37,7 @@ from fastmcp.server.auth import AuthContext
 from fastmcp.server.auth import AuthProvider
 from fastmcp.server.auth.providers.clerk import ClerkProvider
 from fastmcp.server.middleware import AuthMiddleware
+from fastmcp.server.middleware.error_handling import ErrorHandlingMiddleware
 from pydantic import Field
 from pydantic import JsonValue
 
@@ -242,7 +243,11 @@ def create_server(
         ),
         lifespan=lifespan,
         auth=auth,
-        middleware=[AuthMiddleware(auth=email_allowlist_check(allowed_emails))] if allowed_emails else None,
+        middleware=[
+            # Log why a tool call failed; FastMCP itself logs only the tool name.
+            ErrorHandlingMiddleware(logger=_LOGGER, transform_errors=False),
+            *([AuthMiddleware(auth=email_allowlist_check(allowed_emails))] if allowed_emails else []),
+        ],
     )
 
     # --- account / status -------------------------------------------------------------------------
@@ -896,6 +901,8 @@ def main() -> None:
         host=os.environ.get("HUCKLEBERRY_MCP_HOST", "127.0.0.1"),
         port=int(os.environ.get("HUCKLEBERRY_MCP_PORT", "8765")),
         path="/mcp",
+        # Tools keep no per-session state; stateless avoids idle session expiry and survives restarts.
+        stateless_http=True,
     )
 
 

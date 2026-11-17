@@ -160,7 +160,7 @@ Claude (web, desktop, mobile) --HTTPS--> Tailscale Funnel --> huckleberry-mcp (1
 
 | Part | Choice | Why |
 |---|---|---|
-| Server | [FastMCP](https://gofastmcp.com) over Streamable HTTP at `/mcp` | One module, no custom protocol code |
+| Server | [FastMCP](https://gofastmcp.com) over stateless Streamable HTTP at `/mcp` | One module, no custom protocol code; no sessions to expire or lose on restart |
 | Sign-in | [Clerk](https://clerk.com) OAuth through FastMCP's `ClerkProvider` | Claude connectors sign in with OAuth; Clerk supplies Google sign-in and invite-only access |
 | Tunnel | [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) | Stable public HTTPS URL, no domain or open port |
 
@@ -252,7 +252,7 @@ in their own Claude account. Each must be invited in Clerk and listed in `HUCKLE
 | A change to `.config/.env` has no effect | Restart: `systemctl --user restart huckleberry-mcp` |
 | Claude cannot reach the server just after Funnel is enabled | Funnel can take a few minutes to reach every public address. Try again |
 
-Logs: `journalctl --user -u huckleberry-mcp -f`.
+Logs: `journalctl --user -u huckleberry-mcp -f`. A failed tool call logs its reason as `Error in tools/call: ...`.
 
 ### Tools
 

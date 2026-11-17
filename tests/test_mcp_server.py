@@ -151,13 +151,14 @@ async def test_timer_actions_fail_when_nothing_is_running() -> None:
     assert last_call(api)[0] == "start_pump"
 
 
-async def test_bad_enum_and_bad_time_rejected() -> None:
+async def test_bad_enum_and_bad_time_rejected(caplog: pytest.LogCaptureFixture) -> None:
     api = FakeAPI({"c1": "Ada"})
     with pytest.raises(ToolError):
         await call(api, "log_bottle", amount=1, bottle_type="Juice")
     with pytest.raises(ToolError, match="ISO 8601"):
         await call(api, "log_bottle", amount=1, start_time="yesterday")
     assert api.calls == []
+    assert "ISO 8601" in caplog.text  # failure reasons reach the server log
 
 
 async def test_child_resolution() -> None:
