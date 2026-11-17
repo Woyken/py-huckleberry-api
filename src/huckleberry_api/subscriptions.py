@@ -82,6 +82,12 @@ class _Latest(Generic[T]):
         self._terminal = isinstance(value, (_Failed, _Stopped))
         self._event.set()
 
+    def reset(self) -> None:
+        """Drop any undelivered value, including a terminal one, and wait again."""
+        self._value = _Stopped()
+        self._terminal = False
+        self._event.clear()
+
     async def take(self) -> T:
         if not self._terminal or self._event.is_set():
             await self._event.wait()
@@ -574,17 +580,18 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
             raise StopAsyncIteration
         await self._owner._ensure_authenticated()
         new_handle = await self._owner._watch_handle(self._collection, self._child_uid, self._parser)
+        # A previous failure or stop left a terminal value in the mailbox;
+        # drop it, and re-register (idempotent) in case a loop rebind removed us.
+        self._slot.reset()
+        new_handle.attach(self)
         if new_handle is self._handle:
             new_handle.reconnect()
-            self._request_resync()
-            return
-
-        # The old handle is dead or was stopped: move to the replacement.
-        new_handle.attach(self)
-        old = self._handle
-        self._handle = new_handle
-        if old is not None:
-            old.detach(self)
+        else:
+            # The old handle is dead or was stopped: move to the replacement.
+            old = self._handle
+            self._handle = new_handle
+            if old is not None:
+                old.detach(self)
         self._request_resync()
 
     async def aclose(self) -> None:

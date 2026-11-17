@@ -330,6 +330,39 @@ async def test_client_survives_while_another_document_is_watched() -> None:
     assert (await feed_sub.ready()).value.timer.uuid == "still-live"
 
 
+async def test_reconnect_recovers_after_terminal_failure() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    watch = owner.client.watch("sleep", "child")
+
+    watch.die()
+    owner.hub.check_health()
+    await asyncio.sleep(0)
+    with pytest.raises(WatchFailed):
+        await sub.ready()
+
+    await sub.reconnect()
+
+    owner.client.watch("sleep", "child").push(payload("recovered"))
+    snapshot = await sub.ready(timeout=1)
+    assert snapshot.value.timer.uuid == "recovered"
+
+
+async def test_reconnect_recovers_after_global_stop() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+
+    await owner.hub.stop()
+    with pytest.raises(StopAsyncIteration):
+        await sub.ready()
+
+    await sub.reconnect()
+
+    owner.client.watch("sleep", "child").push(payload("after-stop"))
+    snapshot = await sub.ready(timeout=1)
+    assert snapshot.value.timer.uuid == "after-stop"
+
+
 async def test_cancelling_context_exit_still_closes_once() -> None:
     owner = DummyOwner()
     sub = await started(owner)
