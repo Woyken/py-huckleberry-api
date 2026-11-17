@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- towncrier release notes start -->
 
+## [0.5.2] - 2026-11-17
+
+### Bugfixes
+
+- Accept ``prefs.lastGrowthEntry`` payloads whose ``multientry_key`` is the history document ID written by the Huckleberry app. The health listener no longer rejects the health document after a growth entry is logged in the app.
+
+
 ## [0.5.1] - 2026-11-14
 
 ### Bugfixes
