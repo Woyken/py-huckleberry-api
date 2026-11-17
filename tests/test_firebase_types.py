@@ -170,6 +170,47 @@ def test_last_medication_accepts_live_multientry_key() -> None:
     assert model.multientry_key == "second-medicine-id"
 
 
+def test_health_document_accepts_live_growth_multientry_key() -> None:
+    """Latest growth schema should accept a null or app document ID key."""
+    without_key = FirebaseHealthDocumentData.model_validate(
+        {
+            "prefs": {
+                "lastGrowthEntry": {
+                    "_id": "growth-entry-id",
+                    "type": "health",
+                    "mode": "growth",
+                    "start": 1_761_000_000.0,
+                    "offset": -240,
+                    "isNight": False,
+                    "multientry_key": None,
+                }
+            }
+        }
+    )
+    with_key = FirebaseHealthDocumentData.model_validate(
+        {
+            "prefs": {
+                "lastGrowthEntry": {
+                    "_id": "growth-entry-id",
+                    "type": "health",
+                    "mode": "growth",
+                    "start": 1_761_000_000.0,
+                    "offset": -240,
+                    "isNight": False,
+                    "multientry_key": "g761AoQeLi47hZqJv6tz",
+                }
+            }
+        }
+    )
+
+    assert without_key.prefs is not None
+    assert without_key.prefs.lastGrowthEntry is not None
+    assert without_key.prefs.lastGrowthEntry.multientry_key is None
+    assert with_key.prefs is not None
+    assert with_key.prefs.lastGrowthEntry is not None
+    assert with_key.prefs.lastGrowthEntry.multientry_key == "g761AoQeLi47hZqJv6tz"
+
+
 def test_health_document_accepts_app_medication_without_is_night() -> None:
     """The app omits `isNight` when it rebuilds `prefs.lastMedication` after a dose.
 

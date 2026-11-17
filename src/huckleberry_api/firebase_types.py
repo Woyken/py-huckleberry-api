@@ -745,12 +745,14 @@ class FirebaseLastGrowthData(FirebaseGrowthData):
 
     Live data includes the corresponding history document ID and summary
     metadata that are absent from app-created health history rows.
+    Live app data uses a 20-character document ID string for `multientry_key`;
+    API-created summaries use null.
     """
 
     id_: str = Field(alias="_id")
     type: Literal["health"]
     isNight: bool | None = None
-    multientry_key: None = None
+    multientry_key: str | None = None
 
 
 class FirebaseMedicationTypeLastTake(StrictModel):
