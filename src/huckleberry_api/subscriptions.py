@@ -204,7 +204,7 @@ class _Handle(Generic[T]):
 
         for subscription in list(self._subscribers):
             try:
-                self._loop.call_soon_threadsafe(subscription._offer, snapshot, self._generation)
+                self._loop.call_soon_threadsafe(subscription._offer, snapshot, self, self._generation)
             except RuntimeError:
                 # The consumer's loop is closed; nothing can be delivered to it.
                 _LOGGER.debug("Dropping subscriber for %s/%s: loop closed", self._collection, self._child_uid)
@@ -266,7 +266,7 @@ class _Handle(Generic[T]):
         _LOGGER.error("Watch failed for %s/%s: %s", self._collection, self._child_uid, error)
         for subscription in list(self._subscribers):
             try:
-                self._loop.call_soon_threadsafe(subscription._offer, _Failed(error), self._generation)
+                self._loop.call_soon_threadsafe(subscription._offer, _Failed(error), self, self._generation)
             except RuntimeError:
                 pass
         if self._watch is not None:
@@ -277,7 +277,7 @@ class _Handle(Generic[T]):
     def _stop(self) -> None:
         for subscription in list(self._subscribers):
             try:
-                self._loop.call_soon_threadsafe(subscription._offer, _Stopped(), self._generation)
+                self._loop.call_soon_threadsafe(subscription._offer, _Stopped(), self, self._generation)
             except RuntimeError:
                 pass
         self._subscribers.clear()
@@ -287,6 +287,10 @@ class _Handle(Generic[T]):
     def _rotate(self) -> None:
         self._reconnects += 1
         self._generation += 1
+        # Every subscriber must accept the new generation before the reopened
+        # watch can deliver, otherwise their offers are dropped as stale.
+        for subscription in list(self._subscribers):
+            subscription._handle_generation = self._generation
         self._closing = True
         if self._watch is not None:
             watch = self._watch
@@ -602,8 +606,7 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
             if old is not None:
                 old.detach(self)
         # Only now drop anything the old watch left behind, including a queued
-        # terminal offer, which the generation tag makes stale.
-        self._handle_generation = new_handle._generation
+        # terminal offer, which the handle identity and generation make stale.
         self._slot.reset()
         self._request_resync()
 
@@ -649,8 +652,8 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
             snapshot = replace(snapshot, resync=True)
         return snapshot
 
-    def _offer(self, snapshot: Snapshot[T], generation: int) -> None:
-        if generation != self._handle_generation:
+    def _offer(self, snapshot: Snapshot[T], handle: "_Handle[T]", generation: int) -> None:
+        if handle is not self._handle or generation != self._handle_generation:
             return
         self._slot.offer(snapshot)
 

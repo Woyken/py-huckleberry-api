@@ -15,6 +15,7 @@ import pytest
 
 from huckleberry_api import HuckleberryAPI
 from huckleberry_api.firebase_types import FirebaseSleepDocumentData
+from huckleberry_api.subscriptions import Snapshot
 from huckleberry_api.subscriptions import Subscription
 from huckleberry_api.subscriptions import WatchFailed
 from huckleberry_api.subscriptions import _WatchHub
@@ -255,8 +256,8 @@ async def test_rotation_keeps_one_watch_and_resyncs_every_subscriber() -> None:
     assert owner.clients[0].closed is True
     assert sub1.reconnects == sub2.reconnects == 1
     owner.client.watch("sleep", "child").push(payload("after"))
-    assert (await sub1.ready()).resync is True
-    assert (await sub2.ready()).resync is True
+    assert (await sub1.ready(timeout=1)).resync is True
+    assert (await sub2.ready(timeout=1)).resync is True
 
 
 async def test_reconnect_is_document_wide() -> None:
@@ -271,7 +272,7 @@ async def test_reconnect_is_document_wide() -> None:
 
     assert sub1.reconnects == sub2.reconnects == 1
     owner.client.watch("sleep", "child").push(payload("two"))
-    assert (await sub2.ready()).resync is True
+    assert (await sub2.ready(timeout=1)).resync is True
 
 
 async def test_sink_only_handle_survives_subscription_exit() -> None:
@@ -346,6 +347,29 @@ async def test_reconnect_recovers_after_terminal_failure() -> None:
     owner.client.watch("sleep", "child").push(payload("recovered"))
     snapshot = await sub.ready(timeout=1)
     assert snapshot.value.timer.uuid == "recovered"
+
+
+async def test_offer_from_a_replaced_generation_is_ignored() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    watch = owner.client.watch("sleep", "child")
+    watch.push(payload("one"))
+    await sub.ready(timeout=1)
+
+    handle = sub._handle
+    assert handle is not None
+    stale_generation = handle._generation
+    await sub.reconnect()
+
+    # A snapshot queued by the pre-rotation watch must not surface.
+    sub._offer(
+        Snapshot(value=None, exists=False, as_of=datetime.now(timezone.utc), seq=999, resync=True),
+        handle,
+        stale_generation,
+    )
+
+    with pytest.raises(TimeoutError):
+        await sub.ready(timeout=0.05)
 
 
 async def test_reconnect_failure_keeps_terminal_state() -> None:
