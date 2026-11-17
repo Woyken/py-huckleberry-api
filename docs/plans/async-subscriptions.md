@@ -88,8 +88,8 @@ decision and are not assumed here.
 
 `watch_*()` is a **sync factory**: it performs no I/O and returns the `Subscription`.
 Authentication, hub lookup and watch creation happen on first use — `__aenter__`, the first
-`__anext__`, or `ready()` — which is why the example needs no `await` between `async with` and the
-call.
+`__anext__`, `ready()`, or `reconnect()` — which is why the example needs no `await` between
+`async with` and the call.
 
 ```python
 from huckleberry_api.subscriptions import Subscription  # public module, see §8
@@ -147,11 +147,12 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
 1. **Conflated, not queued (iterators only).** Each `__anext__` returns the newest snapshot since
    the last call. No backlog, no unbounded buffer, no backpressure fiction.
 2. **`__aenter__` does not wait for the first snapshot.** It performs authentication and
-   registration — so it can do credential I/O — but it never waits for data, and it returns
-   immediately. Consumers that need the current value call `await sub.ready(timeout=None)`, which
+   registration — so it can do credential I/O — but it returns without waiting for a snapshot.
+   Consumers that need the current value call `await sub.ready(timeout=None)`, which
    registers first if the subscription has not been started, then returns the current or next
    snapshot. Its three outcomes are `TimeoutError` (timeout), `WatchFailed` (terminal failure) and
-   `StopAsyncIteration` (global stop, see contract 4). The subscription stays alive after a
+   `StopAsyncIteration` (global stop, or a subscription already ended by `aclose()`; see contract
+   4), and it never re-registers a closed subscription. The subscription stays alive after a
    timeout, so a timeout never costs a healthy watch. If the handle already has a snapshot, the
    subscription is seeded with it (`resync=True`, reusing that receipt's `seq`), so a late joiner
    never waits for the next write.
@@ -187,7 +188,7 @@ await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged se
    on rotation, and on `stop_all_listeners()` — never because one document's last consumer left. A
    new subscription is seeded from the handle's last snapshot, so it starts with the current value
    instead of waiting for the next write. If the handle has already failed, first use — `__aenter__`,
-   `__anext__` or `ready()` — starts a fresh watch rather than joining a dead one.
+   `__anext__`, `ready()` or `reconnect()` — starts a fresh watch rather than joining a dead one.
 7. **Cancellation is deterministic.** Leaving `async with` closes the subscription and awaits
    completion of the off-loop close, shielded so a second cancellation cannot abandon a half-closed
    handle. A cancelled exit still results in exactly one transport `close`.
