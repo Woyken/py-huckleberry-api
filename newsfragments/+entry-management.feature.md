@@ -1,0 +1,1 @@
+Add entry management: ``get_tracker``, ``list_entries``, ``get_entry``, ``update_entry`` and ``delete_entry``. History entries are returned as ``HistoryEntry`` objects with ids. Edit and delete rebuild the ``prefs.last*`` summaries from the latest remaining entries.

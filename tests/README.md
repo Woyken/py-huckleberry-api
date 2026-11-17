@@ -80,6 +80,10 @@ The integration tests are organized into separate modules:
 - Run app actions first, then run this test to validate newest entries
 - Optional env var: `HUCKLEBERRY_MODEL_VALIDATION_MAX_DOCS` (default `20`)
 
+### `test_entries.py`
+- **Offline**: entry id parsing, change validation, `prefs.last*` summary projection, edit and delete against an in-memory Firestore
+- **Live**: log, list with ids, update, delete, and summary restore for each tracker. These tests delete the entries they create
+
 ## CI/CD
 
 Integration tests run automatically on:
