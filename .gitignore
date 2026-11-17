@@ -41,6 +41,7 @@ htmlcov/
 
 # Secrets (if any test credentials)
 .env*
+!.env.example
 secrets.json
 credentials.json
 
@@ -49,3 +50,6 @@ jadx output*
 *.apk
 
 node_modules/
+
+# Local deployment config (secrets)
+.config/

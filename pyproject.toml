@@ -24,6 +24,12 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 
+[project.optional-dependencies]
+mcp = ["fastmcp>=4.2.0"]
+
+[project.scripts]
+huckleberry-mcp = "huckleberry_api.mcp_server:main"
+
 [project.urls]
 Homepage = "https://github.com/Woyken/py-huckleberry-api"
 Repository = "https://github.com/Woyken/py-huckleberry-api"
@@ -31,6 +37,7 @@ Issues = "https://github.com/Woyken/py-huckleberry-api/issues"
 
 [dependency-groups]
 dev = [
+    "fastmcp>=4.2.0",
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "ruff>=0.11.0",

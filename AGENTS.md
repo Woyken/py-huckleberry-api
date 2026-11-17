@@ -6,6 +6,8 @@
   - `src/huckleberry_api/firebase_types.py`
 - Behavior and write/read logic live in:
   - `src/huckleberry_api/api.py`
+- MCP tools, sign-in, and server configuration live in:
+  - `src/huckleberry_api/mcp_server.py`
 
 ## Critical Rules
 
@@ -20,7 +22,11 @@
 3. **Use `uv` for Python commands**
    - Run tests and Python commands with `uv` (for example: `uv run pytest ...`).
 
-4. **Keep discoveries near code**
+4. **Keep MCP tools thin**
+   - A tool maps to `HuckleberryAPI` methods. Take enum values from `firebase_types.py` literals; do not restate them.
+   - Run the server with `uv run --extra mcp huckleberry-mcp`.
+
+5. **Keep discoveries near code**
    - Add new schema findings as comments/docstrings on the relevant classes/fields in `firebase_types.py`.
 
 ## Reverse-Engineering Workflow
