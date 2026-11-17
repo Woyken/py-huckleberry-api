@@ -8,6 +8,9 @@ iterable and async context manager over one document. Snapshots carry `value`,
 Behaviour changes for existing listener users:
 
 - `setup_*_listener` is deprecated but keeps per-snapshot callbacks.
+- A listener registered on a document that already has an active watch starts at
+  the next change instead of replaying the current document, because both
+  surfaces now share one watch.
 - `stop_all_listeners()` now also ends active subscriptions.
 - Registering two callbacks for the same document keeps both delivering; the
   first is no longer left unstoppable.

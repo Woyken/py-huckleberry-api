@@ -9,6 +9,7 @@ plus a ``REMOVED`` change.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -69,6 +70,8 @@ class FakeWatch:
         self.is_active = False
 
     def unsubscribe(self) -> None:
+        if self.close_delay:
+            time.sleep(self.close_delay)
         self.close_count += 1
         self.is_active = False
 

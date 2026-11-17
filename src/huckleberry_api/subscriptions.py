@@ -566,17 +566,25 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
     async def reconnect(self) -> None:
         """Reopen this document's watch, resyncing every subscription on it.
 
-        Safe after a failure or a global stop: it re-resolves the handle, so a
-        dead or stopped transport is replaced instead of being reopened in place.
+        Safe after a failure or a global stop: a dead or stopped transport is
+        replaced.  When the handle is healthy it is reopened in place, so `seq`
+        and `reconnects` keep their history and the shared client survives.
         """
         if self._closed:
             raise StopAsyncIteration
-        if self._handle is not None:
-            self._handle.detach(self)
-            self._handle = None
-        await self._ensure_started()
-        assert self._handle is not None
-        self._handle.reconnect()
+        await self._owner._ensure_authenticated()
+        new_handle = await self._owner._watch_handle(self._collection, self._child_uid, self._parser)
+        if new_handle is self._handle:
+            new_handle.reconnect()
+            self._request_resync()
+            return
+
+        # The old handle is dead or was stopped: move to the replacement.
+        new_handle.attach(self)
+        old = self._handle
+        self._handle = new_handle
+        if old is not None:
+            old.detach(self)
         self._request_resync()
 
     async def aclose(self) -> None:

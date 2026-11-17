@@ -104,6 +104,12 @@ async def test_sink_receives_every_snapshot_in_order() -> None:
     assert seen == ["one", "two", "three"]
 
 
+async def test_listener_registration_warns_deprecated() -> None:
+    api = make_api()
+    with pytest.warns(DeprecationWarning):
+        await api.setup_sleep_listener("child", lambda data: None)
+
+
 async def test_deletion_is_a_state_and_skips_callbacks() -> None:
     api = make_api()
     calls: list[Any] = []
@@ -296,15 +302,75 @@ async def test_leaving_context_closes_the_watch_once() -> None:
     owner = DummyOwner()
     sub = await started(owner)
     watch = owner.client.watch("sleep", "child")
+    client = owner.client
 
     await sub.aclose()
     for _ in range(50):
-        if watch.close_count:
+        if watch.close_count and client.closed:
             break
         await asyncio.sleep(0.02)
 
     assert watch.close_count == 1
+    assert client.closed is True
     assert ("sleep", "child") not in owner.hub._handles
+
+
+async def test_client_survives_while_another_document_is_watched() -> None:
+    owner = DummyOwner()
+    sleep_sub = await started(owner)
+    feed_sub: Subscription[Any] = Subscription(owner, "feed", "child", PARSE_SLEEP)
+    await feed_sub.__aenter__()
+
+    client = owner.client
+    await sleep_sub.aclose()
+    await asyncio.sleep(0.05)
+
+    assert client.closed is False
+    client.watch("feed", "child").push(payload("still-live"))
+    assert (await feed_sub.ready()).value.timer.uuid == "still-live"
+
+
+async def test_cancelling_context_exit_still_closes_once() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    watch = owner.client.watch("sleep", "child")
+    watch.close_delay = 0.2
+
+    async def consume() -> None:
+        async with sub:
+            await asyncio.sleep(10)
+
+    task = asyncio.create_task(consume())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    for _ in range(100):
+        if watch.close_count:
+            break
+        await asyncio.sleep(0.02)
+    assert watch.close_count == 1
+
+
+async def test_reconnect_keeps_seq_reconnects_and_client() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    watch = owner.client.watch("sleep", "child")
+    client = owner.client
+    watch.push(payload("one"))
+    first = await sub.ready()
+
+    await sub.reconnect()
+
+    assert sub.reconnects == 1
+    assert owner.client is client
+    reopened = client.watch("sleep", "child")
+    assert reopened is not watch
+    reopened.push(payload("two"))
+    second = await sub.ready()
+    assert second.seq > first.seq
+    assert second.resync is True
 
 
 async def test_stop_all_ends_pending_waiters_and_reopens_cleanly() -> None:

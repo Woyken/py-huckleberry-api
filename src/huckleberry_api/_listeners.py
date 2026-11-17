@@ -132,7 +132,7 @@ class ListenerMixin(HuckleberryBase):
         warnings.warn(
             "setup_*_listener() is deprecated; use watch_*() and async for instead",
             DeprecationWarning,
-            stacklevel=2,
+            stacklevel=3,
         )
         _LOGGER.info("Setting up real-time listener for %s/%s", collection_name, child_uid)
         handle = await self._watch_handle(
