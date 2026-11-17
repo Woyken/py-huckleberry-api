@@ -187,9 +187,7 @@ class _Handle(Generic[T]):
             snapshot = self._build(documents, changes, read_time)
         except ValidationError as err:
             # One schema drift must not kill the watch for every consumer.
-            _LOGGER.warning(
-                "Skipping malformed %s/%s payload: %s", self._collection, self._child_uid, err
-            )
+            _LOGGER.warning("Skipping malformed %s/%s payload: %s", self._collection, self._child_uid, err)
             return
         except Exception:  # noqa: BLE001 - never let an exception reach Watch.push
             _LOGGER.exception("Failed to build snapshot for %s/%s", self._collection, self._child_uid)
@@ -353,8 +351,7 @@ class _WatchHub:
             if not self._loop.is_closed():
                 if for_subscription:
                     raise RuntimeError(
-                        "Watch hub is bound to a different running event loop; "
-                        "create one HuckleberryAPI per loop"
+                        "Watch hub is bound to a different running event loop; create one HuckleberryAPI per loop"
                     )
                 # Sinks have no loop affinity and need no delivery loop, so a
                 # sink-only registration from another live loop is fine.
@@ -573,9 +570,7 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
             async with asyncio.timeout(timeout):
                 return await self._next()
         except TimeoutError:
-            raise TimeoutError(
-                f"No snapshot for {self._collection}/{self._child_uid} within {timeout}s"
-            ) from None
+            raise TimeoutError(f"No snapshot for {self._collection}/{self._child_uid} within {timeout}s") from None
 
     async def reconnect(self) -> None:
         """Reopen this document's watch, resyncing every subscription on it.

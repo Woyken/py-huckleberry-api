@@ -6,6 +6,7 @@ import aiohttp
 import asyncio
 import json
 from datetime import datetime
+from typing import Any
 from google.auth.credentials import Credentials
 from google.cloud.firestore_v1 import AsyncClient
 from zoneinfo import ZoneInfo
@@ -80,8 +81,8 @@ class HuckleberryBase:
         self.token_expires_at: float | None = None
         self._firestore_client: AsyncClient | None = None
         self._firestore_client_loop: asyncio.AbstractEventLoop | None = None
-        self._watch_hub: object | None = None
-        self._listener_sinks: list[tuple[object, object]] = []
+        self._watch_hub: Any | None = None
+        self._listener_sinks: list[tuple[Any, Any]] = []
         self._timezone = ZoneInfo(timezone)
 
     async def authenticate(self) -> None:

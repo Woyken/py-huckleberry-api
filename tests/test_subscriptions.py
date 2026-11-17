@@ -29,6 +29,13 @@ def payload(uuid: str = "session-1", active: bool = True) -> dict[str, Any]:
     return {"timer": {"active": active, "paused": False, "uuid": uuid}}
 
 
+def timer_uuid(snapshot: Snapshot[Any]) -> str:
+    """Assert a snapshot carries a sleep timer and return its session uuid."""
+    assert snapshot.value is not None
+    assert snapshot.value.timer is not None
+    return snapshot.value.timer.uuid
+
+
 class DummyOwner:
     """Minimal stand-in for HuckleberryAPI's subscription plumbing."""
 
@@ -87,15 +94,14 @@ async def test_conflated_newest_wins() -> None:
 
     snapshot = await sub.ready()
     assert snapshot.value is not None
-    assert snapshot.value.timer is not None
-    assert snapshot.value.timer.uuid == "second"
+    assert timer_uuid(snapshot) == "second"
 
 
 async def test_sink_receives_every_snapshot_in_order() -> None:
     owner = DummyOwner()
     handle = await owner._watch_handle("sleep", "child", PARSE_SLEEP)
     seen: list[str] = []
-    handle.add_sink(lambda snapshot: seen.append(snapshot.value.timer.uuid))
+    handle.add_sink(lambda snapshot: seen.append(timer_uuid(snapshot)))
 
     watch = owner.client.watch("sleep", "child")
     watch.push(payload("one"))
@@ -119,7 +125,7 @@ async def test_deletion_is_a_state_and_skips_callbacks() -> None:
     sub = api.watch_sleep("child")
     await sub.__aenter__()
 
-    client = api._watch_hub._client  # type: ignore[union-attr]
+    client = watch_client(api)
     client.watch("sleep", "child").push(None, deleted=True)
 
     snapshot = await sub.ready()
@@ -137,8 +143,7 @@ async def test_malformed_payload_is_skipped_and_recovery_works() -> None:
     watch.push(payload("good"))
 
     snapshot = await sub.ready()
-    assert snapshot.value is not None and snapshot.value.timer is not None
-    assert snapshot.value.timer.uuid == "good"
+    assert timer_uuid(snapshot) == "good"
 
 
 async def test_active_but_silent_watch_does_not_fail() -> None:
@@ -173,7 +178,7 @@ async def test_ready_timeout_leaves_subscription_usable() -> None:
         await sub.ready(timeout=0.01)
 
     owner.client.watch("sleep", "child").push(payload("later"))
-    assert (await sub.ready(timeout=1)).value.timer.uuid == "later"
+    assert timer_uuid(await sub.ready(timeout=1)) == "later"
 
 
 async def test_ready_registers_a_lazy_subscription() -> None:
@@ -198,7 +203,7 @@ async def test_late_joiner_is_seeded_with_resync() -> None:
 
     assert second.seq == first.seq
     assert second.resync is True
-    assert second.value.timer.uuid == "first"
+    assert timer_uuid(second) == "first"
 
 
 async def test_late_joiner_resync_survives_a_race() -> None:
@@ -212,7 +217,7 @@ async def test_late_joiner_resync_survives_a_race() -> None:
 
     snapshot = await sub2.__anext__()
     assert snapshot.resync is True
-    assert snapshot.value.timer.uuid == "second"
+    assert timer_uuid(snapshot) == "second"
 
 
 async def test_seq_reports_conflated_gaps() -> None:
@@ -296,7 +301,7 @@ async def test_anext_first_use_registers_the_watch() -> None:
     owner.client.watch("sleep", "child").push(payload("iterated"))
 
     snapshot = await asyncio.wait_for(task, timeout=1)
-    assert snapshot.value.timer.uuid == "iterated"
+    assert timer_uuid(snapshot) == "iterated"
 
 
 async def test_leaving_context_closes_the_watch_once() -> None:
@@ -328,7 +333,7 @@ async def test_client_survives_while_another_document_is_watched() -> None:
 
     assert client.closed is False
     client.watch("feed", "child").push(payload("still-live"))
-    assert (await feed_sub.ready()).value.timer.uuid == "still-live"
+    assert timer_uuid(await feed_sub.ready()) == "still-live"
 
 
 async def test_reconnect_recovers_after_terminal_failure() -> None:
@@ -346,7 +351,7 @@ async def test_reconnect_recovers_after_terminal_failure() -> None:
 
     owner.client.watch("sleep", "child").push(payload("recovered"))
     snapshot = await sub.ready(timeout=1)
-    assert snapshot.value.timer.uuid == "recovered"
+    assert timer_uuid(snapshot) == "recovered"
 
 
 async def test_offer_from_a_replaced_generation_is_ignored() -> None:
@@ -430,7 +435,7 @@ async def test_reconnect_recovers_after_global_stop() -> None:
 
     owner.client.watch("sleep", "child").push(payload("after-stop"))
     snapshot = await sub.ready(timeout=1)
-    assert snapshot.value.timer.uuid == "after-stop"
+    assert timer_uuid(snapshot) == "after-stop"
 
 
 async def test_cancelling_context_exit_still_closes_once() -> None:
@@ -488,7 +493,7 @@ async def test_stop_all_ends_pending_waiters_and_reopens_cleanly() -> None:
     fresh: Subscription[Any] = Subscription(owner, "sleep", "child", PARSE_SLEEP)
     await fresh.__aenter__()
     owner.client.watch("sleep", "child").push(payload("again"))
-    assert (await fresh.ready()).value.timer.uuid == "again"
+    assert timer_uuid(await fresh.ready()) == "again"
 
 
 def test_loop_rebind_across_two_asyncio_run_sessions() -> None:
@@ -509,6 +514,14 @@ def test_loop_rebind_across_two_asyncio_run_sessions() -> None:
         assert (await sub.ready()).exists is True
 
     asyncio.run(second())
+
+
+def watch_client(api: HuckleberryAPI) -> FakeFirestoreClient:
+    """Return the fake watch client behind the API's hub."""
+    hub = api._watch_hub
+    assert hub is not None
+    assert hub._client is not None
+    return hub._client
 
 
 class _FakeRefreshResponse:
@@ -535,17 +548,17 @@ async def test_refresh_session_token_rebuilds_client_and_resyncs() -> None:
     api = make_api()
     api.id_token = "stale-token"
     api.refresh_token = "stale-refresh"
-    api.websession = SimpleNamespace(post=lambda *args, **kwargs: _FakeRefreshResponse())  # type: ignore[assignment]
+    api.websession = SimpleNamespace(post=lambda *args, **kwargs: _FakeRefreshResponse())
 
     sub = api.watch_sleep("child")
     await sub.__aenter__()
 
-    old_client = api._watch_hub._client  # type: ignore[union-attr]
+    old_client = watch_client(api)
     old_watch = old_client.watch("sleep", "child")
 
     await api.refresh_session_token()
 
-    new_client = api._watch_hub._client  # type: ignore[union-attr]
+    new_client = watch_client(api)
     assert new_client is not old_client
     assert new_client.token == "fresh-token"
     assert old_client.closed is True
@@ -559,7 +572,7 @@ async def test_refresh_session_token_rebuilds_client_and_resyncs() -> None:
     new_client.watch("sleep", "child").push(payload("after"))
     snapshot = await sub.ready()
     assert snapshot.resync is True
-    assert snapshot.value.timer.uuid == "after"
+    assert timer_uuid(snapshot) == "after"
 
 
 def test_legacy_registrations_survive_a_loop_change() -> None:
@@ -578,7 +591,7 @@ def test_legacy_registrations_survive_a_loop_change() -> None:
 
     asyncio.run(second())
 
-    client = api._watch_hub._client  # type: ignore[union-attr]
+    client = watch_client(api)
     client.watch("sleep", "child").push(payload("sleep"))
     client.watch("feed", "child").push({})
 

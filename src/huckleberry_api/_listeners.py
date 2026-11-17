@@ -135,9 +135,7 @@ class ListenerMixin(HuckleberryBase):
             stacklevel=3,
         )
         _LOGGER.info("Setting up real-time listener for %s/%s", collection_name, child_uid)
-        handle = await self._watch_handle(
-            collection_name, child_uid, _PARSERS[collection_name], for_subscription=False
-        )
+        handle = await self._watch_handle(collection_name, child_uid, _PARSERS[collection_name], for_subscription=False)
 
         def sink(snapshot: Snapshot[Any]) -> None:
             if not snapshot.exists:
