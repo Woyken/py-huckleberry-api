@@ -348,6 +348,26 @@ async def test_reconnect_recovers_after_terminal_failure() -> None:
     assert snapshot.value.timer.uuid == "recovered"
 
 
+async def test_reconnect_failure_keeps_terminal_state() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    watch = owner.client.watch("sleep", "child")
+
+    watch.die()
+    owner.hub.check_health()
+    await asyncio.sleep(0)
+    with pytest.raises(WatchFailed):
+        await sub.ready()
+
+    owner.client.fail_on_snapshot = True
+    with pytest.raises(RuntimeError):
+        await sub.reconnect()
+
+    # The failed re-open must not clear the terminal state into a silent hang.
+    with pytest.raises(WatchFailed):
+        await sub.ready(timeout=0.05)
+
+
 async def test_reconnect_recovers_after_global_stop() -> None:
     owner = DummyOwner()
     sub = await started(owner)

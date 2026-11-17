@@ -86,6 +86,8 @@ class FakeDocumentReference:
         self.child_uid = child_uid
 
     def on_snapshot(self, callback: Callable[[Any, Any, Any], None]) -> FakeWatch:
+        if self._client.fail_on_snapshot:
+            raise RuntimeError("watch unavailable")
         watch = FakeWatch(callback)
         self._client.watches.append(watch)
         self._client._by_doc[(self.collection_name, self.child_uid)] = watch
@@ -127,6 +129,7 @@ class FakeFirestoreClient:
     def __init__(self, token: str | None = None) -> None:
         self.token = token
         self.closed = False
+        self.fail_on_snapshot = False
         self.watches: list[FakeWatch] = []
         self._by_doc: dict[tuple[str, str], FakeWatch] = {}
         self._collections: dict[str, FakeCollection] = {}

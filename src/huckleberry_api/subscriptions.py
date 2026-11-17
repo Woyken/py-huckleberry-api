@@ -124,6 +124,7 @@ class _Handle(Generic[T]):
         self._error: WatchFailed | None = None
         self._closing = False
         self._requested_close = False
+        self._generation = 0
 
     # -- registration -----------------------------------------------------
 
@@ -134,6 +135,7 @@ class _Handle(Generic[T]):
     def attach(self, subscription: "Subscription[T]") -> None:
         if self._error is not None:
             raise self._error
+        subscription._handle_generation = self._generation
         self._subscribers.add(subscription)
         try:
             if self._last is not None:
@@ -202,7 +204,7 @@ class _Handle(Generic[T]):
 
         for subscription in list(self._subscribers):
             try:
-                self._loop.call_soon_threadsafe(subscription._offer, snapshot)
+                self._loop.call_soon_threadsafe(subscription._offer, snapshot, self._generation)
             except RuntimeError:
                 # The consumer's loop is closed; nothing can be delivered to it.
                 _LOGGER.debug("Dropping subscriber for %s/%s: loop closed", self._collection, self._child_uid)
@@ -264,7 +266,7 @@ class _Handle(Generic[T]):
         _LOGGER.error("Watch failed for %s/%s: %s", self._collection, self._child_uid, error)
         for subscription in list(self._subscribers):
             try:
-                self._loop.call_soon_threadsafe(subscription._offer, _Failed(error))
+                self._loop.call_soon_threadsafe(subscription._offer, _Failed(error), self._generation)
             except RuntimeError:
                 pass
         if self._watch is not None:
@@ -275,7 +277,7 @@ class _Handle(Generic[T]):
     def _stop(self) -> None:
         for subscription in list(self._subscribers):
             try:
-                self._loop.call_soon_threadsafe(subscription._offer, _Stopped())
+                self._loop.call_soon_threadsafe(subscription._offer, _Stopped(), self._generation)
             except RuntimeError:
                 pass
         self._subscribers.clear()
@@ -284,6 +286,7 @@ class _Handle(Generic[T]):
 
     def _rotate(self) -> None:
         self._reconnects += 1
+        self._generation += 1
         self._closing = True
         if self._watch is not None:
             watch = self._watch
@@ -518,6 +521,7 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
         self._child_uid = child_uid
         self._parser = parser
         self._handle: _Handle[T] | None = None
+        self._handle_generation = -1
         self._slot: _Latest[Snapshot[T]] = _Latest()
         self._resync_pending = True
         self._closed = False
@@ -580,10 +584,15 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
             raise StopAsyncIteration
         await self._owner._ensure_authenticated()
         new_handle = await self._owner._watch_handle(self._collection, self._child_uid, self._parser)
-        # A previous failure or stop left a terminal value in the mailbox;
-        # drop it, and re-register (idempotent) in case a loop rebind removed us.
-        self._slot.reset()
-        new_handle.attach(self)
+        # Do the fallible work first: if reopening fails, the terminal value
+        # must stay in the mailbox so the next ready() fails fast, not hangs.
+        try:
+            new_handle.attach(self)
+        except Exception:
+            if new_handle is not self._handle:
+                new_handle._owner.forget(new_handle)
+                new_handle._close()
+            raise
         if new_handle is self._handle:
             new_handle.reconnect()
         else:
@@ -592,6 +601,10 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
             self._handle = new_handle
             if old is not None:
                 old.detach(self)
+        # Only now drop anything the old watch left behind, including a queued
+        # terminal offer, which the generation tag makes stale.
+        self._handle_generation = new_handle._generation
+        self._slot.reset()
         self._request_resync()
 
     async def aclose(self) -> None:
@@ -636,7 +649,9 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
             snapshot = replace(snapshot, resync=True)
         return snapshot
 
-    def _offer(self, snapshot: Snapshot[T]) -> None:
+    def _offer(self, snapshot: Snapshot[T], generation: int) -> None:
+        if generation != self._handle_generation:
+            return
         self._slot.offer(snapshot)
 
     def _seed(self, snapshot: Snapshot[T]) -> None:
