@@ -136,10 +136,12 @@ class Snapshot(Generic[T]):
 `Subscription` is generic; when domain models arrive it becomes `Subscription[SleepState]`
 without changing its shape. The wire type is used here because domain models are out of scope.
 
-Legacy shape, same transport, per-snapshot delivery and thread affinity preserved:
+Legacy shape, same transport, per-snapshot delivery and thread affinity preserved. One limitation: a
+callback attached to a document that already has an active watch starts at the next change and does
+not receive the stored snapshot:
 
 ```python
-await api.setup_sleep_listener(child_uid, callback)   # deprecated, unchanged semantics
+await api.setup_sleep_listener(child_uid, callback)   # deprecated; no replay on join
 ```
 
 ## 4. Semantics contract

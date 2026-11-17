@@ -20,6 +20,7 @@ from huckleberry_api.subscriptions import Subscription
 from huckleberry_api.subscriptions import WatchFailed
 from huckleberry_api.subscriptions import _WatchHub
 
+from .fakes.firestore_watch import FakeDocumentSnapshot
 from .fakes.firestore_watch import FakeFirestoreClient
 
 PARSE_SLEEP = FirebaseSleepDocumentData.model_validate
@@ -372,9 +373,12 @@ async def test_offer_from_a_replaced_generation_is_ignored() -> None:
         handle,
         stale_generation,
     )
+    await asyncio.sleep(0)
 
+    assert sub.latest is not None
+    assert sub.latest.seq != 999
     with pytest.raises(TimeoutError):
-        await sub.ready(timeout=0.05)
+        await asyncio.wait_for(sub.__anext__(), timeout=0.05)
 
 
 async def test_offer_from_a_replaced_handle_is_ignored() -> None:
@@ -401,6 +405,93 @@ async def test_offer_from_a_replaced_handle_is_ignored() -> None:
 
     with pytest.raises(TimeoutError):
         await sub.ready(timeout=0.05)
+
+
+async def test_ready_reports_current_state_repeatedly() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    watch = owner.client.watch("sleep", "child")
+
+    watch.push(payload("one"))
+    assert timer_uuid(await sub.ready(timeout=1)) == "one"
+    assert timer_uuid(await sub.ready(timeout=1)) == "one"
+
+    watch.push(payload("two"))
+    assert timer_uuid(await sub.ready(timeout=1)) == "two"
+
+
+async def test_queued_duplicate_is_not_redelivered() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    owner.client.watch("sleep", "child").push(payload("one"))
+
+    delivered = await sub.__anext__()
+    handle = sub._handle
+    assert handle is not None
+    sub._offer(delivered, handle, handle._generation)
+
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(sub.__anext__(), timeout=0.05)
+
+
+async def test_aclose_wakes_a_pending_read() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    waiter = asyncio.create_task(sub.ready())
+    await asyncio.sleep(0)
+
+    await sub.aclose()
+
+    with pytest.raises(StopAsyncIteration):
+        await asyncio.wait_for(waiter, timeout=1)
+
+
+async def test_rotate_skips_receipts_from_the_replaced_watch() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    handle = sub._handle
+    assert handle is not None
+    stale_generation = handle._generation
+
+    await sub.reconnect()
+    handle._on_snapshot(
+        stale_generation,
+        [FakeDocumentSnapshot(payload("stale"))],
+        [],
+        datetime.now(timezone.utc),
+    )
+
+    with pytest.raises(TimeoutError):
+        await sub.ready(timeout=0.05)
+
+
+class SlowAuthOwner(DummyOwner):
+    """Owner whose authentication pauses, to race startup against aclose."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.auth_entered = asyncio.Event()
+        self.auth_release = asyncio.Event()
+
+    async def _ensure_authenticated(self) -> None:
+        self.auth_entered.set()
+        await self.auth_release.wait()
+
+
+async def test_close_during_startup_does_not_attach() -> None:
+    owner = SlowAuthOwner()
+    sub: Subscription[Any] = Subscription(owner, "sleep", "child", PARSE_SLEEP)
+
+    task = asyncio.create_task(sub.__aenter__())
+    await owner.auth_entered.wait()
+    await sub.aclose()
+    owner.auth_release.set()
+
+    with pytest.raises(RuntimeError):
+        await asyncio.wait_for(task, timeout=1)
+
+    assert sub._handle is None
+    assert owner.hub._handles == {}
 
 
 async def test_reconnect_failure_keeps_terminal_state() -> None:

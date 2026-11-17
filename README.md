@@ -171,6 +171,8 @@ async def main() -> None:
             websession=websession,
         )
         await api.authenticate()
+        user_doc = await api.get_user()
+        child_uid = user_doc.childList[0].cid
 
         async with api.watch_sleep(child_uid) as sub:
             print(sub.latest)          # Snapshot[FirebaseSleepDocumentData] | None
@@ -191,9 +193,11 @@ Every `Snapshot` carries `value`, `exists`, `as_of` (aware UTC), `seq` and
 
 `Subscription` methods:
 
-- `await sub.ready(timeout=None)` — current or next snapshot. Raises
-  `TimeoutError` on timeout, `WatchFailed` on terminal failure, and
-  `StopAsyncIteration` after a global stop.
+- `await sub.ready(timeout=None)` — the current state if any snapshot has
+  arrived, otherwise the next one. After a snapshot has been consumed, this still
+  reports the current state; `__anext__` is what advances. Raises `TimeoutError`
+  on timeout, `WatchFailed` on terminal failure, and `StopAsyncIteration` after
+  `aclose()` or a global stop.
 - `await sub.reconnect()` — reopen this document's watch and resync every
   subscription on it.
 - `await sub.aclose()` — unsubscribe; leaving `async with` does this for you.

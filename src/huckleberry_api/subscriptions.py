@@ -176,12 +176,15 @@ class _Handle(Generic[T]):
     def _open(self) -> None:
         self._requested_close = False
         self._closing = False
-        self._watch = self._document().on_snapshot(self._on_snapshot)
+        generation = self._generation
+        self._watch = self._document().on_snapshot(
+            lambda documents, changes, read_time: self._on_snapshot(generation, documents, changes, read_time)
+        )
         _LOGGER.debug("Watch opened for %s/%s", self._collection, self._child_uid)
 
-    def _on_snapshot(self, documents: Any, changes: Any, read_time: Any) -> None:
+    def _on_snapshot(self, generation: int, documents: Any, changes: Any, read_time: Any) -> None:
         """Runs on the Firestore watch thread."""
-        if self._closing:
+        if self._closing or generation != self._generation:
             return
         try:
             snapshot = self._build(documents, changes, read_time)
@@ -191,6 +194,11 @@ class _Handle(Generic[T]):
             return
         except Exception:  # noqa: BLE001 - never let an exception reach Watch.push
             _LOGGER.exception("Failed to build snapshot for %s/%s", self._collection, self._child_uid)
+            return
+
+        # Parsing can take long enough for a rotation to replace this watch.
+        # Such a receipt belongs to the old generation and must not publish.
+        if self._closing or generation != self._generation:
             return
 
         self._seq += 1
@@ -294,7 +302,12 @@ class _Handle(Generic[T]):
             watch = self._watch
             self._watch = None
             self._owner.close_watch(watch)
-        self._open()
+        try:
+            self._open()
+        except Exception as err:  # noqa: BLE001 - report, then let the caller see it
+            _LOGGER.exception("Failed to reopen %s/%s", self._collection, self._child_uid)
+            self._fail(WatchFailed(f"Failed to reopen {self._collection}/{self._child_uid}: {err}"))
+            raise
         for subscription in list(self._subscribers):
             subscription._request_resync()
 
@@ -389,7 +402,10 @@ class _WatchHub:
     async def rotate(self, token: str) -> None:
         await self.ensure_client(token)
         for handle in list(self._handles.values()):
-            handle._rotate()
+            try:
+                handle._rotate()
+            except Exception:  # noqa: BLE001 - one document must not abort the rest
+                _LOGGER.exception("Failed to rotate watch for %s/%s", handle._collection, handle._child_uid)
 
     def close_watch(self, watch: Any) -> "asyncio.Task[None] | None":
         """Close a watch off the event loop; the SDK joins its thread for ~1s."""
@@ -527,6 +543,8 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
         self._resync_pending = True
         self._closed = False
         self._reconnects = 0
+        self._delivered_seq: int | None = None
+        self._delivered_handle: _Handle[T] | None = None
 
     # -- public surface ---------------------------------------------------
 
@@ -541,7 +559,10 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
     async def __aenter__(self) -> "Subscription[T]":
         if self._closed:
             raise RuntimeError("Subscription is closed")
-        await self._ensure_started()
+        try:
+            await self._ensure_started()
+        except StopAsyncIteration:
+            raise RuntimeError("Subscription is closed") from None
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
@@ -557,13 +578,17 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
         return await self._next()
 
     async def ready(self, timeout: float | None = None) -> Snapshot[T]:
-        """Return the current or next snapshot.
+        """Return the current snapshot, or the next one.
 
-        Registers the subscription if this is the first call.
+        Registers the subscription if this is the first call.  If the newest
+        receipt has already been consumed, this waits for a newer one.
         """
         if self._closed:
             raise StopAsyncIteration
         await self._ensure_started()
+        current = self._current()
+        if current is not None:
+            return self._accept(current)
         if timeout is None:
             return await self._next()
         try:
@@ -582,7 +607,11 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
         if self._closed:
             raise StopAsyncIteration
         await self._owner._ensure_authenticated()
+        if self._closed:
+            raise StopAsyncIteration
         new_handle = await self._owner._watch_handle(self._collection, self._child_uid, self._parser)
+        if self._closed:
+            raise StopAsyncIteration
         # Do the fallible work first: if reopening fails, the terminal value
         # must stay in the mailbox so the next ready() fails fast, not hangs.
         try:
@@ -609,10 +638,13 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
         if self._closed:
             return
         self._closed = True
-        if self._handle is None:
-            return
+        # Wake any read blocked in _Latest.take(), even if startup never
+        # attached a handle.
+        self._slot.offer(_Stopped())
         handle = self._handle
         self._handle = None
+        if handle is None:
+            return
         task = handle.detach(self)
         if task is not None:
             try:
@@ -630,18 +662,38 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
         if self._closed:
             raise StopAsyncIteration
         await self._owner._ensure_authenticated()
+        if self._closed:
+            raise StopAsyncIteration
         handle = await self._owner._watch_handle(self._collection, self._child_uid, self._parser)
+        if self._closed:
+            raise StopAsyncIteration
         handle.attach(self)
         self._handle = handle
 
     async def _next(self) -> Snapshot[T]:
-        snapshot = await self._slot.take()
-        # A newer receipt may have landed after this slot value was queued;
-        # conflation promises the newest state, so prefer it.
-        if self._handle is not None and self._handle._last is not None:
-            latest = self._handle._last
-            if latest.seq > snapshot.seq:
-                snapshot = latest
+        while True:
+            snapshot = await self._slot.take()
+            handle = self._handle
+            # A newer receipt may have landed after this slot value was queued;
+            # conflation promises the newest state, so prefer it.
+            if handle is not None and handle._last is not None and handle._last.seq > snapshot.seq:
+                snapshot = handle._last
+            if self._is_new(snapshot):
+                return self._accept(snapshot)
+
+    def _current(self) -> Snapshot[T] | None:
+        """The newest receipt on the handle; ``ready()`` reports state, not deltas."""
+        handle = self._handle
+        return None if handle is None else handle._last
+
+    def _is_new(self, snapshot: Snapshot[T]) -> bool:
+        if self._delivered_handle is not self._handle:
+            return True
+        return self._delivered_seq is None or snapshot.seq > self._delivered_seq
+
+    def _accept(self, snapshot: Snapshot[T]) -> Snapshot[T]:
+        self._delivered_handle = self._handle
+        self._delivered_seq = snapshot.seq
         if self._resync_pending:
             self._resync_pending = False
             snapshot = replace(snapshot, resync=True)
