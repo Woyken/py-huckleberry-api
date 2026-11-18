@@ -30,14 +30,18 @@ EXPECTED_PUBLIC_METHODS = {
     "complete_sleep",
     "create_medicine_type",
     "create_solids_custom_food",
+    "delete_entry",
     "ensure_session",
     "get_child",
+    "get_entry",
     "get_latest_growth",
     "get_nursing",
     "get_sleep",
+    "get_tracker",
     "get_user",
     "list_activity_intervals",
     "list_diaper_intervals",
+    "list_entries",
     "list_feed_intervals",
     "list_health_entries",
     "list_medicine_types",
@@ -79,6 +83,7 @@ EXPECTED_PUBLIC_METHODS = {
     "stop_all_listeners",
     "switch_activity",
     "switch_nursing_side",
+    "update_entry",
 }
 
 

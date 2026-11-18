@@ -80,6 +80,14 @@ The integration tests are organized into separate modules:
 - Run app actions first, then run this test to validate newest entries
 - Optional env var: `HUCKLEBERRY_MODEL_VALIDATION_MAX_DOCS` (default `20`)
 
+### `test_entries.py`
+- **Offline**: entry id parsing, change validation, `prefs.last*` summary projection, edit and delete against an in-memory Firestore
+- **Live**: log, list with ids, update, delete, and summary restore for each tracker. These tests delete the entries they create
+
+### `test_mcp_server.py`
+- **Offline**: tool list, argument mapping, timezone handling, child resolution, sign-in configuration, email allowlist. Uses FastMCP's in-memory client and a fake API
+- **Live**: log, `list_entries`, `delete_entry` through the MCP tools. These tests delete the entries they create
+
 ## CI/CD
 
 Integration tests run automatically on:
