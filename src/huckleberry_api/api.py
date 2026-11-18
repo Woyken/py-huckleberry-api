@@ -11,6 +11,7 @@ mixin per feature so each tracker can be read and changed in isolation:
     _health.py     growth, temperature, medicine
     _pump.py       pump timer and pump history
     _activity.py   activity timers and logs
+    _entries.py    list, edit, and delete history entries of any tracker
     _history.py    date-range queries over saved history
     _listeners.py  real-time snapshot listeners
     _client.py     authentication, Firestore clients, timezone plumbing
@@ -25,6 +26,7 @@ from __future__ import annotations
 from ._account import AccountMixin
 from ._activity import ActivityMixin
 from ._diaper import DiaperMixin
+from ._entries import EntriesMixin
 from ._feeding import FeedingMixin
 from ._health import HealthMixin
 from ._history import HistoryMixin
@@ -47,6 +49,7 @@ class HuckleberryAPI(
     ActivityMixin,
     ListenerMixin,
     HistoryMixin,
+    EntriesMixin,
 ):
     """API client for Huckleberry.
 

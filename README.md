@@ -20,6 +20,7 @@ This is a reverse-engineered API client that connects directly to Huckleberry's 
 - 💊 **Medicine Tracking**: Manage medicine types and record doses
 - 🔄 **Real-time Updates**: Firebase snapshot listeners for instant synchronization
 - 👶 **Child Management**: Support for multiple children profiles
+- 🗂️ **Entry Management**: List history with ids, edit entries, delete entries
 
 ## Installation
 
@@ -230,6 +231,16 @@ async def main() -> None:
   - `amount`: Optional; the app-compatible blank value is stored as `0.0`
   - `units`: `"ml"`, `"oz"`, `"tsp"`, or `"drops"`
 
+### Entry Management
+`tracker` is one of `"sleep"`, `"feed"`, `"diaper"`, `"health"`, `"pump"`, `"activities"`.
+- `await get_tracker(child_uid, tracker)` - Get the typed tracker document (timer and `prefs`)
+- `await list_entries(child_uid, tracker, start_time, end_time)` - List history as `HistoryEntry` objects with ids
+- `await get_entry(child_uid, tracker, entry_id)` - Get one entry by id
+- `await update_entry(child_uid, tracker, entry_id, changes)` - Change Firebase fields of an entry; a `None` value removes a field
+- `await delete_entry(child_uid, tracker, entry_id)` - Delete an entry
+
+`update_entry` and `delete_entry` rebuild the `prefs.last*` summaries from the latest remaining entries, so the app's "last" cards stay correct.
+
 ### Real-time Listeners
 - `await setup_sleep_listener(child_uid, callback)` - Listen to sleep updates
 - `await setup_feed_listener(child_uid, callback)` - Listen to feeding updates
@@ -270,6 +281,7 @@ Modules prefixed with `_` are internal implementation. The supported surface is
 | `_account.py` | Child and user profile reads |
 | `_sleep.py`, `_feeding.py`, `_solids.py`, `_diaper.py`, `_health.py`, `_pump.py`, `_activity.py` | Tracker features |
 | `_history.py` | Date-range history queries |
+| `_entries.py` | History with ids, entry edit and delete |
 | `_listeners.py` | Real-time snapshot listeners |
 | `_const.py`, `_common.py` | Constants and shared internals |
 
