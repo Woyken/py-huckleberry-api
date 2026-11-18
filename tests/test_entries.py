@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import cast
 from unittest.mock import AsyncMock
+from unittest.mock import patch
 
 import aiohttp
 import pytest
@@ -568,6 +569,28 @@ class _FakeDB:
     def collection(self, name: str) -> _FakeCollection:
         return _FakeCollection(self, (name,))
 
+    def batch(self) -> _FakeBatch:
+        return _FakeBatch(self)
+
+
+class _FakeBatch:
+    """Queues writes and applies them all or not at all, like a Firestore write batch."""
+
+    def __init__(self, db: _FakeDB) -> None:
+        self.db, self.ops = db, []
+
+    def __getattr__(self, name: str):
+        return lambda ref, *args: self.ops.append((getattr(ref, name), args))
+
+    async def commit(self) -> None:
+        saved = copy.deepcopy(self.db.docs)
+        try:
+            for op, args in self.ops:
+                await op(*args)
+        except BaseException:
+            self.db.docs = saved
+            raise
+
 
 def _bottle(start: float, amount: float) -> dict[str, object]:
     return {"mode": "bottle", "start": start, "bottleType": "Formula", "amount": amount, "units": "ml", "offset": 0.0}
@@ -617,6 +640,25 @@ async def test_list_entries_returns_ids_including_batched_rows(fake: tuple[Huckl
     assert await api.get_entry(CHILD, "feed", "batch/k1") == entries[3]
     assert await api.get_entry(CHILD, "feed", "batch") is None, "a container is not an entry"
     assert await api.get_entry(CHILD, "feed", "b-old/k1") is None
+
+
+async def test_row_and_summary_writes_are_atomic(fake: tuple[HuckleberryAPI, _FakeDB]) -> None:
+    api, db = fake
+    before = copy.deepcopy(db.docs)
+    with patch.object(_FakeDoc, "update", AsyncMock(side_effect=RuntimeError("summary write failed"))):
+        with pytest.raises(RuntimeError):
+            await api.delete_entry(CHILD, "feed", "b-new")
+        with pytest.raises(RuntimeError):
+            await api.update_entry(CHILD, "feed", "b-new", {"amount": 30.0})
+    assert db.docs == before
+
+
+async def test_update_rejects_non_finite_amount(fake: tuple[HuckleberryAPI, _FakeDB]) -> None:
+    api, db = fake
+    before = copy.deepcopy(db.docs)
+    with pytest.raises(ValueError, match="finite"):
+        await api.update_entry(CHILD, "feed", "b-new", {"amount": float("inf")})
+    assert db.docs == before
 
 
 async def test_delete_latest_rebuilds_summary_and_bottle_defaults(fake: tuple[HuckleberryAPI, _FakeDB]) -> None:

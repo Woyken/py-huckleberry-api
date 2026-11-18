@@ -10,6 +10,7 @@ read those summaries. Each summary payload mirrors the writer that produces it.
 
 from __future__ import annotations
 
+import math
 import time
 from contextlib import aclosing
 from datetime import datetime
@@ -362,8 +363,8 @@ def _merge_changes(
             raise ValueError(f"Invalid value for {key}: {value!r} is not a valid {model.__name__} value")
     for key in ("duration", "leftDuration", "rightDuration", "amount", "leftAmount", "rightAmount"):
         value = dumped.get(key)
-        if key in changes and isinstance(value, int | float) and not value >= 0:
-            raise ValueError(f"{key} must be non-negative")
+        if key in changes and isinstance(value, int | float) and not (math.isfinite(value) and value >= 0):
+            raise ValueError(f"{key} must be a non-negative finite number")
     if "start" in changes and not 0 <= dumped["start"] < _MS_EPOCH_THRESHOLD:
         raise ValueError("start must be epoch seconds")
     return merged, updated
@@ -455,11 +456,14 @@ class EntriesMixin(HuckleberryBase):
             child_uid, tracker, {_summary_kind(current), _summary_kind(updated)}, entry_id, updated
         )
 
+        # One batch: the row and its summaries change together or not at all.
+        batch = (await self._get_firestore_client()).batch()
         if key is None:
-            await doc_ref.set(merged)
+            batch.set(doc_ref, merged)
         else:
-            await doc_ref.update({FieldPath("data", key).to_api_repr(): merged})
-        await (await self._tracker_ref(child_uid, tracker)).update(summary_updates)
+            batch.update(doc_ref, {FieldPath("data", key).to_api_repr(): merged})
+        batch.update(await self._tracker_ref(child_uid, tracker), summary_updates)
+        await batch.commit()
         _LOGGER.info("Updated %s entry %s for child %s", tracker, entry_id, child_uid)
         return HistoryEntry(id=entry_id, tracker=tracker, data=updated)
 
@@ -476,11 +480,13 @@ class EntriesMixin(HuckleberryBase):
         # Read and validate before the first write, as in update_entry.
         summary_updates = await self._summary_refresh(child_uid, tracker, {_summary_kind(current)}, entry_id, None)
 
+        batch = (await self._get_firestore_client()).batch()
         if key is None:
-            await doc_ref.delete()
+            batch.delete(doc_ref)
         else:
-            await doc_ref.update({FieldPath("data", key).to_api_repr(): DELETE_FIELD})
-        await (await self._tracker_ref(child_uid, tracker)).update(summary_updates)
+            batch.update(doc_ref, {FieldPath("data", key).to_api_repr(): DELETE_FIELD})
+        batch.update(await self._tracker_ref(child_uid, tracker), summary_updates)
+        await batch.commit()
         _LOGGER.info("Deleted %s entry %s for child %s", tracker, entry_id, child_uid)
 
     async def _tracker_ref(self, child_uid: str, tracker: Tracker) -> AsyncDocumentReference:
