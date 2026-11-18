@@ -1,9 +1,15 @@
-Add async subscriptions for Firestore documents.
+Add async subscriptions for Firestore documents and a child-scoped accessor
+API.
+
+`api.child(uid)` returns a stateless `ChildHandle` with one handle per tracker
+(`sleep`, `feeding` incl. `nursing`/`bottle`/`solids`, `pump`, `activity`,
+`diaper`, `health`). Each handle exposes `watch()` for live state,
+`state()`/mutators for one-shots, and `history(start, end)` for ranges.
 
 `watch_sleep`, `watch_feed`, `watch_health`, `watch_diaper`, `watch_activity`,
-`watch_pump` and `watch_child` return a `Subscription`: a conflated async
-iterable and async context manager over one document. Snapshots carry `value`,
-`exists`, `as_of`, `seq` and `resync`.
+`watch_pump` and `watch_child` remain as flat aliases. Both forms return the
+same `Subscription`: a conflated async iterable and async context manager over
+one document. Snapshots carry `value`, `exists`, `as_of`, `seq` and `resync`.
 
 Behaviour changes for existing listener users:
 

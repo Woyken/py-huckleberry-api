@@ -152,11 +152,43 @@ async def main() -> None:
         await api.stop_all_listeners()
 ```
 
+## Child Handles
+
+The preferred shape binds a child once and groups the trackers under it. A handle
+is a stateless value object: it stores the uid and the client, never child data.
+
+```python
+child = api.child(child_uid)
+
+async with child.sleep.watch() as sub:          # Subscription[FirebaseSleepDocumentData]
+    async for snap in sub:
+        print(snap.value.timer, snap.as_of)
+
+await child.sleep.start()
+rows = await child.sleep.history(start, end)
+```
+
+| Handle | Live | One-shot | History |
+| --- | --- | --- | --- |
+| `child.sleep` | `.watch()` | `.state()` | `.history(start, end)` |
+| `child.feeding` | `.watch()` | `.state()` | `.history(...)` |
+| `child.feeding.nursing` | — | `.start/.pause/.resume/.switch_side` | via `child.feeding.history` |
+| `child.feeding.bottle` | — | `.log(...)` | via `child.feeding.history` |
+| `child.feeding.solids` | — | `.curated_foods()`, `.log(...)` | via `child.feeding.history` |
+| `child.pump` | `.watch()` | `.start/.pause/.resume/.complete` | `.history(...)` |
+| `child.activity` | `.watch()` | `.start(mode)` | `.history(...)` |
+| `child.diaper` | `.watch()` | `.log(...)`, `.log_potty(...)` | `.history(...)` |
+| `child.health` | `.watch()` | `.log_growth(...)`, `.log_medicine(...)` | `.history(...)` |
+| `child` itself | `.watch()` | `.profile()` | — |
+
+Account-scoped operations stay on the client: `api.get_user()`.
+
 ## Async Subscriptions
 
-`watch_*(child_uid)` returns an async subscription for one document. It performs
-no I/O until first use, and it conflates updates: each step of `async for` gives
-you the newest state, never a backlog of stale ones.
+`child.sleep.watch()` — or the equivalent flat `api.watch_sleep(child_uid)` —
+returns an async subscription for one document. It performs no I/O until first
+use, and it conflates updates: each step of `async for` gives you the newest
+state, never a backlog of stale ones.
 
 ```python
 from huckleberry_api.firebase_types import FirebaseSleepDocumentData
@@ -172,9 +204,9 @@ async def main() -> None:
         )
         await api.authenticate()
         user_doc = await api.get_user()
-        child_uid = user_doc.childList[0].cid
+        child = api.child(user_doc.childList[0].cid)
 
-        async with api.watch_sleep(child_uid) as sub:
+        async with child.sleep.watch() as sub:
             print(sub.latest)          # Snapshot[FirebaseSleepDocumentData] | None
             async for snap in sub:
                 if not snap.exists:
@@ -220,6 +252,7 @@ credentials; it rotates the transport and resyncs every subscription.
 ### Children
 - `await get_user()` - Get full `users/{uid}` document
 - `await get_child(child_uid)` - Get a single child profile by id
+- `api.child(child_uid)` - Bind a child; returns `sleep`, `feeding`, `pump`, `activity`, `diaper` and `health` handles
 
 ### Sleep Tracking
 - `await get_sleep(child_uid)` - Get the typed sleep document and current timer state

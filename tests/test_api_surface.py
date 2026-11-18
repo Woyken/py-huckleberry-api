@@ -16,7 +16,13 @@ from huckleberry_api._listeners import ListenerMixin
 MIXINS = HuckleberryAPI.__bases__
 
 EXPECTED_TOP_LEVEL = {"HuckleberryAPI"}
-PUBLIC_MODULES = ["huckleberry_api", "huckleberry_api.api", "huckleberry_api.models", "huckleberry_api.subscriptions"]
+PUBLIC_MODULES = [
+    "huckleberry_api",
+    "huckleberry_api.accessors",
+    "huckleberry_api.api",
+    "huckleberry_api.models",
+    "huckleberry_api.subscriptions",
+]
 
 EXPECTED_PUBLIC_METHODS = {
     "authenticate",
@@ -24,6 +30,7 @@ EXPECTED_PUBLIC_METHODS = {
     "cancel_nursing",
     "cancel_pump",
     "cancel_sleep",
+    "child",
     "complete_activity",
     "complete_nursing",
     "complete_pump",
