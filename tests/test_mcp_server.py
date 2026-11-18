@@ -5,6 +5,8 @@ from pathlib import Path
 import time
 from datetime import datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
+from unittest.mock import patch
 from typing import Any
 from typing import cast
 from typing import get_type_hints
@@ -179,6 +181,9 @@ async def test_log_medicine_by_name_and_solids() -> None:
     assert last_call(api)[2]["medicine_type"].id_ == "m1"
     with pytest.raises(ToolError, match="Vitamin D"):
         await call(api, "log_medicine", name="Tylenol")
+    twice = AsyncMock(return_value=(await api.list_medicine_types("c1")) * 2)
+    with patch.object(api, "list_medicine_types", twice), pytest.raises(ToolError, match="2 medicines"):
+        await call(api, "log_medicine", name="Vitamin D")
     await call(api, "log_solids", foods=[{"id": "f1", "source": "curated", "name": "Avocado", "amount": "2 spoons"}])
     assert last_call(api)[2]["foods"] == [SolidsFoodReference(id="f1", source="curated", name="Avocado",
                                                               amount="2 spoons")]  # fmt: skip
@@ -273,7 +278,7 @@ def test_auth_config(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in ("CLERK_DOMAIN", "CLERK_OAUTH_CLIENT_ID", "CLERK_OAUTH_CLIENT_SECRET"):
         monkeypatch.delenv(key)
     monkeypatch.setenv("HUCKLEBERRY_MCP_NO_AUTH", "1")
-    assert mcp_server._auth_from_env()[0] is None
+    assert mcp_server._auth_from_env() == (None, frozenset()), "a leftover allowlist must not hide the tools"
 
 
 @pytest.mark.parametrize(

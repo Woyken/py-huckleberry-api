@@ -782,6 +782,8 @@ def create_server(
         if not match:
             known = ", ".join(m.name for m in types) or "none"
             raise ToolError(f"No medicine named {name!r}. Known: {known}. Use create_medicine_type to add it.")
+        if len(match) > 1:
+            raise ToolError(f"{len(match)} medicines are named {name!r}; rename one in the app so the name is unique.")
         start = clock.parse(start_time)
         await hb().log_medicine(cid, start_time=start, medicine_type=match[0], amount=amount, units=units, notes=notes)
         return f"Logged {match[0].name} at {start.isoformat(timespec='minutes')}"
@@ -857,7 +859,7 @@ def _auth_from_env() -> tuple[AuthProvider | None, frozenset[str]]:
         return provider, allowed
     if os.environ.get("HUCKLEBERRY_MCP_NO_AUTH") == "1":
         _LOGGER.warning("HUCKLEBERRY_MCP_NO_AUTH=1: serving without authentication")
-        return None, allowed
+        return None, frozenset()  # no sign-in means no email to check
     raise SystemExit(
         "Refusing to start: set CLERK_DOMAIN, CLERK_OAUTH_CLIENT_ID, CLERK_OAUTH_CLIENT_SECRET and "
         "HUCKLEBERRY_MCP_BASE_URL, or HUCKLEBERRY_MCP_NO_AUTH=1 to serve without authentication."
