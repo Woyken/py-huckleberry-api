@@ -160,14 +160,15 @@ is a stateless value object: it stores the uid and the client, never child data.
 ```python
 child = api.child(child_uid)
 
-async with child.sleep.watch() as sub:          # Subscription[FirebaseSleepDocumentData]
+await child.sleep.start()
+rows = await child.sleep.history(start, end)
+
+# Live updates: this loop runs until you break or leave the context.
+async with child.sleep.watch() as sub:
     async for snap in sub:
         if not snap.exists:
             continue                            # document deleted
         print(snap.value.timer, snap.as_of)
-
-await child.sleep.start()
-rows = await child.sleep.history(start, end)
 ```
 
 | Handle | Live | One-shot | History |

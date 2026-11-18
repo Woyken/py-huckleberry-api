@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Callable, cast
 
 import pytest
 
@@ -28,6 +28,15 @@ PARSE_SLEEP = FirebaseSleepDocumentData.model_validate
 
 def payload(uuid: str = "session-1", active: bool = True) -> dict[str, Any]:
     return {"timer": {"active": active, "paused": False, "uuid": uuid}}
+
+
+async def wait_until(predicate: Callable[[], bool], timeout: float = 2.0) -> None:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while not predicate():
+        if loop.time() > deadline:
+            raise AssertionError("condition not met in time")
+        await asyncio.sleep(0.01)
 
 
 def timer_uuid(snapshot: Snapshot[Any]) -> str:
@@ -57,7 +66,7 @@ class DummyOwner:
         return None
 
     async def _watch_handle(self, collection: str, child_uid: str, parser: Any) -> Any:
-        await self.hub.ensure_client("token")
+        self.hub.ensure_client("token")
         return self.hub.handle(collection, child_uid, parser)
 
 
@@ -259,7 +268,7 @@ async def test_rotation_keeps_one_watch_and_resyncs_every_subscriber() -> None:
     await owner.hub.rotate("fresh-token")
 
     assert len(owner.client.watches) == 1
-    assert owner.clients[0].closed is True
+    await wait_until(lambda: owner.clients[0].closed)
     assert sub1.reconnects == sub2.reconnects == 1
     owner.client.watch("sleep", "child").push(payload("after"))
     assert (await sub1.ready(timeout=1)).resync is True
@@ -494,6 +503,129 @@ async def test_close_during_startup_does_not_attach() -> None:
     assert owner.hub._handles == {}
 
 
+async def test_ready_reports_stop_after_a_delivery() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    owner.client.watch("sleep", "child").push(payload("one"))
+    await sub.ready()
+
+    await owner.hub.stop()
+
+    with pytest.raises(StopAsyncIteration):
+        await sub.ready()
+
+
+async def test_ready_reports_failure_after_a_delivery() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    watch = owner.client.watch("sleep", "child")
+    watch.push(payload("one"))
+    await sub.ready()
+
+    watch.die()
+    owner.hub.check_health()
+    await asyncio.sleep(0)
+
+    with pytest.raises(WatchFailed):
+        await sub.ready()
+
+
+async def test_ready_does_not_reuse_a_pre_rotation_snapshot() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    owner.client.watch("sleep", "child").push(payload("before"))
+    await sub.ready()
+
+    await owner.hub.rotate("fresh-token")
+
+    # The old receipt must not be reported as a resync result.
+    with pytest.raises(TimeoutError):
+        await sub.ready(timeout=0.05)
+
+    owner.client.watch("sleep", "child").push(payload("after"))
+    snapshot = await sub.ready(timeout=1)
+    assert snapshot.resync is True
+    assert timer_uuid(snapshot) == "after"
+
+
+async def test_mailbox_reset_does_not_end_iteration() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+
+    def snapshot(seq: int) -> Snapshot[Any]:
+        return Snapshot(value=None, exists=False, as_of=datetime.now(timezone.utc), seq=seq, resync=False)
+
+    task = asyncio.create_task(sub.__anext__())
+    await asyncio.sleep(0)
+
+    # Race: the reader wakes on receipt 1, then a reconnect resets the mailbox
+    # before it reads. That must wait for the new generation, not raise.
+    sub._slot.offer(snapshot(1))
+    sub._slot.reset()
+    await asyncio.sleep(0.05)
+    assert not task.done(), "mailbox reset must not end iteration"
+
+    sub._slot.offer(snapshot(2))
+    assert (await asyncio.wait_for(task, timeout=1)).seq == 2
+
+
+async def test_legacy_sinks_receive_independent_values() -> None:
+    api = make_api()
+    seen: list[str | None] = []
+
+    def mutate(data: FirebaseSleepDocumentData) -> None:
+        assert data.timer is not None
+        data.timer.uuid = "mutated"
+
+    def observe(data: FirebaseSleepDocumentData) -> None:
+        seen.append(data.timer.uuid if data.timer else None)
+
+    await api.setup_sleep_listener("child", mutate)
+    await api.setup_sleep_listener("child", observe)
+
+    watch_client(api).watch("sleep", "child").push(payload("original"))
+
+    assert seen == ["original"]
+
+
+class _FakeAuthResponse:
+    status = 200
+    reason = "OK"
+    headers: dict[str, str] = {}
+
+    async def __aenter__(self) -> "_FakeAuthResponse":
+        return self
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+    async def json(self, *args: Any, **kwargs: Any) -> dict[str, str]:
+        return {
+            "idToken": "fresh-token",
+            "refreshToken": "fresh-refresh",
+            "localId": "user-1",
+            "expiresIn": "3600",
+        }
+
+
+async def test_authenticate_rotates_live_watches() -> None:
+    api = make_api()
+    api.websession = SimpleNamespace(post=lambda *args, **kwargs: _FakeAuthResponse())
+
+    rotated: list[str] = []
+
+    async def hook() -> None:
+        rotated.append(api.id_token or "")
+
+    api._on_credentials_refreshed = cast(Any, hook)
+    api._firestore_client = cast(Any, object())
+
+    await api.authenticate()
+
+    assert rotated == ["fresh-token"]
+    assert api._firestore_client is None
+
+
 async def test_reconnect_failure_keeps_terminal_state() -> None:
     owner = DummyOwner()
     sub = await started(owner)
@@ -652,7 +784,7 @@ async def test_refresh_session_token_rebuilds_client_and_resyncs() -> None:
     new_client = watch_client(api)
     assert new_client is not old_client
     assert new_client.token == "fresh-token"
-    assert old_client.closed is True
+    await wait_until(lambda: old_client.closed)
 
     for _ in range(50):
         if old_watch.close_count:

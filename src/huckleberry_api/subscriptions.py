@@ -89,15 +89,25 @@ class _Latest(Generic[T]):
         self._event.clear()
 
     async def take(self) -> T:
-        if not self._terminal or self._event.is_set():
+        while True:
             await self._event.wait()
             self._event.clear()
-        value = self._value
-        if isinstance(value, _Failed):
-            raise value.error
-        if isinstance(value, _Stopped):
-            raise StopAsyncIteration
-        return value
+            value = self._value
+            if isinstance(value, _Stopped) and not self._terminal:
+                # reset() ran between the wakeup and this read: a new
+                # generation is pending, not a deliberate stop.
+                continue
+            if isinstance(value, _Failed):
+                raise value.error
+            if isinstance(value, _Stopped):
+                raise StopAsyncIteration
+            return value
+
+    def terminal(self) -> "_Failed | _Stopped | None":
+        """The pending terminal value, if a stop or failure was delivered."""
+        if self._terminal and isinstance(self._value, (_Failed, _Stopped)):
+            return self._value
+        return None
 
 
 class _Handle(Generic[T]):
@@ -121,6 +131,7 @@ class _Handle(Generic[T]):
         self._seq = 0
         self._reconnects = 0
         self._last: Snapshot[T] | None = None
+        self._last_generation = -1
         self._error: WatchFailed | None = None
         self._closing = False
         self._requested_close = False
@@ -138,7 +149,7 @@ class _Handle(Generic[T]):
         subscription._handle_generation = self._generation
         self._subscribers.add(subscription)
         try:
-            if self._last is not None:
+            if self._last is not None and self._last_generation == self._generation:
                 subscription._seed(self._last)
             if self._watch is None:
                 self._open()
@@ -204,6 +215,7 @@ class _Handle(Generic[T]):
         self._seq += 1
         snapshot = replace(snapshot, seq=self._seq)
         self._last = snapshot
+        self._last_generation = generation
 
         for sink in list(self._sinks):
             self._invoke_sink(sink, snapshot)
@@ -330,22 +342,35 @@ class _WatchHub:
         self._client: Any = None
         self._token: str | None = None
         self._handles: dict[tuple[str, str], _Handle[Any]] = {}
-        self._lock = asyncio.Lock()
         self._loop = asyncio.get_running_loop()
         self._close_tasks: set[asyncio.Task[None]] = set()
         self._watchdog: asyncio.Task[None] | None = None
 
-    async def ensure_client(self, token: str) -> None:
+    def ensure_client(self, token: str) -> None:
+        """Swap in a client for ``token`` and schedule the old one's disposal.
+
+        Deliberately synchronous: no await may split the swap from the watch
+        rotation that follows, or a cancelled refresh would leave the watches
+        on a client that is being closed.
+        """
         if self._client is not None and self._token == token:
             return
-        async with self._lock:
-            if self._client is not None and self._token == token:
-                return
-            old = self._client
-            self._client = self._client_factory(token)
-            self._token = token
-            if old is not None:
-                await self._close_client(old)
+        old = self._client
+        self._client = self._client_factory(token)
+        self._token = token
+        if old is not None:
+            self._schedule_client_close(old)
+
+    def _schedule_client_close(self, client: Any) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            _close_watch_client(client)
+            return
+        task = loop.create_task(asyncio.to_thread(_close_watch_client, client))
+        self._close_tasks.add(task)
+        task.add_done_callback(self._close_tasks.discard)
+        task.add_done_callback(_log_close_failure)
 
     def document(self, collection: str, child_uid: str) -> Any:
         if self._client is None:
@@ -378,7 +403,6 @@ class _WatchHub:
                         self.forget(handle)
                         handle._close()
                 self._loop = asyncio.get_running_loop()
-                self._lock = asyncio.Lock()
         key = (collection, child_uid)
         handle = self._handles.get(key)
         if handle is not None and handle._error is not None:
@@ -400,7 +424,11 @@ class _WatchHub:
             del self._handles[key]
 
     async def rotate(self, token: str) -> None:
-        await self.ensure_client(token)
+        if not self._handles:
+            return
+        # No await between the client swap and the watch rotation: a cancelled
+        # refresh must not leave watches on the client being closed.
+        self.ensure_client(token)
         for handle in list(self._handles.values()):
             try:
                 handle._rotate()
@@ -580,12 +608,24 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
     async def ready(self, timeout: float | None = None) -> Snapshot[T]:
         """Return the current snapshot, or the next one.
 
-        Registers the subscription if this is the first call.  If the newest
-        receipt has already been consumed, this waits for a newer one.
+        Registers the subscription if this is the first call.  Repeated calls on
+        a live subscription return the same current receipt; ``__anext__`` is
+        the way to wait for the next unseen one.  A stop or terminal failure is
+        reported here even after a successful delivery.
+
+        Raises ``TimeoutError`` on timeout, ``WatchFailed`` on terminal failure,
+        and ``StopAsyncIteration`` after ``aclose()`` or a global stop.
         """
         if self._closed:
             raise StopAsyncIteration
         await self._ensure_started()
+        terminal = self._slot.terminal()
+        if isinstance(terminal, _Failed):
+            raise terminal.error
+        if terminal is not None:
+            raise StopAsyncIteration
+        if self._handle is not None and self._handle._error is not None:
+            raise self._handle._error
         current = self._current()
         if current is not None:
             return self._accept(current)
@@ -682,9 +722,17 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
                 return self._accept(snapshot)
 
     def _current(self) -> Snapshot[T] | None:
-        """The newest receipt on the handle; ``ready()`` reports state, not deltas."""
+        """The newest receipt from the current generation, if any.
+
+        A receipt from before a rotation is not current: its state is restated
+        by the replacement watch, and that delivery carries ``resync``.
+        """
         handle = self._handle
-        return None if handle is None else handle._last
+        if handle is None or handle._last is None:
+            return None
+        if handle._last_generation != self._handle_generation:
+            return None
+        return handle._last
 
     def _is_new(self, snapshot: Snapshot[T]) -> bool:
         if self._delivered_handle is not self._handle:
@@ -708,4 +756,7 @@ class Subscription(Generic[T], AsyncIterator[Snapshot[T]]):
         self._slot.offer(snapshot)
 
     def _request_resync(self) -> None:
+        # Drop anything queued by the previous generation so a stale receipt
+        # cannot consume the resync flag meant for the replacement watch.
+        self._slot.reset()
         self._resync_pending = True

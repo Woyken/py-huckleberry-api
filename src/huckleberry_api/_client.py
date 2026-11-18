@@ -106,6 +106,12 @@ class HuckleberryBase:
             self.user_uid = data["localId"]
             self.token_expires_at = datetime.now().timestamp() + int(data["expiresIn"])
 
+            # Re-authentication replaces the token under live watches; route it
+            # through the same rotation path as a refresh.
+            self._firestore_client = None
+            self._firestore_client_loop = None
+            await self._on_credentials_refreshed()
+
             _LOGGER.info("Successfully authenticated with Huckleberry")
         except aiohttp.ClientResponseError as err:
             _LOGGER.error("Authentication failed: status=%s message=%s", err.status, err.message)

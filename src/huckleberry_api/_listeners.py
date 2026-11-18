@@ -69,7 +69,7 @@ class ListenerMixin(HuckleberryBase):
             self._watch_hub = _WatchHub(self._create_watch_client)
         assert self.id_token is not None, "id_token should be set after authentication"
         hub = cast(_WatchHub, self._watch_hub)
-        await hub.ensure_client(self.id_token)
+        hub.ensure_client(self.id_token)
         return hub
 
     async def _watch_handle(
@@ -138,9 +138,11 @@ class ListenerMixin(HuckleberryBase):
         handle = await self._watch_handle(collection_name, child_uid, _PARSERS[collection_name], for_subscription=False)
 
         def sink(snapshot: Snapshot[Any]) -> None:
-            if not snapshot.exists:
+            if not snapshot.exists or snapshot.value is None:
                 return
-            callback(cast(TDocumentData, snapshot.value))
+            # Each legacy callback gets its own copy: one callback mutating a
+            # nested field must not change what the next one sees.
+            callback(cast(TDocumentData, snapshot.value.model_copy(deep=True)))
 
         handle.add_sink(sink)
         self._listener_sinks.append((handle, sink))
