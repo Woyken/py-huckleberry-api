@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -133,6 +134,8 @@ class _Handle(Generic[T]):
         self._last: Snapshot[T] | None = None
         self._last_generation = -1
         self._error: WatchFailed | None = None
+        # Guards the generation/commit pair across the watch thread and the loop.
+        self._lock = threading.Lock()
         self._closing = False
         self._requested_close = False
         self._generation = 0
@@ -149,8 +152,10 @@ class _Handle(Generic[T]):
         subscription._handle_generation = self._generation
         self._subscribers.add(subscription)
         try:
-            if self._last is not None and self._last_generation == self._generation:
-                subscription._seed(self._last)
+            with self._lock:
+                seed = self._last if self._last is not None and self._last_generation == self._generation else None
+            if seed is not None:
+                subscription._seed(seed)
             if self._watch is None:
                 self._open()
         except Exception:
@@ -208,21 +213,19 @@ class _Handle(Generic[T]):
             return
 
         # Parsing can take long enough for a rotation to replace this watch.
-        # Such a receipt belongs to the old generation and must not publish.
-        if self._closing or generation != self._generation:
+        # Commit under the generation lock, then tag every delivery with the
+        # generation that produced it: an old receipt can never pass for a new
+        # one, nor consume the replacement's resync flag.
+        snapshot = self._commit(generation, snapshot)
+        if snapshot is None:
             return
-
-        self._seq += 1
-        snapshot = replace(snapshot, seq=self._seq)
-        self._last = snapshot
-        self._last_generation = generation
 
         for sink in list(self._sinks):
             self._invoke_sink(sink, snapshot)
 
         for subscription in list(self._subscribers):
             try:
-                self._loop.call_soon_threadsafe(subscription._offer, snapshot, self, self._generation)
+                self._loop.call_soon_threadsafe(subscription._offer, snapshot, self, generation)
             except RuntimeError:
                 # The consumer's loop is closed; nothing can be delivered to it.
                 _LOGGER.debug("Dropping subscriber for %s/%s: loop closed", self._collection, self._child_uid)
@@ -230,6 +233,17 @@ class _Handle(Generic[T]):
         if self.refcount == 0:
             # Clean up from the hub loop, never from the watch thread.
             self._owner.reclaim(self)
+
+    def _commit(self, generation: int, snapshot: Snapshot[T]) -> Snapshot[T] | None:
+        """Publish a receipt if it still belongs to the current generation."""
+        with self._lock:
+            if generation != self._generation:
+                return None
+            self._seq += 1
+            committed = replace(snapshot, seq=self._seq)
+            self._last = committed
+            self._last_generation = generation
+            return committed
 
     def _invoke_sink(self, sink: Callable[[Snapshot[T]], None], snapshot: Snapshot[T]) -> None:
         try:
@@ -304,11 +318,12 @@ class _Handle(Generic[T]):
 
     def _rotate(self) -> None:
         self._reconnects += 1
-        self._generation += 1
-        # Every subscriber must accept the new generation before the reopened
-        # watch can deliver, otherwise their offers are dropped as stale.
-        for subscription in list(self._subscribers):
-            subscription._handle_generation = self._generation
+        # Bump the generation and adopt it for every subscriber atomically with
+        # respect to commits from the old watch thread.
+        with self._lock:
+            self._generation += 1
+            for subscription in list(self._subscribers):
+                subscription._handle_generation = self._generation
         self._closing = True
         if self._watch is not None:
             watch = self._watch

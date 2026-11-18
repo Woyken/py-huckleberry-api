@@ -530,6 +530,23 @@ async def test_ready_reports_failure_after_a_delivery() -> None:
         await sub.ready()
 
 
+async def test_commit_rejects_a_stale_generation() -> None:
+    owner = DummyOwner()
+    sub = await started(owner)
+    handle = sub._handle
+    assert handle is not None
+    owner.client.watch("sleep", "child").push(payload("before"))
+    await sub.ready()
+    stale_generation = handle._generation
+    previous = handle._last
+
+    await sub.reconnect()
+
+    stale = Snapshot(value=None, exists=False, as_of=datetime.now(timezone.utc), seq=999, resync=True)
+    assert handle._commit(stale_generation, stale) is None
+    assert handle._last is previous
+
+
 async def test_ready_does_not_reuse_a_pre_rotation_snapshot() -> None:
     owner = DummyOwner()
     sub = await started(owner)
