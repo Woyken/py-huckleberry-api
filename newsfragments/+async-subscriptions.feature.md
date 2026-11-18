@@ -3,8 +3,10 @@ API.
 
 `api.child(uid)` returns a stateless `ChildHandle` with one handle per tracker
 (`sleep`, `feeding` incl. `nursing`/`bottle`/`solids`, `pump`, `activity`,
-`diaper`, `health`). Each handle exposes `watch()` for live state,
-`state()`/mutators for one-shots, and `history(start, end)` for ranges.
+`diaper`, `health`). Tracker handles expose `watch()` where the tracker has a
+live document, mutators for writes, and `history(start, end)` where the tracker
+has interval history (`sleep`, `feeding`, `pump`, `activity`, `diaper`,
+`health`).
 
 `watch_sleep`, `watch_feed`, `watch_health`, `watch_diaper`, `watch_activity`,
 `watch_pump` and `watch_child` remain as flat aliases. Both forms return the

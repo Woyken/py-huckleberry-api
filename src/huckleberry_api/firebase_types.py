@@ -38,6 +38,7 @@ class StrictModel(BaseModel):
 
 
 DiaperMode = Literal["pee", "poo", "both", "dry"]
+DiaperAmount = Literal["little", "medium", "big"]
 PooColor = Literal["yellow", "brown", "black", "green", "red", "gray"]
 PooConsistency = Literal["solid", "loose", "runny", "mucousy", "hard", "pebbles", "diarrhea"]
 FeedMode = Literal["breast", "bottle", "solids"]

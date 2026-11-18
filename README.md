@@ -162,6 +162,8 @@ child = api.child(child_uid)
 
 async with child.sleep.watch() as sub:          # Subscription[FirebaseSleepDocumentData]
     async for snap in sub:
+        if not snap.exists:
+            continue                            # document deleted
         print(snap.value.timer, snap.as_of)
 
 await child.sleep.start()
@@ -181,7 +183,10 @@ rows = await child.sleep.history(start, end)
 | `child.health` | `.watch()` | `.log_growth(...)`, `.log_medicine(...)` | `.history(...)` |
 | `child` itself | `.watch()` | `.profile()` | — |
 
-Account-scoped operations stay on the client: `api.get_user()`.
+Account-scoped operations stay on the client: `api.get_user()`. The one
+account-wide lookup exposed on a handle is
+`child.feeding.solids.curated_foods()`, because it is only useful next to the
+meals you log from it.
 
 ## Async Subscriptions
 
@@ -359,11 +364,14 @@ This library uses:
 ### Package layout
 
 Modules prefixed with `_` are internal implementation. The supported surface is
-`HuckleberryAPI`, `firebase_types.py`, and `models.py`.
+`HuckleberryAPI`, `accessors.py`, `subscriptions.py`, `firebase_types.py`, and
+`models.py`.
 
 | Module | Responsibility |
 |---|---|
 | `api.py` | `HuckleberryAPI`, composed from the feature mixins (public) |
+| `accessors.py`, `_accessors.py` | Child-scoped handles: `ChildHandle` and per-tracker handles (public classes, private mixin) |
+| `subscriptions.py` | `Snapshot`, `Subscription`, `WatchFailed` (public) |
 | `firebase_types.py`, `models.py` | Firebase payload schemas and API input models (public) |
 | `_client.py` | Authentication, Firestore clients, timezone |
 | `_account.py` | Child and user profile reads |

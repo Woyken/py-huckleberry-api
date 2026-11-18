@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Literal
 
 from .firebase_types import ActivityMode
 from .firebase_types import BottleType
+from .firebase_types import DiaperAmount
 from .firebase_types import DiaperMode
 from .firebase_types import FeedSide
 from .firebase_types import FirebaseActivityDocumentData
@@ -67,8 +68,6 @@ __all__ = [
     "SleepHandle",
     "SolidsHandle",
 ]
-
-PeeAmount = Literal["little", "medium", "big"]
 
 
 class _FeatureHandle:
@@ -391,8 +390,8 @@ class DiaperHandle(_FeatureHandle):
         *,
         start_time: datetime,
         mode: DiaperMode,
-        pee_amount: PeeAmount | None = None,
-        poo_amount: PeeAmount | None = None,
+        pee_amount: DiaperAmount | None = None,
+        poo_amount: DiaperAmount | None = None,
         color: PooColor | None = None,
         consistency: PooConsistency | None = None,
         diaper_rash: bool = False,
@@ -416,8 +415,8 @@ class DiaperHandle(_FeatureHandle):
         start_time: datetime,
         mode: DiaperMode,
         how_it_happened: PottyResult,
-        pee_amount: PeeAmount | None = None,
-        poo_amount: PeeAmount | None = None,
+        pee_amount: DiaperAmount | None = None,
+        poo_amount: DiaperAmount | None = None,
         color: PooColor | None = None,
         consistency: PooConsistency | None = None,
         notes: str | None = None,
@@ -520,7 +519,7 @@ class ChildHandle:
         self.health = HealthHandle(api, child_uid)
 
     @property
-    def uid(self) -> str:
+    def child_uid(self) -> str:
         """The child this handle is bound to."""
         return self._uid
 

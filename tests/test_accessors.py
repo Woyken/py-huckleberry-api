@@ -49,7 +49,7 @@ def make_child() -> tuple[FakeAPI, ChildHandle]:
 def test_child_handle_binds_uid_without_io() -> None:
     fake, child = make_child()
 
-    assert child.uid == "kid"
+    assert child.child_uid == "kid"
     assert child.sleep.child_uid == "kid"
     assert child.feeding.nursing.child_uid == "kid"
     assert fake.calls == []
@@ -157,6 +157,55 @@ def test_pump_activity_diaper_health_delegate() -> None:
         "list_health_entries",
     ]
 
+    # Payloads matter as much as the method name: a dropped or renamed
+    # argument would otherwise pass unnoticed.
+    assert fake.calls[1] == (
+        "complete_pump",
+        ("kid",),
+        {
+            "start_time": None,
+            "end_time": None,
+            "left_amount": None,
+            "right_amount": None,
+            "total_amount": 90,
+            "units": None,
+            "notes": None,
+        },
+    )
+    assert fake.calls[2] == (
+        "log_pump",
+        ("kid",),
+        {
+            "start_time": START,
+            "duration": 600,
+            "left_amount": None,
+            "right_amount": None,
+            "total_amount": None,
+            "units": "ml",
+            "notes": None,
+        },
+    )
+    assert fake.calls[5] == ("start_activity", ("kid", "bath"), {"start_time": START})
+    assert fake.calls[9] == (
+        "log_diaper",
+        ("kid",),
+        {
+            "start_time": START,
+            "mode": "pee",
+            "pee_amount": None,
+            "poo_amount": None,
+            "color": None,
+            "consistency": None,
+            "diaper_rash": False,
+            "notes": None,
+        },
+    )
+    assert fake.calls[13] == (
+        "log_growth",
+        ("kid",),
+        {"start_time": START, "weight": 5.5, "height": None, "head": None, "units": "metric"},
+    )
+
 
 def test_child_profile_delegates() -> None:
     fake, child = make_child()
@@ -178,5 +227,5 @@ def test_api_child_returns_a_bound_handle() -> None:
     child = api.child("kid")
 
     assert isinstance(child, ChildHandle)
-    assert child.uid == "kid"
+    assert child.child_uid == "kid"
     assert child.sleep.child_uid == "kid"
