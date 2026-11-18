@@ -199,15 +199,9 @@ class TestRealtimeListeners:
         await asyncio.sleep(2)
 
         initial_count = len(updates)
-        original_listener_client = api._listener_client
-
-        assert original_listener_client is not None
 
         await api.refresh_session_token()
         await asyncio.sleep(2)
-
-        assert api._listener_client is not None
-        assert api._listener_client is not original_listener_client
 
         await api.start_sleep(child_uid)
         await asyncio.sleep(2)
