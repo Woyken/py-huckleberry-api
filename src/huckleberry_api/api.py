@@ -13,6 +13,9 @@ mixin per feature so each tracker can be read and changed in isolation:
     _activity.py   activity timers and logs
     _history.py    date-range queries over saved history
     _listeners.py  real-time snapshot listeners
+    subscriptions.py  async document subscriptions (public types)
+    _accessors.py  child-scoped accessor mixin
+    accessors.py   ChildHandle and per-tracker handles (public types)
     _client.py     authentication, Firestore clients, timezone plumbing
 
 Modules prefixed with an underscore are internal. Shared constants live in
@@ -23,6 +26,7 @@ Modules prefixed with an underscore are internal. Shared constants live in
 from __future__ import annotations
 
 from ._account import AccountMixin
+from ._accessors import AccessorMixin
 from ._activity import ActivityMixin
 from ._diaper import DiaperMixin
 from ._feeding import FeedingMixin
@@ -47,6 +51,7 @@ class HuckleberryAPI(
     ActivityMixin,
     ListenerMixin,
     HistoryMixin,
+    AccessorMixin,
 ):
     """API client for Huckleberry.
 

@@ -123,6 +123,9 @@ asyncio.run(main())
 
 ## Real-time Listeners
 
+> The callback API below is deprecated in favour of [async subscriptions](#async-subscriptions).
+> It keeps working through 0.x and will be removed in 1.0.
+
 Set up real-time listeners for instant updates:
 
 ```python
@@ -149,6 +152,102 @@ async def main() -> None:
         await api.stop_all_listeners()
 ```
 
+## Child Handles
+
+The preferred shape binds a child once and groups the trackers under it. A handle
+is a stateless value object: it stores the uid and the client, never child data.
+
+```python
+child = api.child(child_uid)
+
+await child.sleep.start()
+rows = await child.sleep.history(start, end)
+
+# Live updates: this loop runs until you break or leave the context.
+async with child.sleep.watch() as sub:
+    async for snap in sub:
+        if not snap.exists:
+            continue                            # document deleted
+        print(snap.value.timer, snap.as_of)
+```
+
+| Handle | Live | One-shot | History |
+| --- | --- | --- | --- |
+| `child.sleep` | `.watch()` | `.state()` | `.history(start, end)` |
+| `child.feeding` | `.watch()` | `.state()` | `.history(...)` |
+| `child.feeding.nursing` | — | `.start/.pause/.resume/.switch_side` | via `child.feeding.history` |
+| `child.feeding.bottle` | — | `.log(...)` | via `child.feeding.history` |
+| `child.feeding.solids` | — | `.curated_foods()`, `.log(...)` | via `child.feeding.history` |
+| `child.pump` | `.watch()` | `.start/.pause/.resume/.complete` | `.history(...)` |
+| `child.activity` | `.watch()` | `.start(mode)` | `.history(...)` |
+| `child.diaper` | `.watch()` | `.log(...)`, `.log_potty(...)` | `.history(...)` |
+| `child.health` | `.watch()` | `.log_growth(...)`, `.log_medicine(...)` | `.history(...)` |
+| `child` itself | `.watch()` | `.profile()` | — |
+
+Account-scoped operations stay on the client: `api.get_user()`. The one
+account-wide lookup exposed on a handle is
+`child.feeding.solids.curated_foods()`, because it is only useful next to the
+meals you log from it.
+
+## Async Subscriptions
+
+`child.sleep.watch()` — or the equivalent flat `api.watch_sleep(child_uid)` —
+returns an async subscription for one document. It performs no I/O until first
+use, and it conflates updates: each step of `async for` gives you the newest
+state, never a backlog of stale ones.
+
+```python
+from huckleberry_api.firebase_types import FirebaseSleepDocumentData
+from huckleberry_api.subscriptions import Snapshot, Subscription, WatchFailed
+
+async def main() -> None:
+    async with aiohttp.ClientSession() as websession:
+        api = HuckleberryAPI(
+            email="your-email@example.com",
+            password="your-password",
+            timezone="Europe/London",
+            websession=websession,
+        )
+        await api.authenticate()
+        user_doc = await api.get_user()
+        child = api.child(user_doc.childList[0].cid)
+
+        async with child.sleep.watch() as sub:
+            print(sub.latest)          # Snapshot[FirebaseSleepDocumentData] | None
+            async for snap in sub:
+                if not snap.exists:
+                    continue           # document was deleted; the watch stays open
+                print(snap.value.timer, snap.as_of)
+```
+
+Every `Snapshot` carries `value`, `exists`, `as_of` (aware UTC), `seq` and
+`resync`:
+
+- `seq` is a per-receipt counter on the shared watch. A gap means snapshots were
+  conflated away while you were busy.
+- `resync` marks the first delivery to a subscription and the first delivery
+  after `reconnect()` or a token rotation, so you can tell "state restated" from
+  "state changed".
+
+`Subscription` methods:
+
+- `await sub.ready(timeout=None)` — the current state if any snapshot has
+  arrived, otherwise the next one. After a snapshot has been consumed, this still
+  reports the current state; `__anext__` is what advances. Raises `TimeoutError`
+  on timeout, `WatchFailed` on terminal failure, and `StopAsyncIteration` after
+  `aclose()` or a global stop.
+- `await sub.reconnect()` — reopen this document's watch and resync every
+  subscription on it.
+- `await sub.aclose()` — unsubscribe; leaving `async with` does this for you.
+
+`watch_sleep`, `watch_feed`, `watch_health`, `watch_diaper`, `watch_activity`,
+`watch_pump` and `watch_child` all share one watch per document, so several
+subscribers cost one connection.
+
+A stale `as_of` can mean "no writes" or "the token expired" — the SDK retries
+`Unauthenticated` forever. Call `await api.refresh_session_token()` if you suspect
+credentials; it rotates the transport and resyncs every subscription.
+
 ## API Methods
 
 ### Authentication
@@ -159,6 +258,7 @@ async def main() -> None:
 ### Children
 - `await get_user()` - Get full `users/{uid}` document
 - `await get_child(child_uid)` - Get a single child profile by id
+- `api.child(child_uid)` - Bind a child; returns `sleep`, `feeding`, `pump`, `activity`, `diaper` and `health` handles
 
 ### Sleep Tracking
 - `await get_sleep(child_uid)` - Get the typed sleep document and current timer state
@@ -236,6 +336,11 @@ async def main() -> None:
 - `await setup_health_listener(child_uid, callback)` - Listen to health updates
 - `await setup_pump_listener(child_uid, callback)` - Listen to pump updates
 - `await stop_all_listeners()` - Stop all active listeners
+- `watch_sleep(child_uid)` / `watch_feed` / `watch_health` / `watch_diaper` /
+  `watch_activity` / `watch_pump` / `watch_child` - Async subscription for one document
+- `await sub.ready(timeout=None)` - Current or next snapshot
+- `await sub.reconnect()` - Reopen the document's watch and resync
+- `await sub.aclose()` - Unsubscribe
 
 ## Type Definitions
 
@@ -260,11 +365,14 @@ This library uses:
 ### Package layout
 
 Modules prefixed with `_` are internal implementation. The supported surface is
-`HuckleberryAPI`, `firebase_types.py`, and `models.py`.
+`HuckleberryAPI`, `accessors.py`, `subscriptions.py`, `firebase_types.py`, and
+`models.py`.
 
 | Module | Responsibility |
 |---|---|
 | `api.py` | `HuckleberryAPI`, composed from the feature mixins (public) |
+| `accessors.py`, `_accessors.py` | Child-scoped handles: `ChildHandle` and per-tracker handles (public classes, private mixin) |
+| `subscriptions.py` | `Snapshot`, `Subscription`, `WatchFailed` (public) |
 | `firebase_types.py`, `models.py` | Firebase payload schemas and API input models (public) |
 | `_client.py` | Authentication, Firestore clients, timezone |
 | `_account.py` | Child and user profile reads |

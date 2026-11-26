@@ -4,11 +4,10 @@ import asyncio
 import time
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import Mock
 
 import aiohttp
 import pytest
-from google.cloud import firestore
+from google.cloud.firestore_v1 import AsyncClient
 
 from huckleberry_api import HuckleberryAPI
 
@@ -119,8 +118,8 @@ class TestAuthentication:
         user_doc = await api.get_user()
         assert user_doc is not None
 
-    async def test_refresh_session_token_recreates_listener_client(self, websession: aiohttp.ClientSession) -> None:
-        """Test token refresh drops the cached listener client before recreating listeners."""
+    async def test_refresh_session_token_rotates_watch_transport(self, websession: aiohttp.ClientSession) -> None:
+        """Test token refresh rebuilds the Firestore clients and rotates the watches."""
 
         class FakeResponse:
             def __init__(self) -> None:
@@ -149,39 +148,31 @@ class TestAuthentication:
         api = HuckleberryAPI(email="listener@test.com", password="password", timezone="UTC", websession=websession)
         api.id_token = "stale-id-token"
         api.refresh_token = "stale-refresh-token"
+        api._firestore_client = cast(AsyncClient, object())
+        api._firestore_client_loop = asyncio.get_running_loop()
 
-        stale_listener_client = cast(firestore.Client, object())
-        unsubscribe = Mock()
-        callback = Mock()
+        rotated_tokens: list[str] = []
 
-        api._listener_client = stale_listener_client
-        api._listeners["sleep_child-123"] = SimpleNamespace(unsubscribe=unsubscribe)
-        api._listener_callbacks["sleep_child-123"] = ("sleep", "child-123", callback)
+        class FakeHub:
+            async def rotate(self, token: str) -> None:
+                rotated_tokens.append(token)
 
-        observed_listener_clients: list[object | None] = []
+        api._watch_hub = FakeHub()
 
         def fake_post(*args, **kwargs) -> FakeResponse:
             return FakeResponse()
 
-        async def fake_setup_sleep_listener(child_uid: str, received_callback) -> None:
-            assert child_uid == "child-123"
-            assert received_callback is callback
-            observed_listener_clients.append(api._listener_client)
-            api._listener_client = cast(firestore.Client, object())
-
         monkeypatch = pytest.MonkeyPatch()
         monkeypatch.setattr(websession, "post", fake_post)
-        monkeypatch.setattr(api, "setup_sleep_listener", fake_setup_sleep_listener)
 
         try:
             await api.refresh_session_token()
         finally:
             monkeypatch.undo()
 
-        unsubscribe.assert_called_once_with()
-        assert observed_listener_clients == [None]
-        assert api._listener_client is not None
-        assert api._listener_client is not stale_listener_client
+        assert rotated_tokens == ["fresh-id-token"]
+        assert api._firestore_client is None
+        assert api._firestore_client_loop is None
         assert api.id_token == "fresh-id-token"
         assert api.refresh_token == "fresh-refresh-token"
 

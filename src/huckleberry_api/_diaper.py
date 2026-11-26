@@ -9,6 +9,7 @@ from google.api_core.exceptions import GoogleAPICallError
 from typing import Literal
 from ._client import HuckleberryBase
 from ._common import _LOGGER
+from .firebase_types import DiaperAmount
 from .firebase_types import DiaperMode
 from .firebase_types import FirebaseDiaperData
 from .firebase_types import FirebaseDiaperDocumentData
@@ -31,8 +32,8 @@ class DiaperMixin(HuckleberryBase):
         *,
         start_time: datetime,
         pref_field: Literal["lastDiaper", "lastPotty"],
-        pee_amount: Literal["little", "medium", "big"] | None = None,
-        poo_amount: Literal["little", "medium", "big"] | None = None,
+        pee_amount: DiaperAmount | None = None,
+        poo_amount: DiaperAmount | None = None,
         color: PooColor | None = None,
         consistency: PooConsistency | None = None,
         diaper_rash: bool = False,
@@ -145,8 +146,8 @@ class DiaperMixin(HuckleberryBase):
         *,
         start_time: datetime,
         mode: DiaperMode,
-        pee_amount: Literal["little", "medium", "big"] | None = None,
-        poo_amount: Literal["little", "medium", "big"] | None = None,
+        pee_amount: DiaperAmount | None = None,
+        poo_amount: DiaperAmount | None = None,
         color: PooColor | None = None,
         consistency: PooConsistency | None = None,
         diaper_rash: bool = False,
@@ -186,8 +187,8 @@ class DiaperMixin(HuckleberryBase):
         start_time: datetime,
         mode: DiaperMode,
         how_it_happened: PottyResult,
-        pee_amount: Literal["little", "medium", "big"] | None = None,
-        poo_amount: Literal["little", "medium", "big"] | None = None,
+        pee_amount: DiaperAmount | None = None,
+        poo_amount: DiaperAmount | None = None,
         color: PooColor | None = None,
         consistency: PooConsistency | None = None,
         notes: str | None = None,
