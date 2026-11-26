@@ -1,0 +1,25 @@
+{
+ "action": "Pump timer started",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "pump/<child>",
+   "payload": {
+    "added": {
+     "timer.entryMode": "total",
+     "timer.paused": false,
+     "timer.units": "ml"
+    },
+    "changed": {
+     "timer.active": true,
+     "timer.local_timestamp": 1767225600.001,
+     "timer.startTime": 1767225600000.0,
+     "timer.timestamp.seconds": 1767225600.001
+    },
+    "removed": []
+   }
+  }
+ ],
+ "id": "pump_timer_started",
+ "tracker": "pump"
+}

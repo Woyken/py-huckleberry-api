@@ -1,0 +1,1232 @@
+{
+ "fixtures": [
+  {
+   "id": "activity_bath",
+   "tracker": "activity",
+   "action": "Activity, Bath, no duration",
+   "documents": [
+    "activities/<child>",
+    "childs/<child>",
+    "health/<child>",
+    "activities/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "activity_bath_duration",
+   "tracker": "activity",
+   "action": "Activity, Bath, manual duration (picker default)",
+   "documents": [
+    "activities/<child>",
+    "childs/<child>",
+    "health/<child>",
+    "activities/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "activity_bath_timer",
+   "tracker": "activity",
+   "action": "Activity, Bath, timer start/pause/save",
+   "documents": [
+    "activities/<child>",
+    "childs/<child>",
+    "health/<child>",
+    "activities/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "activity_brush_teeth",
+   "tracker": "activity",
+   "action": "Activity, Brush teeth, no duration",
+   "documents": [
+    "activities/<child>",
+    "childs/<child>",
+    "health/<child>",
+    "activities/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "activity_indoor_play",
+   "tracker": "activity",
+   "action": "Activity, Indoor play, no duration",
+   "documents": [
+    "activities/<child>",
+    "childs/<child>",
+    "health/<child>",
+    "activities/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "activity_outdoor_play",
+   "tracker": "activity",
+   "action": "Activity, Outdoor play, no duration",
+   "documents": [
+    "activities/<child>",
+    "childs/<child>",
+    "health/<child>",
+    "activities/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "activity_screen_time",
+   "tracker": "activity",
+   "action": "Activity, Screen time, no duration",
+   "documents": [
+    "activities/<child>",
+    "childs/<child>",
+    "health/<child>",
+    "activities/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "activity_skin_to_skin",
+   "tracker": "activity",
+   "action": "Activity, Skin to skin, no duration",
+   "documents": [
+    "activities/<child>",
+    "childs/<child>",
+    "health/<child>",
+    "activities/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "activity_story_time",
+   "tracker": "activity",
+   "action": "Activity, Story time, no duration",
+   "documents": [
+    "activities/<child>",
+    "childs/<child>",
+    "health/<child>",
+    "activities/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "activity_tummy_time",
+   "tracker": "activity",
+   "action": "Activity, Tummy time, manual duration (picker default)",
+   "documents": [
+    "activities/<child>",
+    "childs/<child>",
+    "health/<child>",
+    "activities/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "bottle_cow_milk",
+   "tracker": "feed",
+   "action": "Bottle, Cow milk, 100 mL",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "bottle_formula",
+   "tracker": "feed",
+   "action": "Bottle, Formula, 100 mL",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "bottle_goat_milk",
+   "tracker": "feed",
+   "action": "Bottle, Goat milk, 100 mL",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "bottle_other",
+   "tracker": "feed",
+   "action": "Bottle, Other, 100 mL",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "bottle_soy_milk",
+   "tracker": "feed",
+   "action": "Bottle, Soy milk, 100 mL",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "bottle_tube_feeding",
+   "tracker": "feed",
+   "action": "Bottle, Tube feeding, 100 mL",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "diaper_dry",
+   "tracker": "diaper",
+   "action": "Diaper, Dry",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "diaper_mixed",
+   "tracker": "diaper",
+   "action": "Diaper, Mixed",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "diaper_pee",
+   "tracker": "diaper",
+   "action": "Diaper, Pee",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "diaper_pee_details",
+   "tracker": "diaper",
+   "action": "Diaper, Pee, Medium, note",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "diaper_poo",
+   "tracker": "diaper",
+   "action": "Diaper, Poo",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "diaper_poo_details",
+   "tracker": "diaper",
+   "action": "Diaper, Poo, Big, Runny, rash",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "diaper_poo_hard",
+   "tracker": "diaper",
+   "action": "Diaper, Poo, Hard",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "diaper_poo_little",
+   "tracker": "diaper",
+   "action": "Diaper, Poo, Little",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "diaper_poo_loose",
+   "tracker": "diaper",
+   "action": "Diaper, Poo, Loose",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "diaper_poo_mucousy",
+   "tracker": "diaper",
+   "action": "Diaper, Poo, Mucousy",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "diaper_poo_solid",
+   "tracker": "diaper",
+   "action": "Diaper, Poo, Solid",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_bottle_ml_0",
+   "tracker": "feed",
+   "action": "Bottle, mL, amount 0",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_bottle_ml_100",
+   "tracker": "feed",
+   "action": "Bottle, mL, 100 ml",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_bottle_ml_100_note",
+   "tracker": "feed",
+   "action": "Bottle, mL, 100 ml, note",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_bottle_oz_025",
+   "tracker": "feed",
+   "action": "Bottle, oz, 0.25 oz",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_bottle_oz_3",
+   "tracker": "feed",
+   "action": "Bottle, oz, 3.00 oz",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_nursing_manual_asym",
+   "tracker": "feed",
+   "action": "Nursing manual, total 15 then left 10 min",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_nursing_manual_note",
+   "tracker": "feed",
+   "action": "Nursing manual, 10 min, note",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_nursing_manual_total15",
+   "tracker": "feed",
+   "action": "Nursing manual, total 15 min, last left",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_nursing_timer_completed_left",
+   "tracker": "feed",
+   "action": "Nursing timer left, pause, save",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_nursing_timer_left_started",
+   "tracker": "feed",
+   "action": "Nursing, start left timer",
+   "documents": [
+    "feed/<child>"
+   ],
+   "changes": [
+    "updated"
+   ]
+  },
+  {
+   "id": "feed_nursing_timer_paused",
+   "tracker": "feed",
+   "action": "Nursing, start left timer then pause",
+   "documents": [
+    "feed/<child>"
+   ],
+   "changes": [
+    "updated"
+   ]
+  },
+  {
+   "id": "feed_nursing_timer_switch_right",
+   "tracker": "feed",
+   "action": "Nursing timer left, switch right, pause, save",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_solids_avocado_allergic",
+   "tracker": "feed",
+   "action": "Solids, avocado, Allergic reaction",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_solids_avocado_disliked",
+   "tracker": "feed",
+   "action": "Solids, avocado, Disliked",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_solids_avocado_loved",
+   "tracker": "feed",
+   "action": "Solids, avocado, Loved",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_solids_avocado_note",
+   "tracker": "feed",
+   "action": "Solids, avocado, Loved, note",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_solids_avocado_okay",
+   "tracker": "feed",
+   "action": "Solids, avocado, Okay",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_solids_avocado_plain",
+   "tracker": "feed",
+   "action": "Solids, avocado, no reaction",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_solids_custom_created",
+   "tracker": "feed",
+   "action": "Solids, create custom food only",
+   "documents": [
+    "types/<child>/custom/<doc>"
+   ],
+   "changes": [
+    "created"
+   ]
+  },
+  {
+   "id": "feed_solids_custom_logged",
+   "tracker": "feed",
+   "action": "Solids, create custom food then log it",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>",
+    "types/<child>/custom/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created",
+    "created"
+   ]
+  },
+  {
+   "id": "feed_solids_two_foods",
+   "tracker": "feed",
+   "action": "Solids, avocado Loved + banana Disliked",
+   "documents": [
+    "childs/<child>",
+    "feed/<child>",
+    "health/<child>",
+    "feed/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "growth_all_kg_cm",
+   "tracker": "health",
+   "action": "Growth, weight kg + height 75 cm + head cm",
+   "documents": [
+    "health/<child>",
+    "health/<child>/data/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "growth_head_in",
+   "tracker": "health",
+   "action": "Growth, head circumference in",
+   "documents": [
+    "health/<child>",
+    "health/<child>/data/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "growth_height_in",
+   "tracker": "health",
+   "action": "Growth, height 30 in",
+   "documents": [
+    "health/<child>",
+    "health/<child>/data/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "growth_weight_imperial",
+   "tracker": "health",
+   "action": "Growth, weight in lbs.oz",
+   "documents": [
+    "health/<child>",
+    "health/<child>/data/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "growth_weight_kg",
+   "tracker": "health",
+   "action": "Growth, weight in kg",
+   "documents": [
+    "health/<child>",
+    "health/<child>/data/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "medicine_blank_amount",
+   "tracker": "health",
+   "action": "Medicine, ml, no amount",
+   "documents": [
+    "health/<child>",
+    "health/<child>/data/<doc>",
+    "health/<child>/types/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "created",
+    "updated"
+   ]
+  },
+  {
+   "id": "medicine_drops_10",
+   "tracker": "health",
+   "action": "Medicine, drops, 10",
+   "documents": [
+    "health/<child>",
+    "health/<child>/data/<doc>",
+    "health/<child>/types/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "created",
+    "updated"
+   ]
+  },
+  {
+   "id": "medicine_ml_5",
+   "tracker": "health",
+   "action": "Medicine, ml, 5",
+   "documents": [
+    "health/<child>",
+    "health/<child>/data/<doc>",
+    "health/<child>/types/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "created",
+    "updated"
+   ]
+  },
+  {
+   "id": "medicine_new_type",
+   "tracker": "health",
+   "action": "Medicine, create type only",
+   "documents": [
+    "health/<child>/types/<doc>"
+   ],
+   "changes": [
+    "created"
+   ]
+  },
+  {
+   "id": "medicine_note",
+   "tracker": "health",
+   "action": "Medicine, ml, 5, note",
+   "documents": [
+    "health/<child>",
+    "health/<child>/data/<doc>",
+    "health/<child>/types/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "created",
+    "updated"
+   ]
+  },
+  {
+   "id": "medicine_oz_1",
+   "tracker": "health",
+   "action": "Medicine, oz, 1",
+   "documents": [
+    "health/<child>",
+    "health/<child>/data/<doc>",
+    "health/<child>/types/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "created",
+    "updated"
+   ]
+  },
+  {
+   "id": "medicine_tsp_2",
+   "tracker": "health",
+   "action": "Medicine, tsp, 2",
+   "documents": [
+    "health/<child>",
+    "health/<child>/data/<doc>",
+    "health/<child>/types/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "created",
+    "updated"
+   ]
+  },
+  {
+   "id": "potty_accident_poo",
+   "tracker": "diaper",
+   "action": "Potty, accident, Poo",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "potty_mixed",
+   "tracker": "diaper",
+   "action": "Potty, success, Mixed",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "potty_sat_dry",
+   "tracker": "diaper",
+   "action": "Potty, Sat but dry",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "potty_success_pee",
+   "tracker": "diaper",
+   "action": "Potty, success, Pee, Medium",
+   "documents": [
+    "childs/<child>",
+    "diaper/<child>",
+    "health/<child>",
+    "diaper/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "pump_blank_amount",
+   "tracker": "pump",
+   "action": "Pump, save with the retained default amount (33 mL total)",
+   "documents": [
+    "childs/<child>",
+    "health/<child>",
+    "pump/<child>",
+    "pump/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "pump_leftright_ml",
+   "tracker": "pump",
+   "action": "Pump, left 60 mL / right 40 mL",
+   "documents": [
+    "childs/<child>",
+    "health/<child>",
+    "pump/<child>",
+    "pump/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "pump_note",
+   "tracker": "pump",
+   "action": "Pump, total, mL, 60, note",
+   "documents": [
+    "childs/<child>",
+    "health/<child>",
+    "pump/<child>",
+    "pump/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "pump_timer_completed",
+   "tracker": "pump",
+   "action": "Pump timer start, pause, save",
+   "documents": [
+    "childs/<child>",
+    "health/<child>",
+    "pump/<child>",
+    "pump/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "pump_timer_started",
+   "tracker": "pump",
+   "action": "Pump timer started",
+   "documents": [
+    "pump/<child>"
+   ],
+   "changes": [
+    "updated"
+   ]
+  },
+  {
+   "id": "pump_total_ml_100",
+   "tracker": "pump",
+   "action": "Pump, total, mL, 100",
+   "documents": [
+    "childs/<child>",
+    "health/<child>",
+    "pump/<child>",
+    "pump/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "pump_total_oz_2",
+   "tracker": "pump",
+   "action": "Pump, total, oz, 0.02 oz committed",
+   "documents": [
+    "childs/<child>",
+    "health/<child>",
+    "pump/<child>",
+    "pump/<child>/intervals/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "sleep_timer_completed",
+   "tracker": "sleep",
+   "action": "Tap Save on the paused sleep form (creates one interval)",
+   "documents": [
+    "sleep/<child>",
+    "sleep/<child>/intervals/interval-1"
+   ],
+   "changes": [
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "sleep_timer_paused",
+   "tracker": "sleep",
+   "action": "Tap STOP on the running sleep timer (pauses; timerEndTime set)",
+   "documents": [
+    "sleep/<child>"
+   ],
+   "changes": [
+    "updated"
+   ]
+  },
+  {
+   "id": "sleep_timer_started",
+   "tracker": "sleep",
+   "action": "Open Add sleep, tap START (timer running)",
+   "documents": [
+    "sleep/<child>"
+   ],
+   "changes": [
+    "updated"
+   ]
+  },
+  {
+   "id": "temperature_c",
+   "tracker": "health",
+   "action": "Temperature, Celsius, retained value",
+   "documents": [
+    "childs/<child>",
+    "health/<child>",
+    "health/<child>/data/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "temperature_c_note",
+   "tracker": "health",
+   "action": "Temperature, Celsius, note",
+   "documents": [
+    "childs/<child>",
+    "health/<child>",
+    "health/<child>/data/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "created"
+   ]
+  },
+  {
+   "id": "temperature_f",
+   "tracker": "health",
+   "action": "Temperature, Fahrenheit, retained value",
+   "documents": [
+    "childs/<child>",
+    "health/<child>",
+    "health/<child>/data/<doc>"
+   ],
+   "changes": [
+    "updated",
+    "updated",
+    "created"
+   ]
+  }
+ ],
+ "count": 77
+}

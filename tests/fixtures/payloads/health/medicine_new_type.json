@@ -1,0 +1,17 @@
+{
+ "action": "Medicine, create type only",
+ "documents": [
+  {
+   "change": "created",
+   "path": "health/<child>/types/<doc>",
+   "payload": {
+    "_id": "<id>",
+    "active": true,
+    "mode": "medication",
+    "name": "<medicine>"
+   }
+  }
+ ],
+ "id": "medicine_new_type",
+ "tracker": "health"
+}

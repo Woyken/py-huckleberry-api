@@ -1,0 +1,68 @@
+{
+ "action": "Nursing timer left, pause, save",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.breastfeed_logged.count": 1.0,
+     "analytics.breastfeed_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "feed/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastNursing.duration": 5.0,
+     "prefs.lastNursing.leftDuration": 5.0,
+     "prefs.lastNursing.offset": -120.0,
+     "prefs.lastNursing.start": 1767225600.0,
+     "prefs.lastSide.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225609.454,
+     "prefs.timestamp.seconds": 1767225609.454,
+     "timer.feedStartTime": 1767225600.0,
+     "timer.local_timestamp": 1767225609.227,
+     "timer.timerStartTime": 1767225609.0,
+     "timer.timestamp.seconds": 1767225609.227,
+     "timer.uuid": "<id>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225609.488,
+     "prefs.timestamp.seconds": 1767225609.488
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "feed/<child>/intervals/<doc>",
+   "payload": {
+    "end_offset": -120.0,
+    "lastSide": "left",
+    "lastUpdated": 1767225609.285,
+    "leftDuration": 5.0,
+    "mode": "breast",
+    "offset": -120.0,
+    "rightDuration": 0.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "feed_nursing_timer_completed_left",
+ "tracker": "feed"
+}

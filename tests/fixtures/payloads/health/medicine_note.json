@@ -1,0 +1,54 @@
+{
+ "action": "Medicine, ml, 5, note",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastMedication._id": "<id>",
+     "prefs.lastMedication.amount": 5.0,
+     "prefs.lastMedication.lastUpdated": 1767225639.837,
+     "prefs.lastMedication.multientry_key": null,
+     "prefs.lastMedication.notes": "<note>",
+     "prefs.lastMedication.offset": -120.0,
+     "prefs.lastMedication.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225640.051,
+     "prefs.timestamp.seconds": 1767225640.051
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "health/<child>/data/<doc>",
+   "payload": {
+    "amount": 5.0,
+    "lastUpdated": 1767225639.837,
+    "medication_id": "<id>",
+    "medication_name": "<medicine>",
+    "mode": "medication",
+    "notes": "<note>",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>",
+    "units": "ml"
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>/types/<doc>",
+   "payload": {
+    "added": {
+     "lastTake.amount": 5.0,
+     "lastTake.units": "ml"
+    },
+    "changed": {},
+    "removed": []
+   }
+  }
+ ],
+ "id": "medicine_note",
+ "tracker": "health"
+}

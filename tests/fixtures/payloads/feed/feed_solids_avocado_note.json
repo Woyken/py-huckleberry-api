@@ -1,0 +1,77 @@
+{
+ "action": "Solids, avocado, Loved, note",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.solid_logged.count": 1.0,
+     "analytics.solid_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "feed/<child>",
+   "payload": {
+    "added": {
+     "prefs.lastSolid.foods.<id>.notes": "<note>",
+     "prefs.lastSolid.foods.<id>.order": 0.0,
+     "prefs.lastSolid.foods.<id>.reaction": "LOVED"
+    },
+    "changed": {
+     "prefs.lastSolid.offset": -120.0,
+     "prefs.lastSolid.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225622.531,
+     "prefs.timestamp.seconds": 1767225622.531
+    },
+    "removed": [
+     "prefs.lastSolid.foods.<id>",
+     "prefs.lastSolid.foods.<id>.amount",
+     "prefs.lastSolid.notes"
+    ]
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225622.574,
+     "prefs.timestamp.seconds": 1767225622.574
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "feed/<child>/intervals/<doc>",
+   "payload": {
+    "foods": {
+     "<id:1>": {
+      "created_name": "avocado",
+      "id": "<id>",
+      "notes": "<note>",
+      "order": 0.0,
+      "reaction": "LOVED",
+      "source": "curated"
+     }
+    },
+    "lastUpdated": 1767225622.376,
+    "mode": "solids",
+    "offset": -120.0,
+    "reactions": {
+     "LOVED": true
+    },
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "feed_solids_avocado_note",
+ "tracker": "feed"
+}

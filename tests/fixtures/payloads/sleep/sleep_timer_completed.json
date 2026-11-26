@@ -1,0 +1,44 @@
+{
+ "action": "Tap Save on the paused sleep form (creates one interval)",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "sleep/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastSleep.duration": 100.056,
+     "prefs.lastSleep.offset": -120.0,
+     "prefs.lastSleep.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225757.602,
+     "prefs.timestamp.seconds": 1767225757.602,
+     "timer.active": false,
+     "timer.local_timestamp": 1767225765.526,
+     "timer.paused": false,
+     "timer.timerStartTime": null,
+     "timer.timestamp.seconds": 1767225765.526
+    },
+    "removed": [
+     "timer.details",
+     "timer.timerEndTime"
+    ]
+   }
+  },
+  {
+   "change": "created",
+   "path": "sleep/<child>/intervals/interval-1",
+   "payload": {
+    "_id": "<id>",
+    "details": {},
+    "duration": 100.056,
+    "end_offset": -120.0,
+    "lastUpdated": 1767225757.357,
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "sleep_timer_completed",
+ "tracker": "sleep"
+}

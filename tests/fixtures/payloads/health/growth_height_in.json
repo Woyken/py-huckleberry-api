@@ -1,0 +1,36 @@
+{
+ "action": "Growth, height 30 in",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225648.606,
+     "prefs.timestamp.seconds": 1767225648.606
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "health/<child>/data/<doc>",
+   "payload": {
+    "head": 45.0,
+    "headUnits": "hcm",
+    "height": 70.0,
+    "heightUnits": "ft.in",
+    "lastUpdated": 1767225648.421,
+    "mode": "growth",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>",
+    "weight": 10.0,
+    "weightUnits": "kg"
+   }
+  }
+ ],
+ "id": "growth_height_in",
+ "tracker": "health"
+}

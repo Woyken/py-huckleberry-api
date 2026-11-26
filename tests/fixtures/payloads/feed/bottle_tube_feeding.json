@@ -1,0 +1,63 @@
+{
+ "action": "Bottle, Tube feeding, 100 mL",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.bottle_logged.count": 1.0,
+     "analytics.bottle_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "feed/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.bottleAmount": 100.0,
+     "prefs.bottleType": "Tube Feeding",
+     "prefs.lastBottle.bottleAmount": 100.0,
+     "prefs.lastBottle.bottleType": "Tube Feeding",
+     "prefs.lastBottle.offset": -120.0,
+     "prefs.lastBottle.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225656.913,
+     "prefs.timestamp.seconds": 1767225656.913
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225656.958,
+     "prefs.timestamp.seconds": 1767225656.958
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "feed/<child>/intervals/<doc>",
+   "payload": {
+    "amount": 100.0,
+    "bottleType": "Tube Feeding",
+    "lastUpdated": 1767225656.781,
+    "mode": "bottle",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>",
+    "units": "ml"
+   }
+  }
+ ],
+ "id": "bottle_tube_feeding",
+ "tracker": "feed"
+}

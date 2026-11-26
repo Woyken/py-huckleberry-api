@@ -1,0 +1,34 @@
+{
+ "action": "Growth, weight in kg",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225618.583,
+     "prefs.timestamp.seconds": 1767225618.583
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "health/<child>/data/<doc>",
+   "payload": {
+    "head": 45.0,
+    "headUnits": "hcm",
+    "lastUpdated": 1767225618.364,
+    "mode": "growth",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>",
+    "weight": 10.0,
+    "weightUnits": "kg"
+   }
+  }
+ ],
+ "id": "growth_weight_kg",
+ "tracker": "health"
+}

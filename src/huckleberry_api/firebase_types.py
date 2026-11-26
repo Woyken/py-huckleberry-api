@@ -386,6 +386,10 @@ class FirebaseSleepIntervalData(StrictModel):
     """sleep/{child_uid}/intervals/{interval_id}.
 
     Sleep history rows are written to `intervals` subcollection (not root doc).
+
+    `tz` is an IANA zone name (for example "Etc/UTC"). It is written by
+    app 0.9.316 for intervals created from a sleep timer save; older rows in
+    the same child's history omit it, so it must stay optional.
     """
 
     id_: str | None = Field(default=None, alias="_id")
@@ -395,6 +399,7 @@ class FirebaseSleepIntervalData(StrictModel):
     end_offset: Number | None = None
     details: FirebaseSleepDetails | None = None
     lastUpdated: Number | None = None
+    tz: str | None = None
 
 
 class FirebaseSleepMultiContainer(StrictModel):
@@ -449,12 +454,20 @@ class FirebaseLastBottleData(StrictModel):
 
 
 class SolidsFoodEntry(StrictModel):
-    """Solid food item payload stored under solids interval foods map."""
+    """Solid food item payload stored under solids interval foods map.
+
+    Captured from app 0.9.316: entries also carry the per-food reaction state
+    (`reaction` or `allergic`), the display `order`, and an optional note.
+    """
 
     id: str
     created_name: str
     source: SolidsFoodSource
     amount: str | Number | None = None
+    order: Number | None = None
+    reaction: SolidsReaction | None = None
+    allergic: bool | None = None
+    notes: str | None = None
 
 
 class FirebaseLastSolidData(StrictModel):
@@ -581,6 +594,8 @@ class FirebaseBreastFeedIntervalData(StrictModel):
     offset: Number
     end_offset: Number | None = None
     notes: str | None = None
+    # IANA zone name written by app 0.9.316 on every new interval row.
+    tz: str | None = None
 
 
 class FirebaseBottleFeedIntervalData(StrictModel):
@@ -601,6 +616,8 @@ class FirebaseBottleFeedIntervalData(StrictModel):
     offset: Number
     end_offset: Number | None = None
     notes: str | None = None
+    # IANA zone name written by app 0.9.316 on every new interval row.
+    tz: str | None = None
 
 
 class FirebaseSolidsFeedIntervalData(StrictModel):
@@ -619,6 +636,8 @@ class FirebaseSolidsFeedIntervalData(StrictModel):
     foodNoteImage: str | None = None
     multientry_key: str | None = None
     end_offset: Number | None = None
+    # IANA zone name written by app 0.9.316 on every new interval row.
+    tz: str | None = None
 
 
 FirebaseFeedIntervalData: TypeAlias = (
@@ -673,6 +692,8 @@ class FirebaseDiaperData(StrictModel):
     notes: str | None = None
     isPotty: bool | None = None
     howItHappened: PottyResult | None = None
+    # IANA zone name written by app 0.9.316 on every new interval row.
+    tz: str | None = None
 
 
 class FirebaseLastDiaperData(StrictModel):
@@ -738,6 +759,8 @@ class FirebaseGrowthData(StrictModel):
     heightUnits: HeightUnits | None = None
     head: Number | None = None
     headUnits: HeadUnits | None = None
+    # IANA zone name written by app 0.9.316 on every new health row.
+    tz: str | None = None
 
 
 class FirebaseLastGrowthData(FirebaseGrowthData):
@@ -787,7 +810,8 @@ class FirebaseMedicationData(StrictModel):
     App-created history rows omit `_id`, `type`, `isNight`, and
     `multientry_key`, while storing an empty string when notes are omitted.
     Current standalone rows include `lastUpdated`; older batched rows may
-    omit it. A blank amount is stored as `0.0` and omits `units`.
+    omit it. A blank amount is stored as `0.0`; app 0.9.316 still writes the
+    selected `units` in that case.
     """
 
     mode: Literal["medication"]
@@ -799,6 +823,8 @@ class FirebaseMedicationData(StrictModel):
     amount: Number
     units: MedicationUnits | None = None
     notes: str
+    # IANA zone name written by app 0.9.316 on every new health row.
+    tz: str | None = None
 
 
 class FirebaseLastMedicationData(FirebaseMedicationData):
@@ -836,6 +862,8 @@ class FirebaseTemperatureData(StrictModel):
     amount: Number
     units: TemperatureUnits
     notes: str | None = None
+    # IANA zone name written by app 0.9.316 on every new health row.
+    tz: str | None = None
 
 
 class FirebaseLastTemperatureData(StrictModel):
@@ -970,6 +998,8 @@ class FirebasePumpIntervalData(StrictModel):
     end_offset: Number | None = None
     lastUpdated: Number | None = None
     notes: str | None = None
+    # IANA zone name written by app 0.9.316 on every new interval row.
+    tz: str | None = None
 
 
 class FirebasePumpMultiContainer(StrictModel):
@@ -1077,6 +1107,8 @@ class FirebaseActivityIntervalData(StrictModel):
     end_offset: Number | None = None
     lastUpdated: Number | None = None
     notes: str | None = None
+    # IANA zone name written by app 0.9.316 on every new interval row.
+    tz: str | None = None
 
 
 class FirebaseActivityMultiContainer(StrictModel):

@@ -1,0 +1,54 @@
+{
+ "action": "Medicine, tsp, 2",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastMedication._id": "<id>",
+     "prefs.lastMedication.amount": 2.0,
+     "prefs.lastMedication.lastUpdated": 1767225625.472,
+     "prefs.lastMedication.multientry_key": null,
+     "prefs.lastMedication.offset": -120.0,
+     "prefs.lastMedication.start": 1767225600.0,
+     "prefs.lastMedication.units": "tsp",
+     "prefs.local_timestamp": 1767225625.639,
+     "prefs.timestamp.seconds": 1767225625.639
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "health/<child>/data/<doc>",
+   "payload": {
+    "amount": 2.0,
+    "lastUpdated": 1767225625.472,
+    "medication_id": "<id>",
+    "medication_name": "<medicine>",
+    "mode": "medication",
+    "notes": "",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>",
+    "units": "tsp"
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>/types/<doc>",
+   "payload": {
+    "added": {
+     "lastTake.amount": 2.0,
+     "lastTake.units": "tsp"
+    },
+    "changed": {},
+    "removed": []
+   }
+  }
+ ],
+ "id": "medicine_tsp_2",
+ "tracker": "health"
+}

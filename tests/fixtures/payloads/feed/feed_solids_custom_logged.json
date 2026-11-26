@@ -1,0 +1,93 @@
+{
+ "action": "Solids, create custom food then log it",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.solid_logged.count": 1.0,
+     "analytics.solid_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "feed/<child>",
+   "payload": {
+    "added": {
+     "prefs.lastSolid.foods.<id>": {
+      "created_name": "<food>",
+      "id": "<id>",
+      "order": 0.0,
+      "reaction": "LOVED",
+      "source": "custom"
+     }
+    },
+    "changed": {
+     "prefs.lastSolid.offset": -120.0,
+     "prefs.lastSolid.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225609.23,
+     "prefs.timestamp.seconds": 1767225609.23
+    },
+    "removed": [
+     "prefs.lastSolid.foods.<id>",
+     "prefs.lastSolid.notes"
+    ]
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225609.27,
+     "prefs.timestamp.seconds": 1767225609.27
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "feed/<child>/intervals/<doc>",
+   "payload": {
+    "foods": {
+     "<id:1>": {
+      "created_name": "<food>",
+      "id": "<id>",
+      "order": 0.0,
+      "reaction": "LOVED",
+      "source": "custom"
+     }
+    },
+    "lastUpdated": 1767225608.999,
+    "mode": "solids",
+    "offset": -120.0,
+    "reactions": {
+     "LOVED": true
+    },
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  },
+  {
+   "change": "created",
+   "path": "types/<child>/custom/<doc>",
+   "payload": {
+    "archived": false,
+    "created_at": "<datetime>",
+    "id": "<id>",
+    "image": "",
+    "name": "<food>",
+    "source": "custom",
+    "type": "solids",
+    "updated_at": "<datetime>"
+   }
+  }
+ ],
+ "id": "feed_solids_custom_logged",
+ "tracker": "feed"
+}

@@ -1,0 +1,72 @@
+{
+ "action": "Pump timer start, pause, save",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.pumping_logged.count": 1.0,
+     "analytics.pumping_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225633.934,
+     "prefs.timestamp.seconds": 1767225633.934
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "pump/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastPump.duration": 24.594,
+     "prefs.lastPump.leftAmount": 17.5,
+     "prefs.lastPump.offset": -120.0,
+     "prefs.lastPump.rightAmount": 17.5,
+     "prefs.lastPump.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225633.912,
+     "prefs.timestamp.seconds": 1767225633.912,
+     "timer.active": false,
+     "timer.endTime": null,
+     "timer.local_timestamp": 1767225641.833,
+     "timer.paused": false,
+     "timer.startTime": null,
+     "timer.timestamp.seconds": 1767225641.833
+    },
+    "removed": [
+     "timer.units"
+    ]
+   }
+  },
+  {
+   "change": "created",
+   "path": "pump/<child>/intervals/<doc>",
+   "payload": {
+    "duration": 24.594,
+    "end_offset": -120.0,
+    "entryMode": "total",
+    "lastUpdated": 1767225633.741,
+    "leftAmount": 17.5,
+    "offset": -120.0,
+    "rightAmount": 17.5,
+    "start": 1767225600.0,
+    "tz": "<tz>",
+    "units": "ml"
+   }
+  }
+ ],
+ "id": "pump_timer_completed",
+ "tracker": "pump"
+}

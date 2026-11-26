@@ -1,0 +1,63 @@
+{
+ "action": "Bottle, Soy milk, 100 mL",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.bottle_logged.count": 1.0,
+     "analytics.bottle_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "feed/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.bottleAmount": 100.0,
+     "prefs.bottleType": "Soy Milk",
+     "prefs.lastBottle.bottleAmount": 100.0,
+     "prefs.lastBottle.bottleType": "Soy Milk",
+     "prefs.lastBottle.offset": -120.0,
+     "prefs.lastBottle.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225675.057,
+     "prefs.timestamp.seconds": 1767225675.057
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225675.102,
+     "prefs.timestamp.seconds": 1767225675.102
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "feed/<child>/intervals/<doc>",
+   "payload": {
+    "amount": 100.0,
+    "bottleType": "Soy Milk",
+    "lastUpdated": 1767225674.853,
+    "mode": "bottle",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>",
+    "units": "ml"
+   }
+  }
+ ],
+ "id": "bottle_soy_milk",
+ "tracker": "feed"
+}

@@ -1,0 +1,59 @@
+{
+ "action": "Activity, Indoor play, no duration",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "activities/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastIndoorPlay.offset": -120.0,
+     "prefs.lastIndoorPlay.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225616.928,
+     "prefs.timestamp.seconds": 1767225616.928,
+     "timer.indoorPlay.local_timestamp": 1767225616.927,
+     "timer.indoorPlay.startTime": 1767225616927.0,
+     "timer.indoorPlay.timestamp.seconds": 1767225616.927
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.indoor_play_logged.count": 1.0,
+     "analytics.indoor_play_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225617.077,
+     "prefs.timestamp.seconds": 1767225617.077
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "activities/<child>/intervals/<doc>",
+   "payload": {
+    "lastUpdated": 1767225616.929,
+    "mode": "indoorPlay",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "activity_indoor_play",
+ "tracker": "activity"
+}

@@ -1,0 +1,69 @@
+{
+ "action": "Activity, Tummy time, manual duration (picker default)",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "activities/<child>",
+   "payload": {
+    "added": {
+     "prefs.lastTummyTime": {
+      "duration": 900.0,
+      "end_offset": -120.0,
+      "offset": -120.0,
+      "start": 1767225600.0
+     }
+    },
+    "changed": {
+     "prefs.local_timestamp": 1767225631.344,
+     "prefs.timestamp.seconds": 1767225631.344,
+     "timer.tummyTime.local_timestamp": 1767225631.344,
+     "timer.tummyTime.startTime": 1767225631344.0,
+     "timer.tummyTime.timestamp.seconds": 1767225631.344
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {
+     "analytics.tummy_time_logged": {
+      "count": 1.0,
+      "created_at": "<datetime>",
+      "updated_at": "<datetime>"
+     }
+    },
+    "changed": {},
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225631.5,
+     "prefs.timestamp.seconds": 1767225631.5
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "activities/<child>/intervals/<doc>",
+   "payload": {
+    "duration": 900.0,
+    "end_offset": -120.0,
+    "lastUpdated": 1767225631.345,
+    "mode": "tummyTime",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "activity_tummy_time",
+ "tracker": "activity"
+}

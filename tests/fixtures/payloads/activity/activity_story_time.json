@@ -1,0 +1,64 @@
+{
+ "action": "Activity, Story time, no duration",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "activities/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastStoryTime.offset": -120.0,
+     "prefs.lastStoryTime.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225620.565,
+     "prefs.timestamp.seconds": 1767225620.565,
+     "timer.storyTime.local_timestamp": 1767225620.565,
+     "timer.storyTime.startTime": 1767225620565.0,
+     "timer.storyTime.timestamp.seconds": 1767225620.565
+    },
+    "removed": [
+     "prefs.lastStoryTime.duration"
+    ]
+   }
+  },
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {
+     "analytics.story_time_logged": {
+      "count": 1.0,
+      "created_at": "<datetime>",
+      "updated_at": "<datetime>"
+     }
+    },
+    "changed": {},
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225620.742,
+     "prefs.timestamp.seconds": 1767225620.742
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "activities/<child>/intervals/<doc>",
+   "payload": {
+    "lastUpdated": 1767225620.567,
+    "mode": "storyTime",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "activity_story_time",
+ "tracker": "activity"
+}

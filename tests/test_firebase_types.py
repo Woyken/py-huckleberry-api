@@ -29,6 +29,7 @@ from huckleberry_api.firebase_types import (
     FirebasePumpPrefs,
     FirebasePumpTimerData,
     FirebaseSleepDocumentData,
+    FirebaseSleepIntervalData,
     FirebaseTemperatureData,
     to_firebase_dict,
 )
@@ -764,3 +765,36 @@ def test_feed_timer_keeps_second_feed_start_time_and_timer_start_time() -> None:
 
     assert timer.feedStartTime == feed_start_seconds
     assert timer.timerStartTime == feed_start_seconds + 60
+
+
+def test_sleep_interval_keeps_app_timezone_name() -> None:
+    """App 0.9.316 writes an optional IANA `tz` on timer-created sleep rows."""
+    interval = FirebaseSleepIntervalData.model_validate(
+        {
+            "_id": "1767225757357-00000000000000000000",
+            "lastUpdated": 1767225757.357,
+            "tz": "Etc/UTC",
+            "start": 1767225600.0,
+            "details": {},
+            "duration": 100.056,
+            "offset": -120.0,
+            "end_offset": -120.0,
+        }
+    )
+
+    assert interval.tz == "Etc/UTC"
+    assert to_firebase_dict(interval)["tz"] == "Etc/UTC"
+
+
+def test_sleep_interval_without_timezone_still_validates() -> None:
+    """Older rows in the same history omit `tz` and must keep parsing."""
+    interval = FirebaseSleepIntervalData.model_validate(
+        {
+            "start": 1_790_000_000,
+            "duration": 45,
+            "offset": -120.0,
+            "end_offset": -120.0,
+        }
+    )
+
+    assert interval.tz is None

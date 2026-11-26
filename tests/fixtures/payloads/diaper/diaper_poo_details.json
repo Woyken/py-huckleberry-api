@@ -1,0 +1,68 @@
+{
+ "action": "Diaper, Poo, Big, Runny, rash",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {
+     "analytics.diaper_rash_logged": {
+      "count": 1.0,
+      "created_at": "<datetime>",
+      "updated_at": "<datetime>"
+     }
+    },
+    "changed": {
+     "analytics.diaper_logged.count": 1.0,
+     "analytics.diaper_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "diaper/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastDiaper.mode": "poo",
+     "prefs.lastDiaper.offset": -120.0,
+     "prefs.lastDiaper.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225623.583,
+     "prefs.timestamp.seconds": 1767225623.583
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225623.588,
+     "prefs.timestamp.seconds": 1767225623.588
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "diaper/<child>/intervals/<doc>",
+   "payload": {
+    "consistency": "runny",
+    "diaperRash": true,
+    "lastUpdated": 1767225623.396,
+    "mode": "poo",
+    "offset": -120.0,
+    "quantity": {
+     "poo": 100.0
+    },
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "diaper_poo_details",
+ "tracker": "diaper"
+}

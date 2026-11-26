@@ -1,0 +1,61 @@
+{
+ "action": "Activity, Screen time, no duration",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "activities/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastScreenTime.offset": -120.0,
+     "prefs.lastScreenTime.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225620.143,
+     "prefs.timestamp.seconds": 1767225620.143,
+     "timer.screenTime.local_timestamp": 1767225620.143,
+     "timer.screenTime.startTime": 1767225620143.0,
+     "timer.screenTime.timestamp.seconds": 1767225620.143
+    },
+    "removed": [
+     "prefs.lastScreenTime.duration"
+    ]
+   }
+  },
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.screen_time_logged.count": 1.0,
+     "analytics.screen_time_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225620.327,
+     "prefs.timestamp.seconds": 1767225620.327
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "activities/<child>/intervals/<doc>",
+   "payload": {
+    "lastUpdated": 1767225620.144,
+    "mode": "screenTime",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "activity_screen_time",
+ "tracker": "activity"
+}
