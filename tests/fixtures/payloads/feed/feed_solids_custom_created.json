@@ -1,0 +1,21 @@
+{
+ "action": "Solids, create custom food only",
+ "documents": [
+  {
+   "change": "created",
+   "path": "types/<child>/custom/<doc>",
+   "payload": {
+    "archived": false,
+    "created_at": "<datetime>",
+    "id": "<id>",
+    "image": "",
+    "name": "<food>",
+    "source": "custom",
+    "type": "solids",
+    "updated_at": "<datetime>"
+   }
+  }
+ ],
+ "id": "feed_solids_custom_created",
+ "tracker": "feed"
+}

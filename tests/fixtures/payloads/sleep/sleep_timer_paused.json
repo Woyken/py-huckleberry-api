@@ -1,0 +1,22 @@
+{
+ "action": "Tap STOP on the running sleep timer (pauses; timerEndTime set)",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "sleep/<child>",
+   "payload": {
+    "added": {
+     "timer.timerEndTime": 1767225699971.0
+    },
+    "changed": {
+     "timer.local_timestamp": 1767225700.087,
+     "timer.paused": true,
+     "timer.timestamp.seconds": 1767225700.087
+    },
+    "removed": []
+   }
+  }
+ ],
+ "id": "sleep_timer_paused",
+ "tracker": "sleep"
+}

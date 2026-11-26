@@ -1,0 +1,61 @@
+{
+ "action": "Activity, Skin to skin, no duration",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "activities/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastSkinToSkin.offset": -120.0,
+     "prefs.lastSkinToSkin.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225619.889,
+     "prefs.timestamp.seconds": 1767225619.889,
+     "timer.skinToSkin.local_timestamp": 1767225619.889,
+     "timer.skinToSkin.startTime": 1767225619889.0,
+     "timer.skinToSkin.timestamp.seconds": 1767225619.889
+    },
+    "removed": [
+     "prefs.lastSkinToSkin.duration"
+    ]
+   }
+  },
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.skin_to_skin_logged.count": 1.0,
+     "analytics.skin_to_skin_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225620.065,
+     "prefs.timestamp.seconds": 1767225620.065
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "activities/<child>/intervals/<doc>",
+   "payload": {
+    "lastUpdated": 1767225619.891,
+    "mode": "skinToSkin",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "activity_skin_to_skin",
+ "tracker": "activity"
+}

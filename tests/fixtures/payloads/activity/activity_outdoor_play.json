@@ -1,0 +1,65 @@
+{
+ "action": "Activity, Outdoor play, no duration",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "activities/<child>",
+   "payload": {
+    "added": {
+     "prefs.lastOutdoorPlay": {
+      "offset": -120.0,
+      "start": 1767225600.0
+     }
+    },
+    "changed": {
+     "prefs.local_timestamp": 1767225618.313,
+     "prefs.timestamp.seconds": 1767225618.313,
+     "timer.outdoorPlay.local_timestamp": 1767225618.313,
+     "timer.outdoorPlay.startTime": 1767225618313.0,
+     "timer.outdoorPlay.timestamp.seconds": 1767225618.313
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {
+     "analytics.outdoor_play_logged": {
+      "count": 1.0,
+      "created_at": "<datetime>",
+      "updated_at": "<datetime>"
+     }
+    },
+    "changed": {},
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225618.499,
+     "prefs.timestamp.seconds": 1767225618.499
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "activities/<child>/intervals/<doc>",
+   "payload": {
+    "lastUpdated": 1767225618.314,
+    "mode": "outdoorPlay",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "activity_outdoor_play",
+ "tracker": "activity"
+}

@@ -1,0 +1,64 @@
+{
+ "action": "Activity, Brush teeth, no duration",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "activities/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastBrushTeeth.offset": -120.0,
+     "prefs.lastBrushTeeth.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225618.317,
+     "prefs.timestamp.seconds": 1767225618.317,
+     "timer.brushTeeth.local_timestamp": 1767225618.317,
+     "timer.brushTeeth.startTime": 1767225618317.0,
+     "timer.brushTeeth.timestamp.seconds": 1767225618.317
+    },
+    "removed": [
+     "prefs.lastBrushTeeth.duration"
+    ]
+   }
+  },
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {
+     "analytics.brush_teeth_logged": {
+      "count": 1.0,
+      "created_at": "<datetime>",
+      "updated_at": "<datetime>"
+     }
+    },
+    "changed": {},
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225618.514,
+     "prefs.timestamp.seconds": 1767225618.514
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "activities/<child>/intervals/<doc>",
+   "payload": {
+    "lastUpdated": 1767225618.319,
+    "mode": "brushTeeth",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "activity_brush_teeth",
+ "tracker": "activity"
+}

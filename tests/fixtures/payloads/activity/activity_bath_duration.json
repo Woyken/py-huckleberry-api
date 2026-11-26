@@ -1,0 +1,62 @@
+{
+ "action": "Activity, Bath, manual duration (picker default)",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "activities/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastBath.end_offset": -120.0,
+     "prefs.lastBath.offset": -120.0,
+     "prefs.lastBath.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225629.71,
+     "prefs.timestamp.seconds": 1767225629.71,
+     "timer.bath.local_timestamp": 1767225629.709,
+     "timer.bath.startTime": 1767225629709.0,
+     "timer.bath.timestamp.seconds": 1767225629.709
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.bath_logged.count": 1.0,
+     "analytics.bath_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225629.956,
+     "prefs.timestamp.seconds": 1767225629.956
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "activities/<child>/intervals/<doc>",
+   "payload": {
+    "duration": 900.0,
+    "end_offset": -120.0,
+    "lastUpdated": 1767225629.712,
+    "mode": "bath",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "activity_bath_duration",
+ "tracker": "activity"
+}

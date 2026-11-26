@@ -1,0 +1,65 @@
+{
+ "action": "Activity, Bath, timer start/pause/save",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "activities/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastBath.duration": 25.0,
+     "prefs.lastBath.end_offset": -120.0,
+     "prefs.lastBath.offset": -120.0,
+     "prefs.lastBath.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225629.754,
+     "prefs.timestamp.seconds": 1767225629.754,
+     "timer.bath.duration": 25.0,
+     "timer.bath.endTime": 1767225625000.0,
+     "timer.bath.local_timestamp": 1767225629.754,
+     "timer.bath.startTime": 1767225629754.0,
+     "timer.bath.timestamp.seconds": 1767225629.754
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.bath_logged.count": 1.0,
+     "analytics.bath_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225630.829,
+     "prefs.timestamp.seconds": 1767225630.829
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "activities/<child>/intervals/<doc>",
+   "payload": {
+    "duration": 25.0,
+    "end_offset": -120.0,
+    "lastUpdated": 1767225629.755,
+    "mode": "bath",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "activity_bath_timer",
+ "tracker": "activity"
+}

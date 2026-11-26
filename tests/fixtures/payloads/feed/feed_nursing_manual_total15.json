@@ -1,0 +1,64 @@
+{
+ "action": "Nursing manual, total 15 min, last left",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.breastfeed_logged.count": 1.0,
+     "analytics.breastfeed_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "feed/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastNursing.duration": 900.0,
+     "prefs.lastNursing.leftDuration": 450.0,
+     "prefs.lastNursing.offset": -120.0,
+     "prefs.lastNursing.rightDuration": 450.0,
+     "prefs.lastNursing.start": 1767225600.0,
+     "prefs.lastSide.start": 1767225600.0,
+     "prefs.local_timestamp": 1767226509.561,
+     "prefs.timestamp.seconds": 1767226509.561
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767226509.607,
+     "prefs.timestamp.seconds": 1767226509.607
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "feed/<child>/intervals/<doc>",
+   "payload": {
+    "end_offset": -120.0,
+    "lastSide": "left",
+    "lastUpdated": 1767226509.335,
+    "leftDuration": 450.0,
+    "mode": "breast",
+    "offset": -120.0,
+    "rightDuration": 450.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "feed_nursing_manual_total15",
+ "tracker": "feed"
+}

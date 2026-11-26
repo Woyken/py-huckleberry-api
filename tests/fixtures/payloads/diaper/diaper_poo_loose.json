@@ -1,0 +1,58 @@
+{
+ "action": "Diaper, Poo, Loose",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "childs/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "analytics.diaper_logged.count": 1.0,
+     "analytics.diaper_logged.updated_at": "<datetime>"
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "diaper/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastDiaper.mode": "poo",
+     "prefs.lastDiaper.offset": -120.0,
+     "prefs.lastDiaper.start": 1767225600.0,
+     "prefs.local_timestamp": 1767225613.914,
+     "prefs.timestamp.seconds": 1767225613.914
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225613.919,
+     "prefs.timestamp.seconds": 1767225613.919
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "diaper/<child>/intervals/<doc>",
+   "payload": {
+    "consistency": "loose",
+    "lastUpdated": 1767225613.747,
+    "mode": "poo",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>"
+   }
+  }
+ ],
+ "id": "diaper_poo_loose",
+ "tracker": "diaper"
+}

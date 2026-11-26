@@ -1,0 +1,28 @@
+{
+ "action": "Nursing, start left timer",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "feed/<child>",
+   "payload": {
+    "added": {
+     "timer.activeSide": "left",
+     "timer.leftDuration": 0.0,
+     "timer.rightDuration": 0.0
+    },
+    "changed": {
+     "timer.active": true,
+     "timer.feedStartTime": 1767225600.0,
+     "timer.local_timestamp": 1767225600.089,
+     "timer.paused": false,
+     "timer.timerStartTime": 1767225600.0,
+     "timer.timestamp.seconds": 1767225600.089,
+     "timer.uuid": "<id>"
+    },
+    "removed": []
+   }
+  }
+ ],
+ "id": "feed_nursing_timer_left_started",
+ "tracker": "feed"
+}

@@ -1,0 +1,54 @@
+{
+ "action": "Medicine, drops, 10",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastMedication._id": "<id>",
+     "prefs.lastMedication.amount": 10.0,
+     "prefs.lastMedication.lastUpdated": 1767225625.324,
+     "prefs.lastMedication.multientry_key": null,
+     "prefs.lastMedication.offset": -120.0,
+     "prefs.lastMedication.start": 1767225600.0,
+     "prefs.lastMedication.units": "drops",
+     "prefs.local_timestamp": 1767225625.509,
+     "prefs.timestamp.seconds": 1767225625.509
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "health/<child>/data/<doc>",
+   "payload": {
+    "amount": 10.0,
+    "lastUpdated": 1767225625.324,
+    "medication_id": "<id>",
+    "medication_name": "<medicine>",
+    "mode": "medication",
+    "notes": "",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>",
+    "units": "drops"
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>/types/<doc>",
+   "payload": {
+    "added": {
+     "lastTake.amount": 10.0,
+     "lastTake.units": "drops"
+    },
+    "changed": {},
+    "removed": []
+   }
+  }
+ ],
+ "id": "medicine_drops_10",
+ "tracker": "health"
+}

@@ -1,0 +1,47 @@
+{
+ "action": "Open Add sleep, tap START (timer running)",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "sleep/<child>",
+   "payload": {
+    "added": {
+     "timer.details": {
+      "endSleepCondition": {
+       "happy": false,
+       "upset": false,
+       "wokeUpChild": false
+      },
+      "sleepLocations": {
+       "bottle": false,
+       "car": false,
+       "coSleep": false,
+       "nextToCarer": false,
+       "nursing": false,
+       "onOwnInBed": false,
+       "stroller": false,
+       "swing": false,
+       "wornOrHeld": false
+      },
+      "startSleepCondition": {
+       "10-20_minutes": false,
+       "happy": false,
+       "longTimeToFallAsleep": false,
+       "under_10_minutes": false,
+       "upset": false
+      }
+     }
+    },
+    "changed": {
+     "timer.active": true,
+     "timer.local_timestamp": 1767225599.919,
+     "timer.timerStartTime": 1767225599915.0,
+     "timer.timestamp.seconds": 1767225599.919
+    },
+    "removed": []
+   }
+  }
+ ],
+ "id": "sleep_timer_started",
+ "tracker": "sleep"
+}

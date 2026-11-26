@@ -1,0 +1,26 @@
+{
+ "action": "Nursing, start left timer then pause",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "feed/<child>",
+   "payload": {
+    "added": {
+     "timer.leftDuration": 4.0,
+     "timer.rightDuration": 0.0
+    },
+    "changed": {
+     "timer.active": true,
+     "timer.feedStartTime": 1767225600.0,
+     "timer.local_timestamp": 1767225604.995,
+     "timer.timerStartTime": 1767225600.0,
+     "timer.timestamp.seconds": 1767225604.995,
+     "timer.uuid": "<id>"
+    },
+    "removed": []
+   }
+  }
+ ],
+ "id": "feed_nursing_timer_paused",
+ "tracker": "feed"
+}

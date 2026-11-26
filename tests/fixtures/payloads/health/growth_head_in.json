@@ -1,0 +1,34 @@
+{
+ "action": "Growth, head circumference in",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.local_timestamp": 1767225621.406,
+     "prefs.timestamp.seconds": 1767225621.406
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "health/<child>/data/<doc>",
+   "payload": {
+    "head": 45.0,
+    "headUnits": "hin",
+    "lastUpdated": 1767225621.259,
+    "mode": "growth",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>",
+    "weight": 10.0,
+    "weightUnits": "kg"
+   }
+  }
+ ],
+ "id": "growth_head_in",
+ "tracker": "health"
+}

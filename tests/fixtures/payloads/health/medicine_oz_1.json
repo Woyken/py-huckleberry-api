@@ -1,0 +1,54 @@
+{
+ "action": "Medicine, oz, 1",
+ "documents": [
+  {
+   "change": "updated",
+   "path": "health/<child>",
+   "payload": {
+    "added": {},
+    "changed": {
+     "prefs.lastMedication._id": "<id>",
+     "prefs.lastMedication.amount": 1.0,
+     "prefs.lastMedication.lastUpdated": 1767225631.466,
+     "prefs.lastMedication.multientry_key": null,
+     "prefs.lastMedication.offset": -120.0,
+     "prefs.lastMedication.start": 1767225600.0,
+     "prefs.lastMedication.units": "oz",
+     "prefs.local_timestamp": 1767225631.678,
+     "prefs.timestamp.seconds": 1767225631.678
+    },
+    "removed": []
+   }
+  },
+  {
+   "change": "created",
+   "path": "health/<child>/data/<doc>",
+   "payload": {
+    "amount": 1.0,
+    "lastUpdated": 1767225631.466,
+    "medication_id": "<id>",
+    "medication_name": "<medicine>",
+    "mode": "medication",
+    "notes": "",
+    "offset": -120.0,
+    "start": 1767225600.0,
+    "tz": "<tz>",
+    "units": "oz"
+   }
+  },
+  {
+   "change": "updated",
+   "path": "health/<child>/types/<doc>",
+   "payload": {
+    "added": {
+     "lastTake.amount": 1.0,
+     "lastTake.units": "oz"
+    },
+    "changed": {},
+    "removed": []
+   }
+  }
+ ],
+ "id": "medicine_oz_1",
+ "tracker": "health"
+}
